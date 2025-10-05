@@ -1,0 +1,12 @@
+name: puzzle_app_workspace
+packages:
+  - app
+  - puzzle_core
+  - assets
+scripts:
+  analyze:
+    run: melos exec -c 1 -- flutter analyze || dart analyze
+  test:
+    run: melos exec -c 1 -- flutter test --no-pub || dart test
+  format:
+    run: melos exec -c 1 -- dart format . --fix
