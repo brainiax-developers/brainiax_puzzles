@@ -1,4 +1,4 @@
-name: brainiax_workspace
+'name: brainiax_workspace
 packages:
   - app
   - puzzle_core
@@ -9,4 +9,4 @@ scripts:
   test:
     run: melos exec -c 1 -- flutter test --no-pub || dart test
   format:
-    run: melos exec -c 1 -- dart format . --fix
+    run: melos exec -c 1 -- dart format . --fix' | Set-Content -NoNewline -Encoding UTF8 melos.yaml
