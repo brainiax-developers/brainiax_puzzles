@@ -1,4 +1,4 @@
-name: puzzle_app_workspace
+name: brainiax_workspace
 packages:
   - app
   - puzzle_core
