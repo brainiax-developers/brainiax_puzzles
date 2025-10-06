@@ -1,8 +1,7 @@
-/// Support for doing something awesome.
-///
-/// More dartdocs go here.
-library;
+library puzzle_core;
 
-export 'src/puzzle_core_base.dart';
-
-// TODO: Export any libraries intended for clients of this package.
+export 'src/puzzle_type.dart';
+export 'src/generators/generator.dart';
+export 'src/validation/validator.dart';
+export 'src/difficulty/difficulty_scorer.dart';
+export 'src/util/seeded_rng.dart';
