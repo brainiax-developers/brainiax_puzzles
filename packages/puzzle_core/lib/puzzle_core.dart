@@ -1,5 +1,3 @@
-library puzzle_core;
-
 export 'src/puzzle_type.dart';
 export 'src/generators/generator.dart';
 export 'src/validation/validator.dart';
