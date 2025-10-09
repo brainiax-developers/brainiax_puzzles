@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -51,7 +48,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyC0rMbwfds9KI5dL93r8W3YOyURNseAmA4',
-    appId: '1:629428183451:android:b5bb7f3c72ce4174c8413e',
+    appId: '1:629428183451:android:09c1166bd3dd3b2dc8413e',
     messagingSenderId: '629428183451',
     projectId: 'brainiax-puzzles-dev',
     storageBucket: 'brainiax-puzzles-dev.firebasestorage.app',
@@ -59,10 +56,20 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAKfpVfAZSK59yOVzy1XR-IJTLAgBzOOBg',
-    appId: '1:629428183451:ios:5ae0fe0c8e6b4d98c8413e',
+    appId: '1:629428183451:ios:828cc7c24ca84eaec8413e',
     messagingSenderId: '629428183451',
     projectId: 'brainiax-puzzles-dev',
     storageBucket: 'brainiax-puzzles-dev.firebasestorage.app',
-    iosBundleId: 'com.example.app',
+    iosBundleId: 'com.brainiax.puzzles.dev',
   );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyCPB8Rf52BEWTnQY0MIae-gc_17tggkq70',
+    appId: '1:629428183451:web:b1d0b95f7efeeee4c8413e',
+    messagingSenderId: '629428183451',
+    projectId: 'brainiax-puzzles-dev',
+    authDomain: 'brainiax-puzzles-dev.firebaseapp.com',
+    storageBucket: 'brainiax-puzzles-dev.firebasestorage.app',
+  );
+
 }

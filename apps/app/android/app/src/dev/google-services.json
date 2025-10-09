@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:629428183451:android:b5bb7f3c72ce4174c8413e",
+        "mobilesdk_app_id": "1:629428183451:android:09c1166bd3dd3b2dc8413e",
         "android_client_info": {
-          "package_name": "com.example.app"
+          "package_name": "com.brainiax.puzzles.dev"
         }
       },
       "oauth_client": [],

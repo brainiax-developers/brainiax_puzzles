@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "129956083487",
+    "project_id": "brainiax-puzzles-staging",
+    "storage_bucket": "brainiax-puzzles-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:129956083487:android:6c6aeb049e93ad1c9d222a",
+        "android_client_info": {
+          "package_name": "com.brainiax.puzzles.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAP7S56Q3Nfac9e5rxKH9sKv_U3rP6NvQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
