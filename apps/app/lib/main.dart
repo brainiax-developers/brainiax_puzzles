@@ -11,10 +11,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1) Initialize Firebase
-  unawaited(initFirebase());
+  await initFirebase();
 
   // 2) Ensure an anonymous user
-  unawaited(ensureAnonAuth());
+  await ensureAnonAuth();
 
   // 3) Launch app
   runApp(const ProviderScope(child: BrainiaxApp()));
