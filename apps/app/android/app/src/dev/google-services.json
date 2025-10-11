@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "629428183451",
+    "project_id": "brainiax-puzzles-dev",
+    "storage_bucket": "brainiax-puzzles-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:629428183451:android:09c1166bd3dd3b2dc8413e",
+        "android_client_info": {
+          "package_name": "com.brainiax.puzzles.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0rMbwfds9KI5dL93r8W3YOyURNseAmA4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

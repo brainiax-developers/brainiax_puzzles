@@ -31,6 +31,14 @@ analysis_benchmark.json
 # packages file containing multi-root paths
 .packages.generated
 
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Flutter/Dart/Pub related
 **/doc/api/
 .dart_tool/
@@ -39,6 +47,7 @@ analysis_benchmark.json
 **/generated_plugin_registrant.dart
 .packages
 .pub-preload-cache/
+.pub-cache/
 .pub/
 build/
 flutter_*.png
