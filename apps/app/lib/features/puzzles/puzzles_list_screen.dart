@@ -15,7 +15,7 @@ class PuzzlesListScreen extends StatelessWidget {
         itemCount: types.length,
         itemBuilder: (_, i) => ListTile(
           title: Text(types[i]),
-          onTap: () => context.go('/play/${types[i]}'),
+          onTap: () => context.push('/play/${types[i]}'),
         ),
       ),
     );
