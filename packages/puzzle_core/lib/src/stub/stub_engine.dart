@@ -1,36 +1,38 @@
 /// Stub engines for testing and validation.
-/// 
-/// These engines provide minimal implementations that return
-/// deterministic structures based on seeds. They don't perform
-/// real puzzle generation or solving - they're just for validating
-/// the registry and metadata systems.
+///
+/// These engines provide deterministic implementations wired through the
+/// pipeline template so that tests exercise the generator → solver → validator
+/// → difficulty flow without requiring full puzzle logic.
 library puzzle_core.stub_engine;
 
 import '../api_types.dart';
+import '../difficulty/difficulty_config.dart';
+import '../difficulty/telemetry.dart';
+import '../engine/pipeline_engine.dart';
+import '../generators/generator.dart';
+import '../solver/solver.dart';
 import '../util/determinism.dart';
-import '../util/seeded_rng.dart';
-import '../util/soft_timeout.dart';
+import '../validation/validator.dart';
 
-/// A simple stub state for testing.
 class StubPuzzleState {
   final String id;
   final Map<String, dynamic> data;
-  
+
   const StubPuzzleState({
     required this.id,
     required this.data,
   });
-  
+
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'data': data,
-  };
-  
+        'id': id,
+        'data': data,
+      };
+
   factory StubPuzzleState.fromJson(Map<String, dynamic> json) => StubPuzzleState(
-    id: json['id'] as String? ?? '',
-    data: Map<String, dynamic>.from(json['data'] as Map? ?? {}),
-  );
-  
+        id: json['id'] as String? ?? '',
+        data: Map<String, dynamic>.from(json['data'] as Map? ?? {}),
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -38,34 +40,33 @@ class StubPuzzleState {
           runtimeType == other.runtimeType &&
           id == other.id &&
           data == other.data;
-  
+
   @override
   int get hashCode => Object.hash(id, data);
-  
+
   @override
   String toString() => 'StubPuzzleState(id: $id, data: $data)';
 }
 
-/// A simple stub move for testing.
 class StubPuzzleMove {
   final String type;
   final Map<String, dynamic> data;
-  
+
   const StubPuzzleMove({
     required this.type,
     required this.data,
   });
-  
+
   Map<String, dynamic> toJson() => {
-    'type': type,
-    'data': data,
-  };
-  
+        'type': type,
+        'data': data,
+      };
+
   factory StubPuzzleMove.fromJson(Map<String, dynamic> json) => StubPuzzleMove(
-    type: json['type'] as String? ?? '',
-    data: Map<String, dynamic>.from(json['data'] as Map? ?? {}),
-  );
-  
+        type: json['type'] as String? ?? '',
+        data: Map<String, dynamic>.from(json['data'] as Map? ?? {}),
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -73,249 +74,209 @@ class StubPuzzleMove {
           runtimeType == other.runtimeType &&
           type == other.type &&
           data == other.data;
-  
+
   @override
   int get hashCode => Object.hash(type, data);
-  
+
   @override
   String toString() => 'StubPuzzleMove(type: $type, data: $data)';
 }
 
-/// Stub puzzle engine for testing.
-/// 
-/// This engine generates deterministic stub puzzles based on
-/// the provided seed and parameters. It's designed to validate
-/// the registry and metadata systems without implementing
-/// real puzzle logic.
-class StubPuzzleEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
-  @override
-  String get id => 'stub';
-  
-  @override
-  String get name => 'Stub Puzzle Engine';
-  
-  @override
-  String get version => '1.0.0';
-  
-  @override
-  GeneratedPuzzle<StubPuzzleState> generate({
-    required String seedStr,
-    required int seed64,
-    required SizeOpt size,
-    required DifficultyScore difficulty,
-  }) {
-    // Create a deterministic RNG from the seed
-    final rng = SeededRng(seed64);
-    final SoftTimeout budget = SoftTimeout(maxIterations: 256);
-    
-    // Generate deterministic data based on seed and parameters
-    final puzzleData = <String, dynamic>{
-      'generated_at': seed64, // Use seed for deterministic timestamp
-      'size_width': size.width,
-      'size_height': size.height,
-      'difficulty_level': difficulty.level,
-      'random_values': <int>[],
-    };
+class _StubGenerator extends PuzzleGenerator<StubPuzzleState> {
+  const _StubGenerator();
 
-    // Generate some deterministic "random" values
-    for (int i = 0; i < 10; i++) {
-      budget.tick();
-      puzzleData['random_values'].add(rng.nextIntInRange(100));
+  @override
+  PuzzleGenerationResult<StubPuzzleState> generate(GeneratorContext context) {
+    final stopwatch = Stopwatch()..start();
+    final List<int> randomValues = <int>[];
+    for (int i = 0; i < context.size.width; i++) {
+      randomValues.add(context.rng.nextIntInRange(1024));
     }
-    
-    // Create a deterministic puzzle ID based on seed
-    final puzzleId = 'puzzle_${seed64.abs()}_${size.id}_${difficulty.level}';
-    
-    final state = StubPuzzleState(
-      id: puzzleId,
-      data: puzzleData,
-    );
-
-    DeterminismGuard.assertNoFloatsOrDateTimes(state.data);
-    
-    final meta = PuzzleMetadata(
-      engineVersion: version,
-      rngId: SeededRng.rngId,
-      size: size,
-      difficulty: difficulty,
-      seedStr: seedStr,
-      seed64: seed64,
-    );
-    
-    return GeneratedPuzzle(
-      state: state,
-      meta: meta,
+    final data = <String, dynamic>{
+      'seed': context.seed64,
+      'size': {'w': context.size.width, 'h': context.size.height},
+      'requestedDifficulty': context.difficulty.level,
+      'random_values': randomValues,
+      'hint': context.difficulty.hint,
+    };
+    stopwatch.stop();
+    return PuzzleGenerationResult(
+      board: StubPuzzleState(
+        id: 'stub-${context.seed64}-${context.size.id}-${context.difficulty.level}',
+        data: data,
+      ),
+      snapshot: GenerationSnapshot(
+        telemetry: {
+          'durationMs': stopwatch.elapsedMicroseconds / 1000.0,
+          'xor': randomValues.fold<int>(0, (acc, value) => acc ^ value),
+        },
+      ),
     );
   }
-  
+}
+
+class _StubSolver extends PuzzleSolver<StubPuzzleState> {
+  const _StubSolver();
+
+  @override
+  SolverResult<StubPuzzleState> solve(
+    StubPuzzleState board,
+    SolverContext context,
+  ) {
+    final stopwatch = Stopwatch()..start();
+    final Map<String, dynamic> solvedData = Map<String, dynamic>.from(board.data);
+    solvedData['solved'] = true;
+    solvedData['solution_signature'] = _deriveSignature(board.data);
+    stopwatch.stop();
+
+    final result = StubPuzzleState(id: board.id, data: solvedData);
+    final telemetry = <String, Object?>{
+      'maxSolutions': context.maxSolutions,
+      'signature': solvedData['solution_signature'],
+      'elapsedUs': stopwatch.elapsedMicroseconds,
+    };
+
+    return SolverResult<StubPuzzleState>(
+      solutions: <StubPuzzleState>[result],
+      elapsed: stopwatch.elapsed,
+      telemetry: telemetry,
+    );
+  }
+
+  int _deriveSignature(Map<String, dynamic> data) {
+    final values = (data['random_values'] as List?)?.cast<int>() ?? const <int>[];
+    int hash = 17;
+    for (final value in values) {
+      hash = (hash * 31) ^ value;
+    }
+    return hash & 0xffffffff;
+  }
+}
+
+class _StubValidator extends PuzzleValidator<StubPuzzleState> {
+  const _StubValidator();
+
+  @override
+  ValidationSummary validatePuzzle(StubPuzzleState board) {
+    final stopwatch = Stopwatch()..start();
+    final issues = <String>[];
+    if (!board.data.containsKey('random_values')) {
+      issues.add('missing_random_values');
+    }
+    stopwatch.stop();
+    return issues.isEmpty
+        ? ValidationSummary.success(stopwatch.elapsed)
+        : ValidationSummary.failure(stopwatch.elapsed, issues);
+  }
+
+  @override
+  ValidationSummary validateSolution(
+    StubPuzzleState board,
+    StubPuzzleState solution,
+  ) {
+    final stopwatch = Stopwatch()..start();
+    final issues = <String>[];
+    if (board.id != solution.id) {
+      issues.add('id_mismatch');
+    }
+    if (solution.data['solved'] != true) {
+      issues.add('not_solved');
+    }
+    final boardValues = board.data['random_values'] as List? ?? const [];
+    final solutionValues = solution.data['random_values'] as List? ?? const [];
+    if (boardValues.length != solutionValues.length) {
+      issues.add('value_length_mismatch');
+    }
+    stopwatch.stop();
+    return issues.isEmpty
+        ? ValidationSummary.success(stopwatch.elapsed)
+        : ValidationSummary.failure(stopwatch.elapsed, issues);
+  }
+
+  @override
+  bool isSolved(StubPuzzleState board) => board.data['solved'] == true;
+}
+
+class _StubDifficultyScorer extends DifficultyScorer<StubPuzzleState> {
+  const _StubDifficultyScorer();
+
+  @override
+  DifficultyTelemetry score({
+    required StubPuzzleState puzzle,
+    required StubPuzzleState solution,
+    required DifficultyContext context,
+  }) {
+    final values = (puzzle.data['random_values'] as List?)?.cast<int>() ?? const <int>[];
+    final double entropy = values.isEmpty
+        ? 0
+        : values.fold<int>(0, (acc, value) => acc ^ value).toDouble() /
+            (values.length * 1024.0);
+    final Map<String, num> metrics = {
+      'width': (puzzle.data['size'] as Map)['w'] as num,
+      'height': (puzzle.data['size'] as Map)['h'] as num,
+      'entropy': entropy,
+      'generatorDurationMs':
+          (context.generatorTelemetry['durationMs'] as num?)?.toDouble() ?? 0.0,
+    };
+    final double rawScore = (metrics['entropy']! + 0.1).clamp(0.0, 1.0);
+    return DifficultyTelemetry(
+      rawScore: rawScore,
+      bucket: 'pending',
+      metrics: metrics,
+    );
+  }
+}
+
+DifficultyBucketConfig _loadDifficultyConfig() {
+  return const DifficultyConfigLoader().loadSync('assets/difficulty_thresholds.json');
+}
+
+class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleMove> {
+  StubPuzzleEngine({
+    DifficultyBucketConfig? config,
+    String engineId = 'stub',
+    String engineName = 'Stub Puzzle Engine',
+    String engineVersion = '2.0.0',
+  }) : super(
+          engineId: engineId,
+          engineName: engineName,
+          engineVersion: engineVersion,
+          generator: const _StubGenerator(),
+          solver: const _StubSolver(),
+          validator: const _StubValidator(),
+          difficultyScorer: const _StubDifficultyScorer(),
+          difficultyConfig: config ?? _loadDifficultyConfig(),
+        );
+
   @override
   MoveResult<StubPuzzleState> validateMove({
     required StubPuzzleState currentState,
     required StubPuzzleMove move,
   }) {
-    // Simple validation logic for testing
     if (move.type == 'invalid') {
       return MoveResult.failure('Invalid move type');
     }
-    
-    // Create a new state with the move applied
+
     final newData = Map<String, dynamic>.from(currentState.data);
     newData['last_move'] = move.toJson();
     newData['move_count'] = (newData['move_count'] ?? 0) + 1;
-    
+
     final newState = StubPuzzleState(
       id: currentState.id,
       data: newData,
     );
-    
+
+    DeterminismGuard.assertNoFloatsOrDateTimes(newState.data);
+
     return MoveResult.success(newState);
-  }
-  
-  @override
-  bool isSolved(StubPuzzleState state) {
-    // Simple solved condition for testing
-    final moveCount = state.data['move_count'] ?? 0;
-    return moveCount >= 5; // Consider solved after 5 moves
   }
 }
 
-/// Sudoku stub engine for testing.
-/// 
-/// This engine simulates a Sudoku puzzle generator without
-/// implementing real Sudoku logic.
-class StubSudokuEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
-  @override
-  String get id => 'stub_sudoku';
-  
-  @override
-  String get name => 'Stub Sudoku Engine';
-  
-  @override
-  String get version => '1.0.0';
-  
-  @override
-  GeneratedPuzzle<StubPuzzleState> generate({
-    required String seedStr,
-    required int seed64,
-    required SizeOpt size,
-    required DifficultyScore difficulty,
-  }) {
-    final rng = SeededRng(seed64);
-    final SoftTimeout budget = SoftTimeout(maxIterations: 9 * 9 * 2);
-    
-    // Generate a 9x9 grid with some deterministic values
-    final grid = <List<int>>[];
-    for (int row = 0; row < 9; row++) {
-      final rowData = <int>[];
-      for (int col = 0; col < 9; col++) {
-        // Fill some cells deterministically based on seed
-        budget.tick();
-        if ((row + col + seed64) % 3 == 0) {
-          rowData.add((rng.nextIntInRange(9) + 1));
-        } else {
-          rowData.add(0); // Empty cell
-        }
-      }
-      grid.add(rowData);
-    }
-    
-    final puzzleData = <String, dynamic>{
-      'type': 'sudoku',
-      'grid': grid,
-      'size': '9x9',
-      'difficulty': difficulty.level,
-      'seed': seed64,
-    };
-    
-    final puzzleId = 'sudoku_${seed64.abs()}_${difficulty.level}';
-    
-    final state = StubPuzzleState(
-      id: puzzleId,
-      data: puzzleData,
-    );
-
-    DeterminismGuard.assertNoFloatsOrDateTimes(state.data);
-    
-    final meta = PuzzleMetadata(
-      engineVersion: version,
-      rngId: SeededRng.rngId,
-      size: size,
-      difficulty: difficulty,
-      seedStr: seedStr,
-      seed64: seed64,
-    );
-    
-    return GeneratedPuzzle(
-      state: state,
-      meta: meta,
-    );
-  }
-  
-  @override
-  MoveResult<StubPuzzleState> validateMove({
-    required StubPuzzleState currentState,
-    required StubPuzzleMove move,
-  }) {
-    // Simple Sudoku move validation
-    if (move.type != 'place_number') {
-      return MoveResult.failure('Invalid move type for Sudoku');
-    }
-    
-    final row = move.data['row'] as int?;
-    final col = move.data['col'] as int?;
-    final value = move.data['value'] as int?;
-    
-    if (row == null || col == null || value == null) {
-      return MoveResult.failure('Missing required move data');
-    }
-    
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
-      return MoveResult.failure('Invalid cell position');
-    }
-    
-    if (value < 1 || value > 9) {
-      return MoveResult.failure('Invalid number value');
-    }
-    
-    // Create new state with the move applied
-    final newData = Map<String, dynamic>.from(currentState.data);
-    final grid = List<List<int>>.from(
-      (newData['grid'] as List).map((row) => List<int>.from(row))
-    );
-    
-    grid[row][col] = value;
-    newData['grid'] = grid;
-    newData['last_move'] = move.toJson();
-    
-    final newState = StubPuzzleState(
-      id: currentState.id,
-      data: newData,
-    );
-    
-    return MoveResult.success(newState);
-  }
-  
-  @override
-  bool isSolved(StubPuzzleState state) {
-    final grid = state.data['grid'] as List<List<int>>?;
-    if (grid == null) return false;
-    
-    // Simple solved check - all cells filled
-    for (final row in grid) {
-      for (final cell in row) {
-        if (cell == 0) return false;
-      }
-    }
-    return true;
-  }
-}
-
-/// Utility function to register all stub engines.
-/// 
-/// This function registers the stub engines with the global registry
-/// for testing and development purposes.
-void registerStubEngines() {
-  final registry = EngineRegistry();
-  registry.register(StubPuzzleEngine());
-  registry.register(StubSudokuEngine());
+class StubSudokuEngine extends StubPuzzleEngine {
+  StubSudokuEngine({DifficultyBucketConfig? config})
+      : super(
+          config: config,
+          engineId: 'stub_sudoku',
+          engineName: 'Stub Sudoku Engine',
+        );
 }

@@ -30,9 +30,22 @@ void main() {
         data: {'test': 'data', 'number': 42},
       );
       
+      final telemetry = GenerationTelemetry(
+        difficulty: const DifficultyTelemetry(
+          rawScore: 0.42,
+          bucket: 'medium',
+          metrics: {'givens': 30},
+        ),
+        extras: {
+          'generator': {'durationMs': 1.2},
+          'solver': {'nodes': 12},
+        },
+      );
+
       final puzzle = GeneratedPuzzle(
         state: state,
         meta: meta,
+        telemetry: telemetry,
       );
       
       // Serialize to JSON
@@ -51,10 +64,15 @@ void main() {
       expect(restoredPuzzle.meta.difficulty, equals(meta.difficulty));
       expect(restoredPuzzle.meta.seedStr, equals(meta.seedStr));
       expect(restoredPuzzle.meta.seed64, equals(meta.seed64));
-      
+
       // Verify state is preserved
       expect(restoredPuzzle.state.id, equals(state.id));
       expect(restoredPuzzle.state.data, equals(state.data));
+
+      // Verify telemetry is preserved
+      expect(restoredPuzzle.telemetry?.difficulty.bucket, equals('medium'));
+      expect(restoredPuzzle.telemetry?.difficulty.rawScore, equals(0.42));
+      expect(restoredPuzzle.telemetry?.extras['generator'], equals({'durationMs': 1.2}));
     });
     
     test('PuzzleMetadata round-trip serialization', () {

@@ -5,6 +5,8 @@
 /// "boring and stable" - they don't leak engine internals.
 library puzzle_core.api_types;
 
+import 'difficulty/telemetry.dart';
+
 /// Abstract base class for puzzle engines.
 /// 
 /// [S] is the state type (e.g., SudokuBoard, CrosswordGrid)
@@ -109,30 +111,41 @@ class EngineRegistry {
 class GeneratedPuzzle<S> {
   /// The puzzle state/board.
   final S state;
-  
+
   /// Metadata about the generation process.
   final PuzzleMetadata meta;
-  
+
+  /// Optional telemetry captured during generation.
+  final GenerationTelemetry? telemetry;
+
   const GeneratedPuzzle({
     required this.state,
     required this.meta,
+    this.telemetry,
   });
-  
+
   /// Convert to JSON for serialization.
   Map<String, dynamic> toJson() => {
-    'state': _stateToJson(state),
-    'meta': meta.toJson(),
-  };
-  
+        'state': _stateToJson(state),
+        'meta': meta.toJson(),
+        if (telemetry != null) 'telemetry': telemetry!.toJson(),
+      };
+
   /// Create from JSON.
   factory GeneratedPuzzle.fromJson(
     Map<String, dynamic> json,
     S Function(Map<String, dynamic>) stateFromJson,
-  ) => GeneratedPuzzle(
-    state: stateFromJson(json['state'] as Map<String, dynamic>),
-    meta: PuzzleMetadata.fromJson(json['meta'] as Map<String, dynamic>),
-  );
-  
+  ) =>
+      GeneratedPuzzle(
+        state: stateFromJson(json['state'] as Map<String, dynamic>),
+        meta: PuzzleMetadata.fromJson(json['meta'] as Map<String, dynamic>),
+        telemetry: json.containsKey('telemetry')
+            ? GenerationTelemetry.fromJson(
+                Map<String, dynamic>.from(json['telemetry'] as Map),
+              )
+            : null,
+      );
+
   /// Convert state to JSON - to be implemented by specific puzzle types.
   Map<String, dynamic> _stateToJson(S state) {
     // Try to call toJson if the state has it
@@ -147,19 +160,111 @@ class GeneratedPuzzle<S> {
       return {'type': state.runtimeType.toString()};
     }
   }
-  
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is GeneratedPuzzle &&
           runtimeType == other.runtimeType &&
-          meta == other.meta;
-  
+          meta == other.meta &&
+          telemetry == other.telemetry;
+
   @override
-  int get hashCode => meta.hashCode;
-  
+  int get hashCode => Object.hash(meta, telemetry);
+
   @override
-  String toString() => 'GeneratedPuzzle(meta: $meta)';
+  String toString() => 'GeneratedPuzzle(meta: $meta, telemetry: $telemetry)';
+}
+
+class GenerationTelemetry {
+  final DifficultyTelemetry difficulty;
+  final Map<String, Object?> extras;
+
+  const GenerationTelemetry({
+    required this.difficulty,
+    this.extras = const <String, Object?>{},
+  });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'difficulty': difficulty.toJson(),
+        'extras': extras,
+      };
+
+  factory GenerationTelemetry.fromJson(Map<String, dynamic> json) =>
+      GenerationTelemetry(
+        difficulty: DifficultyTelemetry.fromJson(
+          Map<String, dynamic>.from(json['difficulty'] as Map),
+        ),
+        extras: Map<String, Object?>.from(json['extras'] as Map? ?? const {}),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GenerationTelemetry &&
+          runtimeType == other.runtimeType &&
+          difficulty.rawScore == other.difficulty.rawScore &&
+          difficulty.bucket == other.difficulty.bucket &&
+          _deepEquals(extras, other.extras);
+
+  @override
+  int get hashCode => Object.hash(
+        difficulty.rawScore,
+        difficulty.bucket,
+        _deepHash(extras),
+      );
+}
+
+bool _deepEquals(Object? a, Object? b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a is Map && b is Map) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final key in a.keys) {
+      if (!b.containsKey(key)) {
+        return false;
+      }
+      if (!_deepEquals(a[key], b[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (a is Iterable && b is Iterable) {
+    final ita = a.iterator;
+    final itb = b.iterator;
+    while (true) {
+      final hasA = ita.moveNext();
+      final hasB = itb.moveNext();
+      if (hasA != hasB) {
+        return false;
+      }
+      if (!hasA) {
+        return true;
+      }
+      if (!_deepEquals(ita.current, itb.current)) {
+        return false;
+      }
+    }
+  }
+  return a == b;
+}
+
+int _deepHash(Object? value) {
+  if (value is Map) {
+    int hash = 0;
+    for (final entry in value.entries) {
+      hash = Object.hash(hash, entry.key, _deepHash(entry.value));
+    }
+    return hash;
+  }
+  if (value is Iterable) {
+    return Object.hashAll(value.map(_deepHash));
+  }
+  return value.hashCode;
 }
 
 /// Metadata about puzzle generation.
