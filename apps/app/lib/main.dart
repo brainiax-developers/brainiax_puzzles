@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_router.dart';
 import 'shared/firebase/firebase_init.dart';
 import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
+import 'shared/services/engine_registry_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,7 +16,10 @@ Future<void> main() async {
   // 2) Ensure an anonymous user
   await ensureAnonAuth();
 
-  // 3) Launch app
+  // 3) Initialize puzzle engines
+  await EngineRegistryService().initialize();
+
+  // 4) Launch app
   runApp(const ProviderScope(child: BrainiaxApp()));
 }
 
