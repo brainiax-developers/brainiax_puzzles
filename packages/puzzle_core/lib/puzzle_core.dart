@@ -38,6 +38,11 @@ export 'src/nonogram/nonogram_board.dart';
 export 'src/nonogram/nonogram_move.dart';
 export 'src/nonogram/nonogram_engine.dart';
 
+// Kakuro engine implementation
+export 'src/kakuro/kakuro_board.dart';
+export 'src/kakuro/kakuro_move.dart';
+export 'src/kakuro/kakuro_engine.dart';
+
 // Mathdoku engine implementation
 export 'src/mathdoku/mathdoku_board.dart';
 export 'src/mathdoku/mathdoku_move.dart';
