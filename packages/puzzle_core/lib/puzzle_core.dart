@@ -58,6 +58,11 @@ export 'src/futoshiki/futoshiki_board.dart';
 export 'src/futoshiki/futoshiki_move.dart';
 export 'src/futoshiki/futoshiki_engine.dart';
 
+// Takuzu engine implementation
+export 'src/takuzu/takuzu_board.dart';
+export 'src/takuzu/takuzu_move.dart';
+export 'src/takuzu/takuzu_engine.dart';
+
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
