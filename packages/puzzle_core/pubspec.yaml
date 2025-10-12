@@ -2,16 +2,16 @@ name: puzzle_core
 publish_to: none
 resolution: workspace
 
-description: A starting point for Dart libraries or applications.
+description: On-device deterministic puzzle generation with pluggable engines and stable API.
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/brainiax/puzzles
 
 environment:
   sdk: ^3.9.0
 
 # Add regular dependencies here.
 dependencies:
-  # path: ^1.9.0
+  # No external dependencies - keeping it minimal for now
 
 dev_dependencies:
   lints: ^6.0.0
