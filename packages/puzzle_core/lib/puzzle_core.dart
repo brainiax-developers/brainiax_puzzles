@@ -48,6 +48,11 @@ export 'src/mathdoku/mathdoku_board.dart';
 export 'src/mathdoku/mathdoku_move.dart';
 export 'src/mathdoku/mathdoku_engine.dart';
 
+// Futoshiki engine implementation
+export 'src/futoshiki/futoshiki_board.dart';
+export 'src/futoshiki/futoshiki_move.dart';
+export 'src/futoshiki/futoshiki_engine.dart';
+
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
