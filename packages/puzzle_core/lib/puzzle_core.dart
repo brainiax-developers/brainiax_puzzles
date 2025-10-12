@@ -43,6 +43,11 @@ export 'src/kakuro/kakuro_board.dart';
 export 'src/kakuro/kakuro_move.dart';
 export 'src/kakuro/kakuro_engine.dart';
 
+// Slitherlink engine implementation
+export 'src/slitherlink/slitherlink_board.dart';
+export 'src/slitherlink/slitherlink_move.dart';
+export 'src/slitherlink/slitherlink_engine.dart';
+
 // Mathdoku engine implementation
 export 'src/mathdoku/mathdoku_board.dart';
 export 'src/mathdoku/mathdoku_move.dart';
