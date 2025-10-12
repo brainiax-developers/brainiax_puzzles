@@ -17,8 +17,21 @@ export 'src/api_types.dart';
 // Registry implementation
 export 'src/registry.dart';
 
+// Engine pipeline template and core building blocks
+export 'src/engine/pipeline_engine.dart';
+export 'src/generators/generator.dart';
+export 'src/solver/solver.dart';
+export 'src/validation/validator.dart';
+export 'src/difficulty/telemetry.dart';
+export 'src/difficulty/difficulty_config.dart';
+
 // Stub engines for testing and validation
 export 'src/stub/stub_engine.dart';
+
+// Sudoku engine implementation
+export 'src/sudoku/sudoku_board.dart';
+export 'src/sudoku/sudoku_move.dart';
+export 'src/sudoku/sudoku_engine.dart';
 
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
