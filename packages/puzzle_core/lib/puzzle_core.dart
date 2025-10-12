@@ -33,6 +33,11 @@ export 'src/sudoku/sudoku_board.dart';
 export 'src/sudoku/sudoku_move.dart';
 export 'src/sudoku/sudoku_engine.dart';
 
+// Nonogram engine implementation
+export 'src/nonogram/nonogram_board.dart';
+export 'src/nonogram/nonogram_move.dart';
+export 'src/nonogram/nonogram_engine.dart';
+
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
