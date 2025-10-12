@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:puzzle_core/src/util/seeded_rng.dart';
 
 void main() {
   group('Determinism Tests', () {
@@ -213,8 +214,8 @@ void main() {
       final sequence2 = <int>[];
       
       for (int i = 0; i < 10; i++) {
-        sequence1.add(rng1.nextInt());
-        sequence2.add(rng2.nextInt());
+        sequence1.add(rng1.nextInt64());
+        sequence2.add(rng2.nextInt64());
       }
       
       // Verify sequences are identical
@@ -230,8 +231,8 @@ void main() {
       final sequence2 = <int>[];
       
       for (int i = 0; i < 10; i++) {
-        sequence1.add(rng1.nextInt());
-        sequence2.add(rng2.nextInt());
+        sequence1.add(rng1.nextInt64());
+        sequence2.add(rng2.nextInt64());
       }
       
       // Verify sequences are different

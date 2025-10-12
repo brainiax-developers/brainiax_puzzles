@@ -48,10 +48,27 @@ class _SplitMix64 {
   }
 }
 
-/// Deterministic RNG using the xoroshiro128** algorithm.
+/// A deterministic random number generator using the xoroshiro128** algorithm.
+/// 
+/// This RNG provides high-quality pseudo-random numbers with excellent statistical
+/// properties. It uses SplitMix64 for seeding and xoroshiro128** for generation,
+/// ensuring full 64-bit output and deterministic behavior.
+/// 
+/// The generator is designed for puzzle generation where reproducibility is crucial.
+/// Given the same seed, it will always produce the same sequence of numbers.
+/// 
+/// Example usage:
+/// ```dart
+/// final rng = SeededRng(12345);
+/// final value = rng.nextIntInRange(10); // 0-9
+/// final shuffled = rng.permute([1, 2, 3, 4, 5]);
+/// final weighted = rng.pickWeighted(['a', 'b', 'c'], [1, 2, 3]);
+/// ```
 abstract class SeededRng {
+  /// Creates a new RNG instance with the given 64-bit seed.
   factory SeededRng(int seed64) = _Xoroshiro128ss;
 
+  /// The identifier for this RNG algorithm.
   static const String rngId = 'xoroshiro128ss';
 
   /// Generate the next 64-bit integer from the stream.
@@ -71,6 +88,9 @@ abstract class SeededRng {
 
   /// Pick a value using integer weights.
   T pickWeighted<T>(List<T> items, List<int> weights);
+
+  /// Check if the RNG state is valid (non-zero).
+  bool get isValidState;
 }
 
 class _Xoroshiro128ss implements SeededRng {
@@ -176,6 +196,9 @@ class _Xoroshiro128ss implements SeededRng {
     }
     return items.last;
   }
+
+  @override
+  bool get isValidState => (_s0 | _s1) != 0;
 }
 
 /// Deterministic shuffle helper that operates on the provided list.

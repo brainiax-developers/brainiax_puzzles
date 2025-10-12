@@ -1,4 +1,8 @@
-import 'package:puzzle_core/puzzle_core.dart';
+import 'package:puzzle_core/src/util/grids.dart';
+import 'package:puzzle_core/src/util/dsu.dart';
+import 'package:puzzle_core/src/util/backtracking.dart';
+import 'package:puzzle_core/src/util/nonogram.dart';
+import 'package:puzzle_core/src/util/kakuro_dictionary.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -76,8 +80,7 @@ void main() {
   });
 
   test('Kakuro dictionary covers known combination', () {
-    final Set<int>? combos =
-        KakuroDictionary.combinations[2]?[16];
+    final Set<int>? combos = KakuroDictionary.getCombinations(2, 16);
     expect(combos, isNotNull);
     // 7 + 9 = 16 => mask has bits for 7 and 9
     final int mask = (1 << 7) | (1 << 9);

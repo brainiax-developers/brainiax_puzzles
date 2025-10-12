@@ -1,15 +1,46 @@
 class KakuroDictionary {
   KakuroDictionary._();
 
-  static final Map<int, Map<int, Set<int>>> combinations = _build();
+  static final Map<int, Map<int, Set<int>>> _combinations = <int, Map<int, Set<int>>>{};
+  static bool _initialized = false;
 
-  static Map<int, Map<int, Set<int>>> _build() {
-    final Map<int, Map<int, Set<int>>> result = <int, Map<int, Set<int>>>{};
-    for (int length = 1; length <= 9; length++) {
-      result[length] = <int, Set<int>>{};
-      _enumerate(length, 1, 0, 0, 0, result[length]!);
+  /// Get combinations for a specific length and sum.
+  /// Returns null if no combinations exist.
+  static Set<int>? getCombinations(int length, int sum) {
+    _ensureInitialized();
+    return _combinations[length]?[sum];
+  }
+
+  /// Get all combinations for a specific length.
+  static Map<int, Set<int>>? getCombinationsForLength(int length) {
+    _ensureInitialized();
+    return _combinations[length];
+  }
+
+  /// Check if combinations exist for a specific length and sum.
+  static bool hasCombinations(int length, int sum) {
+    _ensureInitialized();
+    return _combinations[length]?[sum] != null;
+  }
+
+  /// Get the total number of combinations for a specific length.
+  static int getCombinationCount(int length) {
+    _ensureInitialized();
+    return _combinations[length]?.length ?? 0;
+  }
+
+  static void _ensureInitialized() {
+    if (!_initialized) {
+      _build();
+      _initialized = true;
     }
-    return result;
+  }
+
+  static void _build() {
+    for (int length = 1; length <= 9; length++) {
+      _combinations[length] = <int, Set<int>>{};
+      _enumerate(length, 1, 0, 0, 0, _combinations[length]!);
+    }
   }
 
   static void _enumerate(
