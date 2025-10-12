@@ -38,6 +38,11 @@ export 'src/nonogram/nonogram_board.dart';
 export 'src/nonogram/nonogram_move.dart';
 export 'src/nonogram/nonogram_engine.dart';
 
+// Mathdoku engine implementation
+export 'src/mathdoku/mathdoku_board.dart';
+export 'src/mathdoku/mathdoku_move.dart';
+export 'src/mathdoku/mathdoku_engine.dart';
+
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
