@@ -23,3 +23,6 @@ export 'src/stub/stub_engine.dart';
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
+
+// Note: Utility classes are intentionally not exported to maintain API stability.
+// Engines should import utilities directly from their internal implementations.
