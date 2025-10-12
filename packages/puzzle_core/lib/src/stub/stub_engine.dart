@@ -7,6 +7,9 @@
 library puzzle_core.stub_engine;
 
 import '../api_types.dart';
+import '../util/determinism.dart';
+import '../util/seeded_rng.dart';
+import '../util/soft_timeout.dart';
 
 /// A simple stub state for testing.
 class StubPuzzleState {
@@ -103,33 +106,36 @@ class StubPuzzleEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
   }) {
     // Create a deterministic RNG from the seed
     final rng = SeededRng(seed64);
+    final SoftTimeout budget = SoftTimeout(maxIterations: 256);
     
     // Generate deterministic data based on seed and parameters
     final puzzleData = <String, dynamic>{
       'generated_at': seed64, // Use seed for deterministic timestamp
       'size_width': size.width,
       'size_height': size.height,
-      'difficulty_value': difficulty.value,
       'difficulty_level': difficulty.level,
       'random_values': <int>[],
     };
-    
+
     // Generate some deterministic "random" values
     for (int i = 0; i < 10; i++) {
+      budget.tick();
       puzzleData['random_values'].add(rng.nextIntInRange(100));
     }
     
     // Create a deterministic puzzle ID based on seed
-    final puzzleId = 'puzzle_${seed64.abs()}_${size.id}_${(difficulty.value * 100).round()}';
+    final puzzleId = 'puzzle_${seed64.abs()}_${size.id}_${difficulty.level}';
     
     final state = StubPuzzleState(
       id: puzzleId,
       data: puzzleData,
     );
+
+    DeterminismGuard.assertNoFloatsOrDateTimes(state.data);
     
     final meta = PuzzleMetadata(
       engineVersion: version,
-      rngId: 'stub_rng_v1',
+      rngId: SeededRng.rngId,
       size: size,
       difficulty: difficulty,
       seedStr: seedStr,
@@ -195,6 +201,7 @@ class StubSudokuEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
     required DifficultyScore difficulty,
   }) {
     final rng = SeededRng(seed64);
+    final SoftTimeout budget = SoftTimeout(maxIterations: 9 * 9 * 2);
     
     // Generate a 9x9 grid with some deterministic values
     final grid = <List<int>>[];
@@ -202,6 +209,7 @@ class StubSudokuEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
       final rowData = <int>[];
       for (int col = 0; col < 9; col++) {
         // Fill some cells deterministically based on seed
+        budget.tick();
         if ((row + col + seed64) % 3 == 0) {
           rowData.add((rng.nextIntInRange(9) + 1));
         } else {
@@ -219,16 +227,18 @@ class StubSudokuEngine extends PuzzleEngine<StubPuzzleState, StubPuzzleMove> {
       'seed': seed64,
     };
     
-    final puzzleId = 'sudoku_${seed64.abs()}_${(difficulty.value * 100).round()}';
+    final puzzleId = 'sudoku_${seed64.abs()}_${difficulty.level}';
     
     final state = StubPuzzleState(
       id: puzzleId,
       data: puzzleData,
     );
+
+    DeterminismGuard.assertNoFloatsOrDateTimes(state.data);
     
     final meta = PuzzleMetadata(
       engineVersion: version,
-      rngId: 'stub_sudoku_rng_v1',
+      rngId: SeededRng.rngId,
       size: size,
       difficulty: difficulty,
       seedStr: seedStr,

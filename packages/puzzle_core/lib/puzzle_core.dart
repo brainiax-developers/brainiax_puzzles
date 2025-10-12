@@ -23,3 +23,11 @@ export 'src/stub/stub_engine.dart';
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
+export 'src/util/seeded_rng.dart';
+export 'src/util/grids.dart';
+export 'src/util/dsu.dart';
+export 'src/util/backtracking.dart';
+export 'src/util/nonogram.dart';
+export 'src/util/kakuro_dictionary.dart';
+export 'src/util/soft_timeout.dart';
+export 'src/util/determinism.dart';
