@@ -1,0 +1,133 @@
+import 'package:flutter/material.dart';
+import 'package:puzzle_core/puzzle_core.dart' as core;
+import '../models/puzzle_type.dart' as app;
+import '../models/puzzle_metadata.dart';
+
+/// Registry for puzzle types with their metadata and UI properties.
+class PuzzleRegistry {
+  static final PuzzleRegistry _instance = PuzzleRegistry._internal();
+  factory PuzzleRegistry() => _instance;
+  PuzzleRegistry._internal();
+
+  final Map<app.PuzzleType, PuzzleMetadata> _metadata = {};
+
+  /// Initialize the puzzle registry with metadata for all available engines.
+  void initialize() {
+    final engineRegistry = core.EngineRegistry();
+    
+    // Clear existing metadata
+    _metadata.clear();
+
+    // Add metadata for each available puzzle type
+    for (final puzzleType in app.PuzzleType.values) {
+      if (engineRegistry.hasEngine(puzzleType.key)) {
+        _metadata[puzzleType] = _createMetadataForType(puzzleType);
+      }
+    }
+  }
+
+  /// Get metadata for a specific puzzle type.
+  PuzzleMetadata? getMetadata(app.PuzzleType type) {
+    return _metadata[type];
+  }
+
+  /// Get all available puzzle types with metadata.
+  List<PuzzleMetadata> getAllPuzzleMetadata() {
+    return _metadata.values.toList();
+  }
+
+  /// Get all available puzzle types.
+  List<app.PuzzleType> getAvailablePuzzleTypes() {
+    return _metadata.keys.toList();
+  }
+
+  /// Check if a puzzle type is available.
+  bool isPuzzleTypeAvailable(app.PuzzleType type) {
+    return _metadata.containsKey(type);
+  }
+
+  /// Get the count of available puzzle types.
+  int get availablePuzzleCount => _metadata.length;
+
+  /// Create metadata for a specific puzzle type.
+  PuzzleMetadata _createMetadataForType(app.PuzzleType type) {
+    switch (type) {
+      case app.PuzzleType.sudokuClassic:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.grid_on,
+          accentColors: const [Color(0xFF2196F3), Color(0xFF1976D2)],
+          supportedSizes: ['9x9', '6x6', '4x4'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.nonogramMono:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.crop_square,
+          accentColors: const [Color(0xFF4CAF50), Color(0xFF388E3C)],
+          supportedSizes: ['5x5', '10x10', '15x15', '20x20'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.kakuroClassic:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.add_box,
+          accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
+          supportedSizes: ['6x6', '8x8', '10x10'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.slitherlinkLoop:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.circle_outlined,
+          accentColors: const [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
+          supportedSizes: ['5x5', '7x7', '10x10'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.mathdokuClassic:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.calculate,
+          accentColors: const [Color(0xFFE91E63), Color(0xFFC2185B)],
+          supportedSizes: ['4x4', '6x6', '8x8'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.futoshikiClassic:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.compare_arrows,
+          accentColors: const [Color(0xFF00BCD4), Color(0xFF0097A7)],
+          supportedSizes: ['5x5', '6x6', '7x7'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+
+      case app.PuzzleType.takuzuBinary:
+        return PuzzleMetadata(
+          type: type,
+          displayName: type.displayName,
+          icon: Icons.code,
+          accentColors: const [Color(0xFF607D8B), Color(0xFF455A64)],
+          supportedSizes: ['6x6', '8x8', '10x10'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportsHints: true,
+        );
+    }
+  }
+}
