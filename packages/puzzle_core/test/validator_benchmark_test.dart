@@ -40,5 +40,31 @@ void main() {
 
     final average = total ~/ iterations;
     expect(average.inMilliseconds, lessThan(10));
+
+    final Duration p95 = _measureValidationP95(
+      engine: engine,
+      puzzle: puzzle.state,
+      solved: solvedState,
+      iterations: 1000,
+    );
+    expect(p95.inMilliseconds, lessThan(20));
   });
+}
+
+Duration _measureValidationP95({
+  required SudokuEngine engine,
+  required SudokuBoard puzzle,
+  required SudokuBoard solved,
+  required int iterations,
+}) {
+  final List<int> micros = List<int>.filled(iterations, 0);
+  for (int i = 0; i < iterations; i++) {
+    final ValidationSummary summary = engine.validator.validateSolution(puzzle, solved);
+    expect(summary.isValid, isTrue, reason: summary.issues.join(','));
+    micros[i] = summary.elapsed.inMicroseconds;
+  }
+
+  final List<int> sorted = List<int>.from(micros)..sort();
+  final int p95Index = ((iterations - 1) * 95) ~/ 100;
+  return Duration(microseconds: sorted[p95Index]);
 }
