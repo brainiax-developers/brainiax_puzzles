@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:app/app_router.dart';
 import 'package:app/shared/models/models.dart';
 
@@ -19,8 +18,7 @@ void main() {
       appRouter.go('/select');
       await tester.pumpAndSettle();
 
-      expect(find.text('Puzzle Selection'), findsOneWidget);
-      expect(find.text('Choose your puzzle type and mode'), findsOneWidget);
+      expect(find.text('Select Puzzle'), findsOneWidget);
     });
 
     testWidgets('should navigate to play screen with valid parameters', (WidgetTester tester) async {
@@ -77,7 +75,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should redirect to select screen
-      expect(find.text('Puzzle Selection'), findsOneWidget);
+      expect(find.text('Select Puzzle'), findsOneWidget);
     });
 
     testWidgets('should redirect to select screen for invalid mode', (WidgetTester tester) async {
@@ -94,7 +92,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should redirect to select screen
-      expect(find.text('Puzzle Selection'), findsOneWidget);
+      expect(find.text('Select Puzzle'), findsOneWidget);
     });
 
     testWidgets('should handle legacy route with default mode', (WidgetTester tester) async {

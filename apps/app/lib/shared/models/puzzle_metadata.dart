@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'puzzle_type.dart';
+import 'puzzle_category.dart';
 
 /// Metadata for a puzzle type including UI properties and capabilities.
 class PuzzleMetadata {
@@ -11,6 +12,7 @@ class PuzzleMetadata {
     required this.supportedSizes,
     required this.supportedDifficulties,
     required this.supportsHints,
+    required this.category,
   });
 
   /// The puzzle type this metadata describes.
@@ -33,6 +35,9 @@ class PuzzleMetadata {
 
   /// Whether this puzzle type supports hints.
   final bool supportsHints;
+
+  /// The category this puzzle belongs to.
+  final PuzzleCategory category;
 
   /// Get the primary accent color.
   Color get primaryAccentColor => accentColors.isNotEmpty ? accentColors.first : Colors.blue;

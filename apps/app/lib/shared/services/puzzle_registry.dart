@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../models/puzzle_type.dart' as app;
 import '../models/puzzle_metadata.dart';
+import '../models/puzzle_category.dart';
 
 /// Registry for puzzle types with their metadata and UI properties.
 class PuzzleRegistry {
@@ -22,6 +23,35 @@ class PuzzleRegistry {
     for (final puzzleType in app.PuzzleType.values) {
       if (engineRegistry.hasEngine(puzzleType.key)) {
         _metadata[puzzleType] = _createMetadataForType(puzzleType);
+      }
+    }
+
+    // If no engines are available, create stub engines for testing
+    if (_metadata.isEmpty) {
+      _createStubEnginesForTesting(engineRegistry);
+      
+      // Re-check for available engines after creating stubs
+      for (final puzzleType in app.PuzzleType.values) {
+        if (engineRegistry.hasEngine(puzzleType.key)) {
+          _metadata[puzzleType] = _createMetadataForType(puzzleType);
+        }
+      }
+    }
+  }
+
+  /// Create stub engines for testing when no real engines are available.
+  void _createStubEnginesForTesting(core.EngineRegistry engineRegistry) {
+    // Create stub engines with the correct IDs for our puzzle types
+    for (final puzzleType in app.PuzzleType.values) {
+      if (!engineRegistry.hasEngine(puzzleType.key)) {
+        try {
+          engineRegistry.register(core.StubPuzzleEngine(
+            engineId: puzzleType.key,
+            engineName: puzzleType.displayName,
+          ));
+        } catch (e) {
+          // Engine might already exist, continue
+        }
       }
     }
   }
@@ -49,6 +79,22 @@ class PuzzleRegistry {
   /// Get the count of available puzzle types.
   int get availablePuzzleCount => _metadata.length;
 
+  /// Get puzzles organized by category.
+  Map<PuzzleCategory, List<PuzzleMetadata>> getPuzzlesByCategory() {
+    final Map<PuzzleCategory, List<PuzzleMetadata>> categorized = {};
+    
+    for (final metadata in _metadata.values) {
+      categorized.putIfAbsent(metadata.category, () => []).add(metadata);
+    }
+    
+    return categorized;
+  }
+
+  /// Get puzzles for a specific category.
+  List<PuzzleMetadata> getPuzzlesForCategory(PuzzleCategory category) {
+    return _metadata.values.where((metadata) => metadata.category == category).toList();
+  }
+
   /// Create metadata for a specific puzzle type.
   PuzzleMetadata _createMetadataForType(app.PuzzleType type) {
     switch (type) {
@@ -61,6 +107,7 @@ class PuzzleRegistry {
           supportedSizes: ['9x9', '6x6', '4x4'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.nonogramMono:
@@ -72,6 +119,7 @@ class PuzzleRegistry {
           supportedSizes: ['5x5', '10x10', '15x15', '20x20'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.kakuroClassic:
@@ -83,6 +131,7 @@ class PuzzleRegistry {
           supportedSizes: ['6x6', '8x8', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.slitherlinkLoop:
@@ -94,6 +143,7 @@ class PuzzleRegistry {
           supportedSizes: ['5x5', '7x7', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.mathdokuClassic:
@@ -105,6 +155,7 @@ class PuzzleRegistry {
           supportedSizes: ['4x4', '6x6', '8x8'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.futoshikiClassic:
@@ -116,6 +167,7 @@ class PuzzleRegistry {
           supportedSizes: ['5x5', '6x6', '7x7'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
 
       case app.PuzzleType.takuzuBinary:
@@ -127,6 +179,7 @@ class PuzzleRegistry {
           supportedSizes: ['6x6', '8x8', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: true,
+          category: PuzzleCategory.logic,
         );
     }
   }

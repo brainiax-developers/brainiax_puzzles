@@ -1,6 +1,5 @@
 import 'package:go_router/go_router.dart';
 import 'features/home/home_screen.dart';
-import 'features/puzzles/puzzles_list_screen.dart';
 import 'features/play/play_screen.dart';
 import 'features/select/select_screen.dart';
 import 'features/daily/daily_screen.dart';
@@ -12,7 +11,7 @@ import 'shared/models/models.dart';
 final appRouter = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
-    GoRoute(path: '/puzzles', builder: (context, state) => const PuzzlesListScreen()),
+    GoRoute(path: '/puzzles', builder: (context, state) => const SelectScreen()),
     GoRoute(path: '/select', builder: (context, state) => const SelectScreen()),
     GoRoute(
       path: '/play/:puzzleType/:mode',
