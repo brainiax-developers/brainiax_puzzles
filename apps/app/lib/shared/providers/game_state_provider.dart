@@ -11,6 +11,7 @@ final gameStateProvider = NotifierProvider<GameStateNotifier, GameState?>(() {
 class GameStateNotifier extends Notifier<GameState?> {
   final List<GameMove> _moveHistory = [];
   int _currentMoveIndex = -1;
+  GeneratedPuzzle? _initialPuzzle;
 
   @override
   GameState? build() => null;
@@ -54,6 +55,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Reset move history
     _moveHistory.clear();
     _currentMoveIndex = -1;
+    _initialPuzzle = puzzle;
 
     state = gameState;
   }
@@ -139,10 +141,10 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     final engine = ref.read(engineProvider(state!.engineId));
     if (engine == null) return;
+    final basePuzzle = _initialPuzzle ?? state!.puzzle;
 
-    // Start with original puzzle
-    var currentPuzzle = state!.puzzle;
-    var isSolved = false;
+    var currentPuzzle = basePuzzle;
+    var isSolved = engine.isSolved(currentPuzzle.state);
 
     // Apply moves up to current index
     for (int i = 0; i <= _currentMoveIndex; i++) {
@@ -192,6 +194,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _moveHistory.clear();
     _moveHistory.addAll(moveHistory);
     _currentMoveIndex = currentMoveIndex;
+    _initialPuzzle = gameState.puzzle;
 
     state = gameState;
   }
