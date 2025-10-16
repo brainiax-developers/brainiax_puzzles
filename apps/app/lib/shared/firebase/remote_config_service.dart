@@ -9,9 +9,9 @@ class RemoteConfigService {
     final rc = FirebaseRemoteConfig.instance;
     await rc.setDefaults({
       'show_banner_ads': false,
-      'rewarded_ads_enabled': false,
+      'rewarded_ads_enabled': true,
       'hint_cost': 1,
-      'interstitial_every_n_completions': 0,
+      'interstitial_every_n_completions': 5,
     });
     await rc.setConfigSettings(RemoteConfigSettings(
       fetchTimeout: const Duration(seconds: 5),

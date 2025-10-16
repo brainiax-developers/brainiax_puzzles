@@ -6,18 +6,55 @@ import 'app_router.dart';
 import 'shared/firebase/firebase_init.dart';
 import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
+import 'shared/services/engine_registry_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1) Initialize Firebase
-  unawaited(initFirebase());
+  try {
+    // Run initialization with overall timeout to prevent long waits
+    await Future.wait([
+      _initializeApp(),
+    ]).timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        if (kDebugMode) {
+          print('⚠️ App initialization timeout - launching with minimal config');
+        }
+        throw TimeoutException('App initialization timeout', const Duration(seconds: 8));
+      },
+    );
+  } catch (e) {
+    if (kDebugMode) {
+      print('⚠️ App initialization failed: $e');
+      print('📱 Launching app with minimal configuration');
+    }
+    // Continue with app launch even if initialization fails
+  }
 
-  // 2) Ensure an anonymous user
-  unawaited(ensureAnonAuth());
-
-  // 3) Launch app
+  // 4) Launch app
   runApp(const ProviderScope(child: BrainiaxApp()));
+}
+
+Future<void> _initializeApp() async {
+  // Run initialization steps in parallel for faster startup
+  final initStartTime = DateTime.now();
+  
+  // 1) Initialize Firebase and engines in parallel
+  final futures = <Future>[
+    initFirebase(),
+    EngineRegistryService().initialize(),
+  ];
+  
+  await Future.wait(futures);
+  
+  // 2) Ensure an anonymous user (depends on Firebase)
+  await ensureAnonAuth();
+
+  final initDuration = DateTime.now().difference(initStartTime);
+  if (kDebugMode) {
+    print('✅ App initialization completed in ${initDuration.inMilliseconds}ms');
+  }
 }
 
 class BrainiaxApp extends StatelessWidget {

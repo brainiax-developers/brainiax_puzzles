@@ -5,6 +5,7 @@ import 'features/play/play_screen.dart';
 import 'features/daily/daily_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/bench/bench_screen.dart';
 
 final appRouter = GoRouter(
   routes: [
@@ -17,5 +18,6 @@ final appRouter = GoRouter(
     GoRoute(path: '/daily', builder: (context, state) => const DailyScreen()),
     GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
     GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
+    GoRoute(path: '/bench', builder: (context, state) => const BenchScreen()),
   ],
 );
