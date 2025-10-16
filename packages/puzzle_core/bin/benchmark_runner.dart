@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:math';
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:puzzle_core/src/util/seeded_rng.dart';
 
 /// Standalone benchmark runner for puzzle engines.
 /// 
@@ -129,7 +129,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
   for (int i = 0; i < count; i++) {
     final seedStr = 'bench:$engineId:$i';
-    final seed64 = seedStr.hashCode;
+    final seed64 = Seed.fromString(seedStr);
 
     final stopwatch = Stopwatch()..start();
     

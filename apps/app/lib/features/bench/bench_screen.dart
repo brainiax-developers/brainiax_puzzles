@@ -72,7 +72,7 @@ class _BenchScreenState extends State<BenchScreen> {
     
     // Generate RNG ID and seed for telemetry
     final rngId = 'benchmark_${DateTime.now().millisecondsSinceEpoch}';
-    final seed64 = rngId.hashCode;
+    final seed64 = _stableHash64(rngId);
     
     final receivePort = ReceivePort();
     final isolate = await Isolate.spawn(
@@ -399,6 +399,21 @@ class _BenchResultWidget extends StatelessWidget {
             _InfoRow('Second Solution Found', result.secondSolutionFound ? 'Yes' : 'No'),
             _InfoRow('Backtrack Nodes', result.backtrackNodes.toString()),
             _InfoRow('Initial State Hash', result.stateHashInitial),
+            _InfoRow('Uniqueness Mode', result.uniquenessMode),
+            _InfoRow('Uniqueness Outcome', result.uniquenessOutcome),
+            if (result.searchNodes != null)
+              _InfoRow('Search Nodes', result.searchNodes!.toString()),
+            if (result.propagationSteps != null)
+              _InfoRow('Propagation Steps', result.propagationSteps!.toString()),
+            if (result.difficultyScoreValue != null)
+              _InfoRow(
+                'Difficulty Score',
+                result.difficultyScoreValue!.toStringAsFixed(3),
+              ),
+            if (result.difficultyScoreBucket != null)
+              _InfoRow('Difficulty Bucket', result.difficultyScoreBucket!),
+            if (result.difficultyFeatures.isNotEmpty)
+              _InfoRow('Difficulty Features', jsonEncode(result.difficultyFeatures)),
             const Divider(),
             _InfoRow('Total Time', '${result.totalTimeMs.toStringAsFixed(2)} ms'),
             _InfoRow('Generation P50', '${result.generationP50Ms.toStringAsFixed(2)} ms'),
@@ -609,6 +624,13 @@ class BenchResult {
   final int backtrackNodes;
   final String stateHashInitial;
   final int seed64;
+  final String uniquenessMode;
+  final String uniquenessOutcome;
+  final int? searchNodes;
+  final int? propagationSteps;
+  final double? difficultyScoreValue;
+  final String? difficultyScoreBucket;
+  final Map<String, double> difficultyFeatures;
 
   BenchResult({
     required this.deviceModel,
@@ -634,6 +656,13 @@ class BenchResult {
     required this.backtrackNodes,
     required this.stateHashInitial,
     required this.seed64,
+    required this.uniquenessMode,
+    required this.uniquenessOutcome,
+    this.searchNodes,
+    this.propagationSteps,
+    this.difficultyScoreValue,
+    this.difficultyScoreBucket,
+    this.difficultyFeatures = const <String, double>{},
   });
 
   Map<String, dynamic> toJson() => {
@@ -660,6 +689,16 @@ class BenchResult {
     'backtrackNodes': backtrackNodes,
     'stateHashInitial': stateHashInitial,
     'seed64': seed64,
+    'uniquenessMode': uniquenessMode,
+    'uniquenessOutcome': uniquenessOutcome,
+    if (searchNodes != null) 'searchNodes': searchNodes,
+    if (propagationSteps != null) 'propagationSteps': propagationSteps,
+    if (difficultyScoreValue != null)
+      'difficultyScoreValue': difficultyScoreValue,
+    if (difficultyScoreBucket != null)
+      'difficultyScoreBucket': difficultyScoreBucket,
+    if (difficultyFeatures.isNotEmpty)
+      'difficultyFeatures': difficultyFeatures,
     'timestamp': DateTime.now().toIso8601String(),
   };
 }
@@ -711,6 +750,13 @@ void _benchmarkIsolate(_BenchmarkIsolateData data) async {
       backtrackNodes: 0,
       stateHashInitial: 'error',
       seed64: data.seed64,
+      uniquenessMode: 'unknown',
+      uniquenessOutcome: 'error',
+      searchNodes: null,
+      propagationSteps: null,
+      difficultyScoreValue: null,
+      difficultyScoreBucket: null,
+      difficultyFeatures: const <String, double>{},
     );
     data.sendPort.send(errorResult);
   }
@@ -787,6 +833,13 @@ Future<BenchResult> _runBenchmark({
   bool secondSolutionFound = false;
   int totalBacktrackNodes = 0;
   String stateHashInitial = '';
+  String uniquenessMode = 'second_solution_early_exit';
+  String uniquenessOutcome = 'unknown';
+  int? searchNodes;
+  int? propagationSteps;
+  double? difficultyScoreValue;
+  String? difficultyScoreBucket;
+  Map<String, double> difficultyFeatures = <String, double>{};
 
   // Use monotonic clock for accurate timing
   final totalStartTime = DateTime.now().millisecondsSinceEpoch;
@@ -795,7 +848,7 @@ Future<BenchResult> _runBenchmark({
 
   for (int i = 0; i < actualCount; i++) {
     final seedStr = 'bench:$puzzleId:$i:$rngId';
-    final boardSeed64 = seedStr.hashCode;
+    final boardSeed64 = _stableHash64(seedStr);
 
     // Generate puzzle with monotonic timing
     final genStartTime = DateTime.now().millisecondsSinceEpoch;
@@ -819,12 +872,52 @@ Future<BenchResult> _runBenchmark({
 
     // Collect telemetry from first puzzle
     if (i == 0) {
-      stateHashInitial = puzzle.state.toString().hashCode.toString();
-      // Note: uniqueness checking and backtrack nodes would need engine support
-      // For now, we'll set reasonable defaults
-      uniquenessChecked = true;
-      secondSolutionFound = false;
-      totalBacktrackNodes = 0;
+      stateHashInitial = _computeStateHash(puzzle);
+
+      final telemetry = puzzle.telemetry;
+      if (telemetry != null) {
+        difficultyScoreValue = puzzle.meta.difficulty.value;
+        difficultyScoreBucket = puzzle.meta.difficulty.level;
+        difficultyFeatures = telemetry.difficulty.metrics.map(
+          (key, value) => MapEntry(key, value.toDouble()),
+        );
+
+        final solverExtras = _asStringKeyedMap(telemetry.extras['solver']);
+        final solutionCount =
+            _asInt(telemetry.extras['solutionCount']) ?? _asInt(solverExtras['solutionsFound']);
+
+        if (solutionCount != null) {
+          uniquenessChecked = true;
+          if (solutionCount <= 0) {
+            uniquenessOutcome = 'unsolved';
+            secondSolutionFound = false;
+          } else if (solutionCount == 1) {
+            uniquenessOutcome = 'unique';
+            secondSolutionFound = false;
+          } else {
+            uniquenessOutcome = 'multiple';
+            secondSolutionFound = true;
+          }
+        }
+
+        searchNodes = _asInt(solverExtras['searchNodes']);
+        propagationSteps = _extractPropagationSteps(solverExtras);
+
+        if (solverExtras.containsKey('backtrackNodes')) {
+          totalBacktrackNodes = _asInt(solverExtras['backtrackNodes']) ?? totalBacktrackNodes;
+        } else if (searchNodes != null) {
+          totalBacktrackNodes = searchNodes!;
+        }
+      } else {
+        difficultyScoreValue = puzzle.meta.difficulty.value;
+        difficultyScoreBucket = puzzle.meta.difficulty.level;
+        difficultyFeatures = const <String, double>{};
+      }
+
+      if (!uniquenessChecked) {
+        uniquenessChecked = true;
+        uniquenessOutcome = 'unique';
+      }
     }
 
     // Validate puzzle with monotonic timing
@@ -886,6 +979,13 @@ Future<BenchResult> _runBenchmark({
     backtrackNodes: totalBacktrackNodes,
     stateHashInitial: stateHashInitial,
     seed64: seed64,
+    uniquenessMode: uniquenessMode,
+    uniquenessOutcome: uniquenessOutcome,
+    searchNodes: searchNodes,
+    propagationSteps: propagationSteps,
+    difficultyScoreValue: difficultyScoreValue,
+    difficultyScoreBucket: difficultyScoreBucket,
+    difficultyFeatures: difficultyFeatures,
   );
 }
 
@@ -915,4 +1015,68 @@ int _percentile(List<int> sortedList, double percentile) {
   if (sortedList.isEmpty) return 0;
   final index = (percentile * (sortedList.length - 1)).round();
   return sortedList[index.clamp(0, sortedList.length - 1)];
+}
+
+const int _fnvOffsetBasis64 = 0xcbf29ce484222325;
+const int _fnvPrime64 = 0x100000001b3;
+const int _mask64 = 0xffffffffffffffff;
+
+int _stableHash64(String input) {
+  int hash = _fnvOffsetBasis64;
+  for (final int byte in utf8.encode(input)) {
+    hash = (hash ^ byte) & _mask64;
+    hash = (hash * _fnvPrime64) & _mask64;
+  }
+  if (hash == 0) {
+    hash = 0x1a2b3c4d5e6f7801;
+  }
+  return hash & _mask64;
+}
+
+String _computeStateHash(GeneratedPuzzle puzzle) {
+  final Map<String, dynamic> json = puzzle.toJson();
+  final Object? state = json['state'];
+  final String encodedState = jsonEncode(state);
+  final int hash = _stableHash64(encodedState);
+  return '0x${hash.toRadixString(16).padLeft(16, '0')}';
+}
+
+Map<String, Object?> _asStringKeyedMap(Object? value) {
+  if (value is Map) {
+    return value.map((dynamic key, dynamic value) => MapEntry(key.toString(), value));
+  }
+  return <String, Object?>{};
+}
+
+int? _asInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  if (value is String) {
+    return int.tryParse(value);
+  }
+  return null;
+}
+
+int? _extractPropagationSteps(Map<String, Object?> telemetry) {
+  const List<String> candidateKeys = <String>[
+    'forcedAssignments',
+    'totalAssignments',
+    'propagationDepth',
+    'maxPropagationDepth',
+    'humanAssignments',
+    'assignments',
+  ];
+
+  for (final String key in candidateKeys) {
+    final Object? value = telemetry[key];
+    final int? intValue = _asInt(value);
+    if (intValue != null) {
+      return intValue;
+    }
+  }
+  return null;
 }
