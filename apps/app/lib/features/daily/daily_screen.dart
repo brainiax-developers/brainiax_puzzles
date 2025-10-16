@@ -1,20 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-int dailySeedFor(String type, DateTime date) {
-  final d = DateTime.utc(date.year, date.month, date.day);
-  return Object.hash(type, d.millisecondsSinceEpoch);
-}
+import '../../shared/models/puzzle_type.dart';
+import 'daily_providers.dart';
+import 'daily_seed_generator.dart';
 
-class DailyScreen extends StatelessWidget {
+class DailyScreen extends ConsumerWidget {
   const DailyScreen({super.key});
+
   @override
-  Widget build(BuildContext context) {
-    final today = DateTime.now();
-    final type = 'sudoku'; // simple placeholder
-    final seed = dailySeedFor(type, today);
+  Widget build(BuildContext context, WidgetRef ref) {
+    const puzzleType = PuzzleType.sudokuClassic;
+    final seedGenerator = ref.watch(dailySeedGeneratorProvider);
+    final DailySeed todaysSeed = seedGenerator.generate(puzzleType.key);
+    final puzzleAsync = ref.watch(dailyPuzzleProvider(puzzleType.key));
+
     return Scaffold(
       appBar: AppBar(title: const Text('Daily Challenge')),
-      body: Center(child: Text('Type=$type • ${today.toIso8601String().substring(0,10)} • seed=$seed')),
+      body: puzzleAsync.when(
+        data: (puzzle) => Center(
+          child: Text(
+            'Type=${puzzleType.key} • ${todaysSeed.formattedDate} • seed64=${puzzle.meta.seed64}',
+          ),
+        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => Center(
+          child: Text('Failed to load puzzle: $error'),
+        ),
+      ),
     );
   }
 }
