@@ -12,10 +12,10 @@ void main() {
       final TakuzuBoard board = TakuzuBoard(
         size: 4,
         cells: <int>[
-          0, 0, 0, TakuzuBoard.empty,
-          1, 1, TakuzuBoard.empty, 0,
+          0, 0, 0, TakuzuBoard.emptyValue,
+          1, 1, TakuzuBoard.emptyValue, 0,
           1, 0, 1, 0,
-          TakuzuBoard.empty, 1, 0, 1,
+          TakuzuBoard.emptyValue, 1, 0, 1,
         ],
         fixed: List<bool>.filled(16, false),
       );

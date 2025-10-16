@@ -8,9 +8,9 @@ class KakuroEntry {
   const KakuroEntry({
     required this.id,
     required this.direction,
-    required List<int> cells,
+    required this.cells,
     required this.sum,
-  }) : cells = List<int>.unmodifiable(cells);
+  });
 
   final int id;
   final KakuroDirection direction;

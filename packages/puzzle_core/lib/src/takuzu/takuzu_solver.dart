@@ -175,13 +175,13 @@ class _TakuzuSearch {
     return _LogicResult(assignments: assignments, contradiction: contradiction);
   }
 
-  bool _isSolved(List<int> state) => !state.contains(TakuzuBoard.empty);
+  bool _isSolved(List<int> state) => !state.contains(TakuzuBoard.emptyValue);
 
   int _selectGuessCell(List<int> state) {
     int bestIndex = -1;
     int bestScore = 3;
     for (int index = 0; index < state.length; index++) {
-      if (state[index] != TakuzuBoard.empty) {
+      if (state[index] != TakuzuBoard.emptyValue) {
         continue;
       }
       final int row = index ~/ size;
@@ -234,7 +234,7 @@ class _TakuzuSearch {
     for (int row = 0; row < size; row++) {
       for (int col = 0; col < size; col++) {
         final int index = row * size + col;
-        if (state[index] == TakuzuBoard.empty) {
+        if (state[index] == TakuzuBoard.emptyValue) {
           continue;
         }
         final int value = state[index];
@@ -258,30 +258,30 @@ class _TakuzuSearch {
         final int a = state[row * size + col];
         final int b = state[row * size + col + 1];
         final int c = state[row * size + col + 2];
-        if (a != TakuzuBoard.empty && a == b && c == TakuzuBoard.empty) {
+        if (a != TakuzuBoard.emptyValue && a == b && c == TakuzuBoard.emptyValue) {
           final int forced = 1 - a;
           final int targetIndex = row * size + col + 2;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
             return const _RuleResult.contradiction();
           }
         }
-        if (c != TakuzuBoard.empty && b == c && a == TakuzuBoard.empty) {
+        if (c != TakuzuBoard.emptyValue && b == c && a == TakuzuBoard.emptyValue) {
           final int forced = 1 - c;
           final int targetIndex = row * size + col;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
             return const _RuleResult.contradiction();
           }
         }
-        if (a != TakuzuBoard.empty && c != TakuzuBoard.empty && b == TakuzuBoard.empty && a == c) {
+        if (a != TakuzuBoard.emptyValue && c != TakuzuBoard.emptyValue && b == TakuzuBoard.emptyValue && a == c) {
           final int forced = 1 - a;
           final int targetIndex = row * size + col + 1;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
@@ -294,7 +294,7 @@ class _TakuzuSearch {
     for (int col = 0; col < size; col++) {
       for (int row = 0; row < size; row++) {
         final int index = row * size + col;
-        if (state[index] == TakuzuBoard.empty) {
+        if (state[index] == TakuzuBoard.emptyValue) {
           continue;
         }
         final int value = state[index];
@@ -318,30 +318,30 @@ class _TakuzuSearch {
         final int a = state[row * size + col];
         final int b = state[(row + 1) * size + col];
         final int c = state[(row + 2) * size + col];
-        if (a != TakuzuBoard.empty && a == b && c == TakuzuBoard.empty) {
+        if (a != TakuzuBoard.emptyValue && a == b && c == TakuzuBoard.emptyValue) {
           final int forced = 1 - a;
           final int targetIndex = (row + 2) * size + col;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
             return const _RuleResult.contradiction();
           }
         }
-        if (c != TakuzuBoard.empty && b == c && a == TakuzuBoard.empty) {
+        if (c != TakuzuBoard.emptyValue && b == c && a == TakuzuBoard.emptyValue) {
           final int forced = 1 - c;
           final int targetIndex = row * size + col;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
             return const _RuleResult.contradiction();
           }
         }
-        if (a != TakuzuBoard.empty && c != TakuzuBoard.empty && b == TakuzuBoard.empty && a == c) {
+        if (a != TakuzuBoard.emptyValue && c != TakuzuBoard.emptyValue && b == TakuzuBoard.emptyValue && a == c) {
           final int forced = 1 - a;
           final int targetIndex = (row + 1) * size + col;
-          if (state[targetIndex] == TakuzuBoard.empty) {
+          if (state[targetIndex] == TakuzuBoard.emptyValue) {
             state[targetIndex] = forced;
             assignments++;
           } else if (state[targetIndex] != forced) {
@@ -376,7 +376,7 @@ class _TakuzuSearch {
       }
       if (zeros == limit && empties.isNotEmpty) {
         for (final int index in empties) {
-          if (state[index] == TakuzuBoard.empty) {
+          if (state[index] == TakuzuBoard.emptyValue) {
             state[index] = 1;
             assignments++;
           } else if (state[index] != 1) {
@@ -385,7 +385,7 @@ class _TakuzuSearch {
         }
       } else if (ones == limit && empties.isNotEmpty) {
         for (final int index in empties) {
-          if (state[index] == TakuzuBoard.empty) {
+          if (state[index] == TakuzuBoard.emptyValue) {
             state[index] = 0;
             assignments++;
           } else if (state[index] != 0) {
@@ -414,7 +414,7 @@ class _TakuzuSearch {
       }
       if (zeros == limit && empties.isNotEmpty) {
         for (final int index in empties) {
-          if (state[index] == TakuzuBoard.empty) {
+          if (state[index] == TakuzuBoard.emptyValue) {
             state[index] = 1;
             assignments++;
           } else if (state[index] != 1) {
@@ -423,7 +423,7 @@ class _TakuzuSearch {
         }
       } else if (ones == limit && empties.isNotEmpty) {
         for (final int index in empties) {
-          if (state[index] == TakuzuBoard.empty) {
+          if (state[index] == TakuzuBoard.emptyValue) {
             state[index] = 0;
             assignments++;
           } else if (state[index] != 0) {
@@ -446,7 +446,7 @@ class _TakuzuSearch {
       bool complete = true;
       for (int col = 0; col < size; col++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           complete = false;
         } else {
@@ -467,7 +467,7 @@ class _TakuzuSearch {
     for (final int row in incompleteRows) {
       final List<int> rowIndices = <int>[];
       for (int col = 0; col < size; col++) {
-        if (state[row * size + col] == TakuzuBoard.empty) {
+        if (state[row * size + col] == TakuzuBoard.emptyValue) {
           rowIndices.add(col);
         }
       }
@@ -480,7 +480,7 @@ class _TakuzuSearch {
         for (int col = 0; col < size; col++) {
           final int value = state[row * size + col];
           final int completedValue = completed.codeUnitAt(col) - 48;
-          if (value != TakuzuBoard.empty && value != completedValue) {
+          if (value != TakuzuBoard.emptyValue && value != completedValue) {
             matches = false;
             break;
           }
@@ -490,7 +490,7 @@ class _TakuzuSearch {
             final int completedValue = completed.codeUnitAt(col) - 48;
             final int forced = 1 - completedValue;
             final int index = row * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {
@@ -509,7 +509,7 @@ class _TakuzuSearch {
       bool complete = true;
       for (int row = 0; row < size; row++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           complete = false;
         } else {
@@ -530,7 +530,7 @@ class _TakuzuSearch {
     for (final int col in incompleteCols) {
       final List<int> colIndices = <int>[];
       for (int row = 0; row < size; row++) {
-        if (state[row * size + col] == TakuzuBoard.empty) {
+        if (state[row * size + col] == TakuzuBoard.emptyValue) {
           colIndices.add(row);
         }
       }
@@ -543,7 +543,7 @@ class _TakuzuSearch {
         for (int row = 0; row < size; row++) {
           final int value = state[row * size + col];
           final int completedValue = completed.codeUnitAt(row) - 48;
-          if (value != TakuzuBoard.empty && value != completedValue) {
+          if (value != TakuzuBoard.emptyValue && value != completedValue) {
             matches = false;
             break;
           }
@@ -553,7 +553,7 @@ class _TakuzuSearch {
             final int completedValue = completed.codeUnitAt(rowIndex) - 48;
             final int forced = 1 - completedValue;
             final int index = rowIndex * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {
@@ -577,7 +577,7 @@ class _TakuzuSearch {
       bool complete = true;
       for (int col = 0; col < size; col++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           inverse.write('?');
           complete = false;
@@ -597,7 +597,7 @@ class _TakuzuSearch {
       bool hasValue = false;
       for (int col = 0; col < size; col++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           empties.add(col);
         } else {
@@ -617,7 +617,7 @@ class _TakuzuSearch {
           final int value = state[row * size + col];
           final int patternValue = pattern.codeUnitAt(col) - 48;
           final int inverseValue = inverse.codeUnitAt(col) - 48;
-          if (value != TakuzuBoard.empty) {
+          if (value != TakuzuBoard.emptyValue) {
             if (value != patternValue) {
               matchesPattern = false;
             }
@@ -630,7 +630,7 @@ class _TakuzuSearch {
           for (final int col in empties) {
             final int forced = 1 - (pattern.codeUnitAt(col) - 48);
             final int index = row * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {
@@ -641,7 +641,7 @@ class _TakuzuSearch {
           for (final int col in empties) {
             final int forced = 1 - (inverse.codeUnitAt(col) - 48);
             final int index = row * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {
@@ -660,7 +660,7 @@ class _TakuzuSearch {
       bool complete = true;
       for (int row = 0; row < size; row++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           inverse.write('?');
           complete = false;
@@ -680,7 +680,7 @@ class _TakuzuSearch {
       bool hasValue = false;
       for (int row = 0; row < size; row++) {
         final int value = state[row * size + col];
-        if (value == TakuzuBoard.empty) {
+        if (value == TakuzuBoard.emptyValue) {
           buffer.write('?');
           empties.add(row);
         } else {
@@ -700,7 +700,7 @@ class _TakuzuSearch {
           final int value = state[row * size + col];
           final int patternValue = pattern.codeUnitAt(row) - 48;
           final int inverseValue = inverse.codeUnitAt(row) - 48;
-          if (value != TakuzuBoard.empty) {
+          if (value != TakuzuBoard.emptyValue) {
             if (value != patternValue) {
               matchesPattern = false;
             }
@@ -713,7 +713,7 @@ class _TakuzuSearch {
           for (final int rowIndex in empties) {
             final int forced = 1 - (pattern.codeUnitAt(rowIndex) - 48);
             final int index = rowIndex * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {
@@ -724,7 +724,7 @@ class _TakuzuSearch {
           for (final int rowIndex in empties) {
             final int forced = 1 - (inverse.codeUnitAt(rowIndex) - 48);
             final int index = rowIndex * size + col;
-            if (state[index] == TakuzuBoard.empty) {
+            if (state[index] == TakuzuBoard.emptyValue) {
               state[index] = forced;
               assignments++;
             } else if (state[index] != forced) {

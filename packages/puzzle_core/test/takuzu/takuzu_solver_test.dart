@@ -13,13 +13,13 @@ void main() {
 
     test('solves a logic-driven puzzle without ambiguity', () {
       final List<int> cells = <int>[
-        0, TakuzuBoard.empty, 1, TakuzuBoard.empty,
-        1, TakuzuBoard.empty, 0, TakuzuBoard.empty,
-        1, 0, TakuzuBoard.empty, TakuzuBoard.empty,
-        TakuzuBoard.empty, 1, TakuzuBoard.empty, 0,
+        0, TakuzuBoard.emptyValue, 1, TakuzuBoard.emptyValue,
+        1, TakuzuBoard.emptyValue, 0, TakuzuBoard.emptyValue,
+        1, 0, TakuzuBoard.emptyValue, TakuzuBoard.emptyValue,
+        TakuzuBoard.emptyValue, 1, TakuzuBoard.emptyValue, 0,
       ];
       final List<bool> fixed =
-          cells.map((int value) => value != TakuzuBoard.empty).toList(growable: false);
+          cells.map((int value) => value != TakuzuBoard.emptyValue).toList(growable: false);
 
       final TakuzuBoard board = TakuzuBoard(size: 4, cells: cells, fixed: fixed);
 

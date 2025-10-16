@@ -57,7 +57,7 @@ void main() {
       expect(result.hasSolution, isTrue);
       final TakuzuBoard solution = result.solutions.single;
 
-      int editableIndex = board.cells.indexWhere((int value) => value == TakuzuBoard.empty);
+      int editableIndex = board.cells.indexWhere((int value) => value == TakuzuBoard.emptyValue);
       expect(editableIndex, isNot(-1), reason: 'Expected at least one editable cell');
       final int row = editableIndex ~/ board.size;
       final int col = editableIndex % board.size;

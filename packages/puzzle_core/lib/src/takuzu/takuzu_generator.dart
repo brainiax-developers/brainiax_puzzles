@@ -61,10 +61,10 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
     int removed = 0;
     for (final int index in removalOrder) {
       final int previous = puzzleCells[index];
-      if (previous == TakuzuBoard.empty) {
+      if (previous == TakuzuBoard.emptyValue) {
         continue;
       }
-      puzzleCells[index] = TakuzuBoard.empty;
+      puzzleCells[index] = TakuzuBoard.emptyValue;
       fixed[index] = false;
       if (!isUnique()) {
         puzzleCells[index] = previous;
@@ -80,7 +80,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
 
     final Map<String, Object?> telemetry = <String, Object?>{
       'size': width,
-      'givens': puzzle.cells.where((int value) => value != TakuzuBoard.empty).length,
+      'givens': puzzle.cells.where((int value) => value != TakuzuBoard.emptyValue).length,
       'removed': removed,
       'generationUs': stopwatch.elapsedMicroseconds,
     };
@@ -97,7 +97,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
     final List<List<int>> patterns = _generateValidRows(size);
     final List<List<int>> rows = List<List<int>>.generate(
       size,
-      (_) => List<int>.filled(size, TakuzuBoard.empty),
+      (_) => List<int>.filled(size, TakuzuBoard.emptyValue),
       growable: false,
     );
     final List<List<int>> columnAssignments =
@@ -261,7 +261,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
   ) {
     for (int col = 0; col < pattern.length; col++) {
       final int value = pattern[col];
-      rows[rowIndex][col] = TakuzuBoard.empty;
+      rows[rowIndex][col] = TakuzuBoard.emptyValue;
       columnAssignments[col].removeLast();
       if (value == 0) {
         columnZeros[col]--;

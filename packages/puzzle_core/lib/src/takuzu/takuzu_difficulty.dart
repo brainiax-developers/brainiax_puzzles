@@ -11,7 +11,7 @@ class TakuzuDifficultyScorer extends DifficultyScorer<TakuzuBoard> {
     required DifficultyContext context,
   }) {
     final int totalCells = puzzle.cellCount;
-    final int givens = puzzle.cells.where((int value) => value != TakuzuBoard.empty).length;
+    final int givens = puzzle.cells.where((int value) => value != TakuzuBoard.emptyValue).length;
     final double givenDensity = totalCells == 0 ? 1.0 : givens / totalCells;
 
     final Map<String, Object?> telemetry = context.solverTelemetry;

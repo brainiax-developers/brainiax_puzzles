@@ -89,6 +89,9 @@ abstract class SeededRng {
   /// Pick a value using integer weights.
   T pickWeighted<T>(List<T> items, List<int> weights);
 
+  /// Generate a random boolean value.
+  bool nextBool();
+
   /// Check if the RNG state is valid (non-zero).
   bool get isValidState;
 }
@@ -195,6 +198,11 @@ class _Xoroshiro128ss implements SeededRng {
       }
     }
     return items.last;
+  }
+
+  @override
+  bool nextBool() {
+    return (nextInt64() & 1) == 1;
   }
 
   @override

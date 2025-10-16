@@ -1,5 +1,5 @@
 class TakuzuBoard {
-  static const int empty = -1;
+  static const int emptyValue = -1;
 
   TakuzuBoard({
     required this.size,
@@ -19,10 +19,10 @@ class TakuzuBoard {
     }
     for (int i = 0; i < expected; i++) {
       final int value = this.cells[i];
-      if (value != empty && value != 0 && value != 1) {
+      if (value != emptyValue && value != 0 && value != 1) {
         throw ArgumentError('Takuzu cell values must be -1, 0 or 1');
       }
-      if (this.fixed[i] && value == empty) {
+      if (this.fixed[i] && value == emptyValue) {
         throw ArgumentError('Fixed cells must contain a value');
       }
     }
@@ -32,7 +32,7 @@ class TakuzuBoard {
     final int cellCount = size * size;
     return TakuzuBoard(
       size: size,
-      cells: List<int>.filled(cellCount, empty),
+      cells: List<int>.filled(cellCount, emptyValue),
       fixed: List<bool>.filled(cellCount, false),
     );
   }
@@ -57,7 +57,7 @@ class TakuzuBoard {
 
   bool isFixed(int row, int col) => fixed[cellIndex(row, col)];
 
-  bool get isComplete => !cells.contains(empty);
+  bool get isComplete => !cells.contains(emptyValue);
 
   TakuzuBoard setCell(int row, int col, int value, {bool? markFixed}) {
     final int index = cellIndex(row, col);

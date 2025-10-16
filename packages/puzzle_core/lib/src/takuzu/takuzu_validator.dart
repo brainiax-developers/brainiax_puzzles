@@ -177,7 +177,7 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
       if (col >= 2) {
         final int a = values[col - 2];
         final int b = values[col - 1];
-        if (a != TakuzuBoard.empty && a == b && b == value) {
+        if (a != TakuzuBoard.emptyValue && a == b && b == value) {
           triple = true;
         }
       }
@@ -201,7 +201,7 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
       if (row >= 2) {
         final int a = values[row - 2];
         final int b = values[row - 1];
-        if (a != TakuzuBoard.empty && a == b && b == value) {
+        if (a != TakuzuBoard.emptyValue && a == b && b == value) {
           triple = true;
         }
       }
@@ -213,7 +213,7 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
     final StringBuffer buffer = StringBuffer();
     for (int col = 0; col < board.size; col++) {
       final int value = board.cellAt(row, col);
-      if (value == TakuzuBoard.empty) {
+      if (value == TakuzuBoard.emptyValue) {
         buffer.write('?');
       } else {
         buffer.write(value);
@@ -226,7 +226,7 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
     final StringBuffer buffer = StringBuffer();
     for (int row = 0; row < board.size; row++) {
       final int value = board.cellAt(row, col);
-      if (value == TakuzuBoard.empty) {
+      if (value == TakuzuBoard.emptyValue) {
         buffer.write('?');
       } else {
         buffer.write(value);

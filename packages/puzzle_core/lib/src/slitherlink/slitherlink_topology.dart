@@ -29,7 +29,7 @@ class SlitherlinkTopology {
       <String, SlitherlinkTopology>{};
 
   factory SlitherlinkTopology.forSize(int width, int height) {
-    final String key = '$widthx$height';
+    final String key = '${width}x$height';
     return _cache.putIfAbsent(key, () => _build(width, height));
   }
 

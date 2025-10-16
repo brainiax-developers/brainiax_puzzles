@@ -227,8 +227,23 @@ class _StubDifficultyScorer extends DifficultyScorer<StubPuzzleState> {
   }
 }
 
-DifficultyBucketConfig _loadDifficultyConfig() {
-  return const DifficultyConfigLoader().loadSync('assets/difficulty_thresholds.json');
+DifficultyBucketConfig _createDefaultDifficultyConfig() {
+  return const DifficultyBucketConfig(
+    buckets: [
+      DifficultyBucketThreshold(
+        id: 'easy',
+        maxInclusive: 0.4,
+      ),
+      DifficultyBucketThreshold(
+        id: 'medium',
+        maxInclusive: 0.7,
+      ),
+      DifficultyBucketThreshold(
+        id: 'hard',
+        maxInclusive: 1.0,
+      ),
+    ],
+  );
 }
 
 class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleMove> {
@@ -245,7 +260,7 @@ class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleM
           solver: const _StubSolver(),
           validator: const _StubValidator(),
           difficultyScorer: const _StubDifficultyScorer(),
-          difficultyConfig: config ?? _loadDifficultyConfig(),
+          difficultyConfig: config ?? _createDefaultDifficultyConfig(),
         );
 
   @override

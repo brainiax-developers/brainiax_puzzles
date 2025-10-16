@@ -39,7 +39,7 @@ class TakuzuEngine extends PipelinePuzzleEngine<TakuzuBoard, TakuzuMove> {
     if (move.col < 0 || move.col >= currentState.size) {
       return MoveResult.failure('col_out_of_range');
     }
-    if (move.value != TakuzuBoard.empty && move.value != 0 && move.value != 1) {
+    if (move.value != TakuzuBoard.emptyValue && move.value != 0 && move.value != 1) {
       return MoveResult.failure('value_out_of_range');
     }
 
