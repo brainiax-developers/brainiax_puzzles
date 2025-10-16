@@ -1,18 +1,46 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../services/difficulty_preference_service.dart';
+import 'daily_surface.dart';
 
 /// A card widget displaying puzzle information with difficulty chips and CTA buttons.
-class PuzzleCard extends StatelessWidget {
+class PuzzleCard extends StatefulWidget {
   const PuzzleCard({
     super.key,
     required this.metadata,
     this.onDailyChallenge,
     this.onRandomPuzzle,
+    this.onDifficultySelected,
   });
 
   final PuzzleMetadata metadata;
   final VoidCallback? onDailyChallenge;
   final VoidCallback? onRandomPuzzle;
+  final Function(String difficulty)? onDifficultySelected;
+
+  @override
+  State<PuzzleCard> createState() => _PuzzleCardState();
+}
+
+class _PuzzleCardState extends State<PuzzleCard> {
+  String? _selectedDifficulty;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferredDifficulty();
+  }
+
+  Future<void> _loadPreferredDifficulty() async {
+    final preferred = await DifficultyPreferenceService.getPreferredDifficulty(widget.metadata.type);
+    if (mounted) {
+      setState(() {
+        _selectedDifficulty = preferred;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,8 +59,8 @@ class PuzzleCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              metadata.primaryAccentColor.withOpacity(0.1),
-              metadata.secondaryAccentColor.withOpacity(0.05),
+              widget.metadata.primaryAccentColor.withOpacity(0.1),
+              widget.metadata.secondaryAccentColor.withOpacity(0.05),
             ],
           ),
         ),
@@ -47,12 +75,12 @@ class PuzzleCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: metadata.primaryAccentColor.withOpacity(0.2),
+                      color: widget.metadata.primaryAccentColor.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      metadata.icon,
-                      color: metadata.primaryAccentColor,
+                      widget.metadata.icon,
+                      color: widget.metadata.primaryAccentColor,
                       size: 24,
                     ),
                   ),
@@ -62,14 +90,14 @@ class PuzzleCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          metadata.displayName,
+                          widget.metadata.displayName,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: colorScheme.onSurface,
                           ),
                         ),
                         Text(
-                          metadata.category.displayName,
+                          widget.metadata.category.displayName,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurface.withOpacity(0.7),
                           ),
@@ -82,43 +110,66 @@ class PuzzleCard extends StatelessWidget {
               
               const SizedBox(height: 12),
               
-              // Difficulty chips
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: metadata.supportedDifficulties.map((difficulty) {
-                  return _DifficultyChip(
-                    difficulty: difficulty,
-                    color: metadata.primaryAccentColor,
-                  );
-                }).toList(),
-              ),
+              // Difficulty radio buttons
+              if (_isLoading)
+                const SizedBox(height: 32) // Placeholder while loading
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Difficulty:',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      children: widget.metadata.supportedDifficulties.map((difficulty) {
+                        // Use chip style for Kakuro, radio buttons for others
+                        if (widget.metadata.type.key == 'kakuro_classic') {
+                          return _DifficultyChip(
+                            difficulty: difficulty,
+                            color: widget.metadata.primaryAccentColor,
+                            isSelected: _selectedDifficulty == difficulty,
+                            onTap: () => _onDifficultySelected(difficulty),
+                          );
+                        } else {
+                          return _DifficultyRadioButton(
+                            difficulty: difficulty,
+                            color: widget.metadata.primaryAccentColor,
+                            isSelected: _selectedDifficulty == difficulty,
+                            onChanged: (value) => _onDifficultySelected(difficulty),
+                          );
+                        }
+                      }).toList(),
+                    ),
+                  ],
+                ),
               
               const SizedBox(height: 16),
               
-              // Action buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Daily Challenge',
-                      icon: Icons.calendar_today,
-                      isPrimary: true,
-                      color: metadata.primaryAccentColor,
-                      onPressed: onDailyChallenge,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Random',
-                      icon: Icons.shuffle,
-                      isPrimary: false,
-                      color: metadata.primaryAccentColor,
-                      onPressed: onRandomPuzzle,
-                    ),
-                  ),
-                ],
+              // Daily Challenge Surface
+              DailySurface(
+                puzzleType: widget.metadata.type,
+                compact: true,
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Random Puzzle Button
+              SizedBox(
+                width: double.infinity,
+                child: _ActionButton(
+                  label: 'Random Puzzle',
+                  icon: Icons.shuffle,
+                  isPrimary: false,
+                  color: widget.metadata.primaryAccentColor,
+                  onPressed: widget.onRandomPuzzle,
+                ),
               ),
             ],
           ),
@@ -126,39 +177,102 @@ class PuzzleCard extends StatelessWidget {
       ),
     );
   }
+
+  void _onDifficultySelected(String difficulty) {
+    setState(() {
+      _selectedDifficulty = difficulty;
+    });
+    
+    // Save the preference
+    DifficultyPreferenceService.setPreferredDifficulty(widget.metadata.type, difficulty);
+    
+    if (widget.onDifficultySelected != null) {
+      widget.onDifficultySelected!(difficulty);
+    }
+  }
 }
 
-/// A chip displaying difficulty level.
+/// A chip for difficulty selection (radio button functionality with chip visuals).
 class _DifficultyChip extends StatelessWidget {
   const _DifficultyChip({
     required this.difficulty,
     required this.color,
+    required this.isSelected,
+    required this.onTap,
   });
 
   final String difficulty;
   final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 1,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? color 
+              : color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected 
+                ? color 
+                : color.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Text(
+          difficulty,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: isSelected ? Colors.white : color,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
         ),
       ),
-      child: Text(
-        difficulty,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w500,
+    );
+  }
+}
+
+/// A radio button for difficulty selection.
+class _DifficultyRadioButton extends StatelessWidget {
+  const _DifficultyRadioButton({
+    required this.difficulty,
+    required this.color,
+    required this.isSelected,
+    required this.onChanged,
+  });
+
+  final String difficulty;
+  final Color color;
+  final bool isSelected;
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Radio<String>(
+          value: difficulty,
+          groupValue: isSelected ? difficulty : null,
+          onChanged: (value) => onChanged(value != null),
+          activeColor: color,
         ),
-      ),
+        Text(
+          difficulty,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

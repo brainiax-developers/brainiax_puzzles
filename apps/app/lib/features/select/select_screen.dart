@@ -45,6 +45,11 @@ class _SelectScreenState extends State<SelectScreen> {
     context.push('/play/${puzzleType.key}/${mode.key}');
   }
 
+  void _onDifficultySelected(PuzzleType puzzleType, String difficulty) {
+    // Store the difficulty selection for this puzzle type
+    // This will be used for persistence and default selection
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -183,6 +188,10 @@ class _SelectScreenState extends State<SelectScreen> {
                 onRandomPuzzle: () => _navigateToPuzzle(
                   metadata.type,
                   PuzzleMode.random,
+                ),
+                onDifficultySelected: (difficulty) => _onDifficultySelected(
+                  metadata.type,
+                  difficulty,
                 ),
               ),
             )),

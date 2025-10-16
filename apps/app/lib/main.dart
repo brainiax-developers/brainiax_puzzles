@@ -7,6 +7,7 @@ import 'shared/firebase/firebase_init.dart';
 import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
+import 'shared/providers/simple_theme_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,18 +58,42 @@ Future<void> _initializeApp() async {
   }
 }
 
-class BrainiaxApp extends StatelessWidget {
+class BrainiaxApp extends ConsumerWidget {
   const BrainiaxApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentTheme = ref.watch(currentThemeProvider);
+    final themeStateAsync = ref.watch(themeStateProvider);
+    
     return MaterialApp.router(
       title: 'Brainiax Puzzles',
       debugShowCheckedModeBanner: false,
 
-      // add these two lines if you want to use your custom theme
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      // Use dynamic theme from provider
+      theme: themeStateAsync.when(
+        data: (state) => state.effectiveMode == AppThemeMode.light 
+            ? currentTheme 
+            : AppTheme.light(),
+        loading: () => AppTheme.light(),
+        error: (_, __) => AppTheme.light(),
+      ),
+      darkTheme: themeStateAsync.when(
+        data: (state) => state.effectiveMode == AppThemeMode.dark 
+            ? currentTheme 
+            : AppTheme.dark(),
+        loading: () => AppTheme.dark(),
+        error: (_, __) => AppTheme.dark(),
+      ),
+      themeMode: themeStateAsync.when(
+        data: (state) => state.mode == AppThemeMode.system 
+            ? ThemeMode.system 
+            : (state.effectiveMode == AppThemeMode.dark 
+                ? ThemeMode.dark 
+                : ThemeMode.light),
+        loading: () => ThemeMode.system,
+        error: (_, __) => ThemeMode.system,
+      ),
         
       routeInformationProvider: appRouter.routeInformationProvider,
       routeInformationParser: appRouter.routeInformationParser,
