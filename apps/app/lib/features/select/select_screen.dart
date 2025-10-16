@@ -42,7 +42,7 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _navigateToPuzzle(PuzzleType puzzleType, PuzzleMode mode) {
-    context.go('/play/${puzzleType.key}/${mode.key}');
+    context.push('/play/${puzzleType.key}/${mode.key}');
   }
 
   @override
