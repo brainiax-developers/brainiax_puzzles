@@ -67,7 +67,7 @@ class SudokuValidator extends PuzzleValidator<SudokuBoard> {
 
   bool _unitsAreValid(List<int> cells, {required bool allowEmpty}) {
     for (final List<int> unit in SudokuBoard.allUnits) {
-      final Set<int> seen = <int>{};
+      int seenMask = 0;
       for (final int index in unit) {
         final int value = cells[index];
         if (value == 0) {
@@ -80,9 +80,11 @@ class SudokuValidator extends PuzzleValidator<SudokuBoard> {
         if (value < 1 || value > 9) {
           return false;
         }
-        if (!seen.add(value)) {
+        final int bit = 1 << (value - 1);
+        if ((seenMask & bit) != 0) {
           return false;
         }
+        seenMask |= bit;
       }
     }
     return true;
