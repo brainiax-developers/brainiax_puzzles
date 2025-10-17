@@ -9,14 +9,14 @@ class PuzzleCard extends StatefulWidget {
     super.key,
     required this.metadata,
     this.onDailyChallenge,
-    this.onRandomPuzzle,
     this.onDifficultySelected,
+    this.onRandomPlay,
   });
 
   final PuzzleMetadata metadata;
   final VoidCallback? onDailyChallenge;
-  final VoidCallback? onRandomPuzzle;
   final Function(String difficulty)? onDifficultySelected;
+  final Function(PuzzleType puzzleType, String difficulty)? onRandomPlay;
 
   @override
   State<PuzzleCard> createState() => _PuzzleCardState();
@@ -160,17 +160,26 @@ class _PuzzleCardState extends State<PuzzleCard> {
               
               const SizedBox(height: 12),
               
-              // Random Puzzle Button
-              SizedBox(
-                width: double.infinity,
-                child: _ActionButton(
-                  label: 'Random Puzzle',
-                  icon: Icons.shuffle,
-                  isPrimary: false,
-                  color: widget.metadata.primaryAccentColor,
-                  onPressed: widget.onRandomPuzzle,
+              // Random Play Button (only show if difficulty is selected)
+              if (_selectedDifficulty != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: _ActionButton(
+                    label: 'Random Play',
+                    icon: Icons.play_arrow,
+                    isPrimary: true,
+                    color: widget.metadata.primaryAccentColor,
+                    onPressed: () {
+                      if (widget.onRandomPlay != null) {
+                        widget.onRandomPlay!(widget.metadata.type, _selectedDifficulty!);
+                      }
+                    },
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+              ],
+              
+              // Removed legacy Random Puzzle button; Random Play supersedes it
             ],
           ),
         ),

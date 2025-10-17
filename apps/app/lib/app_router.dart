@@ -27,9 +27,13 @@ final appRouter = GoRouter(
           return const SelectScreen();
         }
         
+        // Get puzzle instance from extra data if available
+        final puzzleInstance = state.extra;
+        
         return PlayScreen(
           puzzleType: puzzleType,
           mode: mode,
+          puzzleInstance: puzzleInstance,
         );
       },
     ),
@@ -39,6 +43,7 @@ final appRouter = GoRouter(
       builder: (context, state) => PlayScreen(
         puzzleType: PuzzleType.fromKey(state.pathParameters['type']!) ?? PuzzleType.sudokuClassic,
         mode: PuzzleMode.random,
+        puzzleInstance: state.extra,
       ),
     ),
     GoRoute(path: '/daily', builder: (context, state) => const DailyScreen()),

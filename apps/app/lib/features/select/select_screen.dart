@@ -50,6 +50,29 @@ class _SelectScreenState extends State<SelectScreen> {
     // This will be used for persistence and default selection
   }
 
+  void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
+      builder: (context) => PuzzleGenerationModal(
+        puzzleType: puzzleType,
+        difficulty: difficulty,
+        onPuzzleGenerated: (puzzleInstance) {
+          // Close the modal
+          Navigator.of(context).pop();
+          
+          // Navigate to play screen with the generated puzzle
+          // TODO: Pass the puzzle instance to the play screen
+          context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
+        },
+        onCancel: () {
+          // Close the modal
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -179,21 +202,18 @@ class _SelectScreenState extends State<SelectScreen> {
             const SizedBox(height: 8),
             ...puzzles.map((metadata) => Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: PuzzleCard(
-                metadata: metadata,
-                onDailyChallenge: () => _navigateToPuzzle(
-                  metadata.type,
-                  PuzzleMode.daily,
-                ),
-                onRandomPuzzle: () => _navigateToPuzzle(
-                  metadata.type,
-                  PuzzleMode.random,
-                ),
-                onDifficultySelected: (difficulty) => _onDifficultySelected(
-                  metadata.type,
-                  difficulty,
-                ),
-              ),
+                  child: PuzzleCard(
+                    metadata: metadata,
+                    onDailyChallenge: () => _navigateToPuzzle(
+                      metadata.type,
+                      PuzzleMode.daily,
+                    ),
+                    onDifficultySelected: (difficulty) => _onDifficultySelected(
+                      metadata.type,
+                      difficulty,
+                    ),
+                    onRandomPlay: _onRandomPlay,
+                  ),
             )),
             if (index < _puzzlesByCategory.length - 1) const SizedBox(height: 24),
           ],

@@ -36,7 +36,6 @@ void main() {
       expect(find.text('Hard'), findsOneWidget);
       expect(find.text('Expert'), findsOneWidget);
       expect(find.text('Daily Challenge'), findsOneWidget);
-      expect(find.text('Random'), findsOneWidget);
     });
 
     testWidgets('should call onDailyChallenge when daily challenge button is tapped', (WidgetTester tester) async {
@@ -59,25 +58,7 @@ void main() {
       expect(dailyChallengeCalled, isTrue);
     });
 
-    testWidgets('should call onRandomPuzzle when random button is tapped', (WidgetTester tester) async {
-      bool randomPuzzleCalled = false;
-      
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: PuzzleCard(
-              metadata: metadata,
-              onRandomPuzzle: () => randomPuzzleCalled = true,
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(find.text('Random'));
-      await tester.pump();
-
-      expect(randomPuzzleCalled, isTrue);
-    });
+    // Random button removed in favor of Random Play flow
 
     testWidgets('should display correct icon', (WidgetTester tester) async {
       await tester.pumpWidget(

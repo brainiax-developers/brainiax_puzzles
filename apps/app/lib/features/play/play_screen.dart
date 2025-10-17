@@ -1,66 +1,660 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../../shared/models/models.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
-class PlayScreen extends StatelessWidget {
+class PlayScreen extends ConsumerStatefulWidget {
   const PlayScreen({
     super.key,
     required this.puzzleType,
     required this.mode,
+    this.puzzleInstance,
+    this.difficulty,
   });
 
   final PuzzleType puzzleType;
   final PuzzleMode mode;
+  final dynamic puzzleInstance;
+  final String? difficulty;
+
+  @override
+  ConsumerState<PlayScreen> createState() => _PlayScreenState();
+}
+
+class _PlayScreenState extends ConsumerState<PlayScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _timerController;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+  
+  Duration _elapsedTime = Duration.zero;
+  bool _isPlaying = true;
+  bool _isPaused = false;
+  String _solveStatus = 'In Progress';
+  int _hintsUsed = 0;
+  int _movesCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAnimations();
+    _startTimer();
+  }
+
+  void _initializeAnimations() {
+    _timerController = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    );
+    
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.1,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _timerController.addListener(_updateTimer);
+  }
+
+  void _startTimer() {
+    if (_isPlaying && !_isPaused) {
+      _timerController.repeat();
+    }
+  }
+
+  void _updateTimer() {
+    if (mounted) {
+      setState(() {
+        _elapsedTime = Duration(
+          seconds: _timerController.value.round(),
+        );
+      });
+    }
+  }
+
+  void _togglePause() {
+    setState(() {
+      _isPaused = !_isPaused;
+    });
+    
+    if (_isPaused) {
+      _timerController.stop();
+    } else {
+      _startTimer();
+    }
+    
+    _triggerHapticFeedback(HapticFeedbackType.light);
+  }
+
+  void _triggerHapticFeedback(HapticFeedbackType type) {
+    if (Platform.isAndroid || Platform.isIOS) {
+      switch (type) {
+        case HapticFeedbackType.light:
+          HapticFeedback.lightImpact();
+          break;
+        case HapticFeedbackType.medium:
+          HapticFeedback.mediumImpact();
+          break;
+        case HapticFeedbackType.heavy:
+          HapticFeedback.heavyImpact();
+          break;
+        case HapticFeedbackType.selection:
+          HapticFeedback.selectionClick();
+          break;
+      }
+    }
+  }
+
+  void _useHint() {
+    setState(() {
+      _hintsUsed++;
+    });
+    _triggerHapticFeedback(HapticFeedbackType.medium);
+    // TODO: Implement actual hint logic
+  }
+
+  void _undoMove() {
+    setState(() {
+      _movesCount = (_movesCount - 1).clamp(0, double.infinity).toInt();
+    });
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // TODO: Implement actual undo logic
+  }
+
+  void _restartPuzzle() {
+    setState(() {
+      _elapsedTime = Duration.zero;
+      _hintsUsed = 0;
+      _movesCount = 0;
+      _solveStatus = 'In Progress';
+      _isPaused = false;
+    });
+    _timerController.reset();
+    _startTimer();
+    _triggerHapticFeedback(HapticFeedbackType.medium);
+    // TODO: Implement actual restart logic
+  }
+
+  void _generateNewPuzzle() {
+    _triggerHapticFeedback(HapticFeedbackType.heavy);
+    // TODO: Navigate to puzzle generation or generate new puzzle
+  }
+
+  void _goBack() {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    Navigator.of(context).pop();
+  }
+
+  String _formatTime(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _timerController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${puzzleType.displayName} - ${mode.displayName}'),
-      ),
-      body: Center(
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.play_circle,
-              size: 64,
-              color: Colors.green,
+            // Header
+            _buildHeader(theme, colorScheme),
+            
+            // Canvas Area
+            Expanded(
+              child: _buildCanvasArea(theme, colorScheme),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Playing ${puzzleType.displayName}',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Mode: ${mode.displayName}',
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Puzzle Type: ${puzzleType.key}',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-            Text(
-              'Mode: ${mode.key}',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
+            
+            // Footer
+            _buildFooter(theme, colorScheme),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildHeader(ThemeData theme, ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outline.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Top row: Timer and puzzle info
+          Row(
+            children: [
+              // Timer
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.timer_outlined,
+                      size: 18,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatTime(_elapsedTime),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: [const FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const Spacer(),
+              
+              // Puzzle name and difficulty
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    widget.puzzleType.displayName,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (widget.difficulty != null)
+                    Text(
+                      widget.difficulty!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Action buttons row
+          Row(
+            children: [
+              // Hint button
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.lightbulb_outline,
+                  label: 'Hint',
+                  onTap: _useHint,
+                  color: colorScheme.secondary,
+                  theme: theme,
+                ),
+              ),
+              
+              const SizedBox(width: 12),
+              
+              // Undo button
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.undo,
+                  label: 'Undo',
+                  onTap: _undoMove,
+                  color: colorScheme.tertiary,
+                  theme: theme,
+                ),
+              ),
+              
+              const SizedBox(width: 12),
+              
+              // Restart button
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.refresh,
+                  label: 'Restart',
+                  onTap: _restartPuzzle,
+                  color: colorScheme.error,
+                  theme: theme,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+    required ThemeData theme,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvasArea(ThemeData theme, ColorScheme colorScheme) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(0.2),
+          width: 2,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Animated puzzle icon
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _pulseAnimation.value,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.extension,
+                      size: 40,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                );
+              },
+            ),
+            
+            const SizedBox(height: 16),
+            
+            Text(
+              'Puzzle Canvas',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
+            Text(
+              'Game logic will be implemented here',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+            
+            if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Puzzle Instance Info',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Seed: ${widget.puzzleInstance.meta.seedStr}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    Text(
+                      'Engine: ${widget.puzzleInstance.meta.engineVersion}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooter(ThemeData theme, ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outline.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Solve status and stats
+          Row(
+            children: [
+              // Solve status
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(colorScheme).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _getStatusColor(colorScheme).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(colorScheme),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _solveStatus,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: _getStatusColor(colorScheme),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const Spacer(),
+              
+              // Stats
+              Row(
+                children: [
+                  _buildStatChip(
+                    icon: Icons.lightbulb_outline,
+                    value: _hintsUsed.toString(),
+                    theme: theme,
+                    colorScheme: colorScheme,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildStatChip(
+                    icon: Icons.touch_app,
+                    value: _movesCount.toString(),
+                    theme: theme,
+                    colorScheme: colorScheme,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Navigation buttons
+          Row(
+            children: [
+              // New puzzle button
+              Expanded(
+                child: _buildNavigationButton(
+                  icon: Icons.add_circle_outline,
+                  label: 'New',
+                  onTap: _generateNewPuzzle,
+                  color: colorScheme.primary,
+                  theme: theme,
+                ),
+              ),
+              
+              const SizedBox(width: 12),
+              
+              // Back button
+              Expanded(
+                child: _buildNavigationButton(
+                  icon: Icons.arrow_back,
+                  label: 'Back',
+                  onTap: _goBack,
+                  color: colorScheme.onSurface,
+                  theme: theme,
+                  isOutlined: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip({
+    required IconData icon,
+    required String value,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: colorScheme.onSurface.withOpacity(0.7),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurface.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavigationButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+    required ThemeData theme,
+    bool isOutlined = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: isOutlined ? Colors.transparent : color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: isOutlined ? 1 : 0,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(ColorScheme colorScheme) {
+    switch (_solveStatus) {
+      case 'In Progress':
+        return colorScheme.primary;
+      case 'Solved':
+        return colorScheme.tertiary;
+      case 'Failed':
+        return colorScheme.error;
+      default:
+        return colorScheme.onSurface;
+    }
+  }
+}
+
+enum HapticFeedbackType {
+  light,
+  medium,
+  heavy,
+  selection,
 }
