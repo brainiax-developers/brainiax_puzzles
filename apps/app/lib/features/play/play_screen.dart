@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../../shared/models/models.dart';
+import '../../shared/widgets/widgets.dart';
+import '../../shared/providers/game_state_provider.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
 class PlayScreen extends ConsumerStatefulWidget {
@@ -153,6 +155,47 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   void _goBack() {
     _triggerHapticFeedback(HapticFeedbackType.light);
     Navigator.of(context).pop();
+  }
+
+  // Sudoku interaction handlers
+  void _onCellSelected(Offset position) {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // TODO: Update UI to show selected cell
+  }
+
+  void _onMove(dynamic move) {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // Make the move through the game state provider
+    ref.read(gameStateProvider.notifier).makeMove(move);
+    setState(() {
+      _movesCount++;
+    });
+  }
+
+  void _onError(String error) {
+    _triggerHapticFeedback(HapticFeedbackType.heavy);
+    // TODO: Show error feedback to user
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
+  void _onDigitPressed(int digit) {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // This will be handled by the SudokuRenderer's onDigitInput method
+  }
+
+  void _onClearPressed() {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // This will be handled by the SudokuRenderer's onClearCell method
+  }
+
+  void _onNotePressed() {
+    _triggerHapticFeedback(HapticFeedbackType.light);
+    // TODO: Toggle note mode
   }
 
   String _formatTime(Duration duration) {
@@ -367,84 +410,144 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           width: 2,
         ),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Animated puzzle icon
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.extension,
-                      size: 40,
-                      color: colorScheme.primary,
+      child: _buildPuzzleContent(theme, colorScheme),
+    );
+  }
+
+  Widget _buildPuzzleContent(ThemeData theme, ColorScheme colorScheme) {
+    // Get game state from provider
+    final gameState = ref.watch(gameStateProvider);
+    
+    // If we have a puzzle instance, render it
+    if (widget.puzzleInstance is core.GeneratedPuzzle) {
+      final puzzle = widget.puzzleInstance as core.GeneratedPuzzle;
+      
+      // Check if it's a Sudoku puzzle
+      if (puzzle.state is core.SudokuBoard) {
+        return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
+      }
+    }
+    
+    // Fallback to placeholder
+    return _buildPlaceholder(theme, colorScheme);
+  }
+
+  Widget _buildSudokuGame(ThemeData theme, ColorScheme colorScheme, core.GeneratedPuzzle puzzle, GameState? gameState) {
+    return PerformanceMonitor(
+      enabled: false, // Enable in debug mode if needed
+      child: Column(
+        children: [
+          // Puzzle renderer
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SudokuRendererWidget(
+                puzzle: puzzle,
+                gameState: gameState,
+                onCellSelected: _onCellSelected,
+                onMove: _onMove,
+                onError: _onError,
+              ),
+            ),
+          ),
+          
+          // Number pad
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SudokuNumberPad(
+                onDigitPressed: _onDigitPressed,
+                onClearPressed: _onClearPressed,
+                onNotePressed: _onNotePressed,
+                isNoteMode: false, // TODO: Add note mode state
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(ThemeData theme, ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Animated puzzle icon
+          AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _pulseAnimation.value,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.extension,
+                    size: 40,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              );
+            },
+          ),
+          
+          const SizedBox(height: 16),
+          
+          Text(
+            'Puzzle Canvas',
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: colorScheme.onSurface.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          Text(
+            'Game logic will be implemented here',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withOpacity(0.5),
+            ),
+          ),
+          
+          if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Puzzle Instance Info',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                );
-              },
-            ),
-            
-            const SizedBox(height: 16),
-            
-            Text(
-              'Puzzle Canvas',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
-                fontWeight: FontWeight.w500,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Seed: ${widget.puzzleInstance.meta.seedStr}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  Text(
+                    'Engine: ${widget.puzzleInstance.meta.engineVersion}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
               ),
             ),
-            
-            const SizedBox(height: 8),
-            
-            Text(
-              'Game logic will be implemented here',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.5),
-              ),
-            ),
-            
-            if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Puzzle Instance Info',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Seed: ${widget.puzzleInstance.meta.seedStr}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    Text(
-                      'Engine: ${widget.puzzleInstance.meta.engineVersion}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
