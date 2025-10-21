@@ -4,40 +4,47 @@ import 'package:puzzle_core/puzzle_core.dart';
 import '../providers/game_state_provider.dart';
 
 /// Base class for puzzle renderers providing common functionality.
-/// 
+///
 /// This abstract class defines the interface and common utilities for
 /// rendering different types of puzzles with consistent interaction patterns.
 abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> with TickerProviderStateMixin {
   /// The current puzzle state being rendered.
   GeneratedPuzzle? get puzzle => widget.puzzle;
-  
+
   /// The current game state containing puzzle and metadata.
   GameState? get gameState => widget.gameState;
-  
+
   /// Whether the puzzle is currently being interacted with.
   bool get isInteracting => _isInteracting;
   bool _isInteracting = false;
-  
+
   /// The currently selected cell position.
   Offset? get selectedPosition => _selectedPosition;
   Offset? _selectedPosition;
-  
+
   /// The current focus position for keyboard navigation.
   Offset? get focusPosition => _focusPosition;
   Offset? _focusPosition;
-  
+
   /// Error positions to highlight.
   Set<Offset> get errorPositions => Set.unmodifiable(_errorPositions);
   final Set<Offset> _errorPositions = {};
-  
+
   /// Animation controller for smooth transitions.
   late AnimationController _animationController;
-  
+
   /// Animation for selection highlights.
   late Animation<double> _selectionAnimation;
-  
+
   /// Animation for error feedback.
   late Animation<double> _errorAnimation;
+
+  // Public accessors for subclasses (and other files) to use the base
+  // animations. Private fields (starting with `_`) are library-private in
+  // Dart and cannot be accessed across files; expose safe getters instead.
+  AnimationController get animationController => _animationController;
+  Animation<double> get selectionAnimation => _selectionAnimation;
+  Animation<double> get errorAnimation => _errorAnimation;
 
   @override
   void initState() {
@@ -50,7 +57,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-    
+
     _selectionAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -58,7 +65,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
       parent: _animationController,
       curve: Curves.easeInOut,
     ));
-    
+
     _errorAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -84,7 +91,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
         _isInteracting = true;
       });
       _animationController.forward();
-      
+
       // Notify parent of selection
       widget.onCellSelected?.call(gridPosition);
     }
@@ -121,7 +128,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   /// Handle keyboard navigation.
   void onKeyEvent(KeyEvent event) {
     if (_focusPosition == null) return;
-    
+
     Offset? newPosition;
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       newPosition = _moveFocus(_focusPosition!, const Offset(0, -1));
@@ -134,7 +141,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
     } else {
       return;
     }
-    
+
     if (newPosition != null) {
       setState(() {
         _focusPosition = newPosition;
@@ -183,22 +190,22 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
   /// Get the current selection animation value.
   double get selectionAnimationValue => _selectionAnimation.value;
-  
+
   /// Get the current error animation value.
   double get errorAnimationValue => _errorAnimation.value;
 
   /// Build the puzzle content - to be implemented by subclasses.
   Widget buildPuzzleContent(BuildContext context, Size size);
-  
+
   /// Build the grid background - to be implemented by subclasses.
   Widget buildGridBackground(BuildContext context, Size size);
-  
+
   /// Build cell content at the given position - to be implemented by subclasses.
   Widget buildCellContent(BuildContext context, Offset position, Size cellSize);
-  
+
   /// Build selection highlight - to be implemented by subclasses.
   Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize);
-  
+
   /// Build error highlight - to be implemented by subclasses.
   Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize);
 
@@ -207,7 +214,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        
+
         return GestureDetector(
           onTapDown: (details) => onTap(details.localPosition),
           onPanStart: onPanStart,
@@ -223,14 +230,14 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
               children: [
                 // Grid background
                 buildGridBackground(context, size),
-                
+
                 // Puzzle content
                 buildPuzzleContent(context, size),
-                
+
                 // Selection highlights
                 if (_selectedPosition != null)
                   buildSelectionHighlight(context, _selectedPosition!, _getCellSize(size)),
-                
+
                 // Error highlights
                 for (final position in _errorPositions)
                   buildErrorHighlight(context, position, _getCellSize(size)),
