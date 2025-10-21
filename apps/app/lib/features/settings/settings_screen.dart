@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/providers/simple_theme_provider.dart';
+import '../../shared/providers/haptics_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -14,7 +15,7 @@ class SettingsScreen extends ConsumerWidget {
         children: const [
           _ContrastTile(),
           _ThemeModeTile(),
-          // TODO: add toggles bound to feature flags if desired
+          _HapticsTile(),
         ],
       ),
     );
@@ -97,5 +98,25 @@ class _ThemeModeTile extends ConsumerWidget {
       case AppThemeMode.system:
         return 'Follow system setting';
     }
+  }
+}
+
+class _HapticsTile extends ConsumerWidget {
+  const _HapticsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(hapticsEnabledProvider);
+
+    return SwitchListTile(
+      title: const Text('Haptic feedback'),
+      subtitle: const Text('Enable light vibrations for actions'),
+      value: enabled,
+      onChanged: (value) async {
+        await SimpleHapticsService.setHapticsEnabled(value);
+        // Refresh provider state
+        ref.invalidate(hapticsStateProvider);
+      },
+    );
   }
 }

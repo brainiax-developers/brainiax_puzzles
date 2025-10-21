@@ -34,6 +34,7 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   late Paint _conflictPaint;
   late Paint _cellBackgroundPaint;
   late Paint _fixedCellBackgroundPaint;
+  late Paint _hintPaint;
 
   @override
   void initState() {
@@ -107,6 +108,12 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
     _fixedCellBackgroundPaint = PerformanceOptimizations.getCachedPaint(
       key: 'sudoku_fixed_cell_bg',
       color: colorScheme.surfaceContainerHighest,
+      style: PaintingStyle.fill,
+    );
+
+    _hintPaint = PerformanceOptimizations.getCachedPaint(
+      key: 'sudoku_hint',
+      color: colorScheme.secondary.withOpacity(0.6),
       style: PaintingStyle.fill,
     );
   }
@@ -303,6 +310,28 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
           size: cellSize,
         );
       },
+    );
+  }
+
+  @override
+  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
+    // Calculate the cell rect using existing utilities
+    final cellRect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
+
+    // Use the widget's hintAnimationValue to modulate opacity
+    final animVal = (widget.hintAnimationValue).clamp(0.0, 1.0);
+
+    return CustomPaint(
+      painter: _HintCellPainter(
+        cellRect: cellRect,
+        basePaint: _hintPaint,
+        animationValue: animVal,
+        borderRadius: 4.0,
+      ),
+      size: cellSize,
     );
   }
 
@@ -507,5 +536,41 @@ class CellHighlightPainter extends CustomPainter {
            highlightPaint != oldDelegate.highlightPaint ||
            animationValue != oldDelegate.animationValue ||
            borderRadius != oldDelegate.borderRadius;
+  }
+}
+
+/// Painter for hint-filled cells. This paints a rounded rect background
+/// with opacity modulated by `animationValue`.
+class _HintCellPainter extends CustomPainter {
+  _HintCellPainter({
+    required this.cellRect,
+    required this.basePaint,
+    required this.animationValue,
+    this.borderRadius = 0.0,
+  });
+
+  final Rect cellRect;
+  final Paint basePaint;
+  final double animationValue;
+  final double borderRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = basePaint.color.withOpacity((basePaint.color.opacity) * (0.4 + 0.6 * animationValue))
+      ..style = PaintingStyle.fill;
+
+    PainterUtils.paintCellBackground(
+      canvas: canvas,
+      cellRect: cellRect,
+      backgroundPaint: paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HintCellPainter oldDelegate) {
+    return oldDelegate.cellRect != cellRect ||
+        oldDelegate.animationValue != animationValue ||
+        oldDelegate.basePaint.color != basePaint.color;
   }
 }

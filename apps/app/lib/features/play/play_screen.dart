@@ -6,6 +6,8 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../../shared/models/models.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/providers/game_state_provider.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/providers/haptics_provider.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
 class PlayScreen extends ConsumerStatefulWidget {
@@ -31,7 +33,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   late AnimationController _timerController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
+  late AnimationController _hintController;
+  double _hintAnimationValue = 0.0;
+  List<Offset> _hintPositions = [];
+
   Duration _elapsedTime = Duration.zero;
   bool _isPlaying = true;
   bool _isPaused = false;
@@ -44,6 +49,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     super.initState();
     _initializeAnimations();
     _startTimer();
+    // Listen for game solved events to optionally trigger haptic feedback.
+    // Use ref.listen in initState (ConsumerState has `ref`).
+    ref.listen<GameState?>(gameStateProvider, (prev, next) {
+      if ((prev?.isSolved ?? false) == false && (next?.isSolved ?? false) == true) {
+        _triggerHapticFeedback(HapticFeedbackType.heavy);
+        setState(() { _solveStatus = 'Solved'; });
+      }
+    });
   }
 
   void _initializeAnimations() {
@@ -51,12 +64,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       duration: const Duration(seconds: 1),
       vsync: this,
     );
-    
+
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
-    
+
     _pulseAnimation = Tween<double>(
       begin: 1.0,
       end: 1.1,
@@ -64,8 +77,17 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       parent: _pulseController,
       curve: Curves.easeInOut,
     ));
-    
+
     _timerController.addListener(_updateTimer);
+    _hintController = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    );
+    _hintController.addListener(() {
+      setState(() {
+        _hintAnimationValue = _hintController.value;
+      });
+    });
   }
 
   void _startTimer() {
@@ -88,17 +110,21 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     setState(() {
       _isPaused = !_isPaused;
     });
-    
+
     if (_isPaused) {
       _timerController.stop();
     } else {
       _startTimer();
     }
-    
+
     _triggerHapticFeedback(HapticFeedbackType.light);
   }
 
   void _triggerHapticFeedback(HapticFeedbackType type) {
+    // Guard haptics by user preference. Default to enabled while loading.
+    final enabled = ref.read(hapticsEnabledProvider);
+    if (!enabled) return;
+
     if (Platform.isAndroid || Platform.isIOS) {
       switch (type) {
         case HapticFeedbackType.light:
@@ -118,11 +144,50 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   void _useHint() {
+    // Increment local counter and request a hint from the ViewModel
     setState(() {
       _hintsUsed++;
     });
     _triggerHapticFeedback(HapticFeedbackType.medium);
-    // TODO: Implement actual hint logic
+
+    // Fire-and-forget: request hint from game state notifier and animate overlay
+    () async {
+      try {
+        final hint = await ref.read(gameStateProvider.notifier).requestHint(
+          request: core.PuzzleHintRequest(
+            iteration: _hintsUsed,
+            moveCount: _movesCount,
+          ),
+        );
+
+        if (hint == null || hint.isEmpty) {
+          // no hint available
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No hint available')),
+          );
+          return;
+        }
+
+        final positions = hint.cells.map((c) => Offset(c.column.toDouble(), c.row.toDouble())).toList();
+
+        setState(() {
+          _hintPositions = positions;
+        });
+
+        // Animate the hint flashing and then clear
+        await _hintController.forward(from: 0.0);
+        await _hintController.reverse();
+
+        // Keep visible briefly then clear
+        await Future.delayed(const Duration(milliseconds: 200));
+        setState(() {
+          _hintPositions = [];
+          _hintAnimationValue = 0.0;
+        });
+      } catch (e) {
+        // ignore
+      }
+    }();
   }
 
   void _undoMove() {
@@ -208,14 +273,17 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   void dispose() {
     _timerController.dispose();
     _pulseController.dispose();
+    _hintController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // Apply puzzle-specific theme for this screen so accents match the puzzle
+    final baseTheme = Theme.of(context);
+    final theme = AppThemeData.forPuzzleType(widget.puzzleType, baseTheme);
     final colorScheme = theme.colorScheme;
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
@@ -223,12 +291,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           children: [
             // Header
             _buildHeader(theme, colorScheme),
-            
+
             // Canvas Area
             Expanded(
               child: _buildCanvasArea(theme, colorScheme),
             ),
-            
+
             // Footer
             _buildFooter(theme, colorScheme),
           ],
@@ -281,9 +349,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   ],
                 ),
               ),
-              
+
               const Spacer(),
-              
+
               // Puzzle name and difficulty
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -305,9 +373,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Action buttons row
           Row(
             children: [
@@ -321,9 +389,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   theme: theme,
                 ),
               ),
-              
+
               const SizedBox(width: 12),
-              
+
               // Undo button
               Expanded(
                 child: _buildActionButton(
@@ -334,9 +402,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   theme: theme,
                 ),
               ),
-              
+
               const SizedBox(width: 12),
-              
+
               // Restart button
               Expanded(
                 child: _buildActionButton(
@@ -417,17 +485,17 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   Widget _buildPuzzleContent(ThemeData theme, ColorScheme colorScheme) {
     // Get game state from provider
     final gameState = ref.watch(gameStateProvider);
-    
+
     // If we have a puzzle instance, render it
     if (widget.puzzleInstance is core.GeneratedPuzzle) {
       final puzzle = widget.puzzleInstance as core.GeneratedPuzzle;
-      
+
       // Check if it's a Sudoku puzzle
       if (puzzle.state is core.SudokuBoard) {
         return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
       }
     }
-    
+
     // Fallback to placeholder
     return _buildPlaceholder(theme, colorScheme);
   }
@@ -448,10 +516,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 onCellSelected: _onCellSelected,
                 onMove: _onMove,
                 onError: _onError,
+                hintCells: _hintPositions,
+                hintAnimationValue: _hintAnimationValue,
               ),
             ),
           ),
-          
+
           // Number pad
           Expanded(
             flex: 1,
@@ -497,9 +567,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               );
             },
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           Text(
             'Puzzle Canvas',
             style: theme.textTheme.titleLarge?.copyWith(
@@ -507,16 +577,16 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               fontWeight: FontWeight.w500,
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           Text(
             'Game logic will be implemented here',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withOpacity(0.5),
             ),
           ),
-          
+
           if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
             const SizedBox(height: 16),
             Container(
@@ -602,9 +672,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   ],
                 ),
               ),
-              
+
               const Spacer(),
-              
+
               // Stats
               Row(
                 children: [
@@ -625,9 +695,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Navigation buttons
           Row(
             children: [
@@ -641,9 +711,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   theme: theme,
                 ),
               ),
-              
+
               const SizedBox(width: 12),
-              
+
               // Back button
               Expanded(
                 child: _buildNavigationButton(

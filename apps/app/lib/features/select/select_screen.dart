@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/providers/haptics_provider.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends StatefulWidget {
@@ -30,11 +32,11 @@ class _SelectScreenState extends State<SelectScreen> {
 
     // Simulate loading time for better UX
     await Future.delayed(const Duration(milliseconds: 800));
-    
+
     // Initialize the registry (this will use the engines already registered in main.dart)
     _registry.initialize();
     final puzzlesByCategory = _registry.getPuzzlesByCategory();
-    
+
     setState(() {
       _puzzlesByCategory = puzzlesByCategory;
       _isLoading = false;
@@ -60,7 +62,7 @@ class _SelectScreenState extends State<SelectScreen> {
         onPuzzleGenerated: (puzzleInstance) {
           // Close the modal
           Navigator.of(context).pop();
-          
+
           // Navigate to play screen with the generated puzzle
           // TODO: Pass the puzzle instance to the play screen
           context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
@@ -77,7 +79,7 @@ class _SelectScreenState extends State<SelectScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Puzzle'),
@@ -144,7 +146,7 @@ class _SelectScreenState extends State<SelectScreen> {
   Widget _buildEmptyState() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -191,7 +193,7 @@ class _SelectScreenState extends State<SelectScreen> {
       itemBuilder: (context, index) {
         final category = _puzzlesByCategory.keys.elementAt(index);
         final puzzles = _puzzlesByCategory[category]!;
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -202,18 +204,22 @@ class _SelectScreenState extends State<SelectScreen> {
             const SizedBox(height: 8),
             ...puzzles.map((metadata) => Padding(
               padding: const EdgeInsets.only(bottom: 16),
-                  child: PuzzleCard(
-                    metadata: metadata,
-                    onDailyChallenge: () => _navigateToPuzzle(
-                      metadata.type,
-                      PuzzleMode.daily,
-                    ),
-                    onDifficultySelected: (difficulty) => _onDifficultySelected(
-                      metadata.type,
-                      difficulty,
-                    ),
-                    onRandomPlay: _onRandomPlay,
+              child: Theme(
+                // Apply a light per-puzzle accent to the card area so colors match the puzzle
+                data: AppThemeData.forPuzzleType(metadata.type, Theme.of(context)),
+                child: PuzzleCard(
+                  metadata: metadata,
+                  onDailyChallenge: () => _navigateToPuzzle(
+                    metadata.type,
+                    PuzzleMode.daily,
                   ),
+                  onDifficultySelected: (difficulty) => _onDifficultySelected(
+                    metadata.type,
+                    difficulty,
+                  ),
+                  onRandomPlay: _onRandomPlay,
+                ),
+              ),
             )),
             if (index < _puzzlesByCategory.length - 1) const SizedBox(height: 24),
           ],

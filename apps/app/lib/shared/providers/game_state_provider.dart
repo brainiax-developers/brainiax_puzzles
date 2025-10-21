@@ -221,7 +221,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     }
     final width = int.parse(parts[0]);
     final height = int.parse(parts[1]);
-    
+
     return SizeOpt(
       id: size,
       description: size,
@@ -229,6 +229,34 @@ class GameStateNotifier extends Notifier<GameState?> {
       height: height,
     );
   }
+
+  /// Request a gameplay hint from the engine for the current game state.
+  ///
+  /// Returns a [PuzzleHint] if the active engine supports hints and a hint
+  /// could be produced, or `null` otherwise. This method is async to
+  /// allow engines to perform any internal work (even though current
+  /// implementations may be synchronous).
+  Future<PuzzleHint?> requestHint({PuzzleHintRequest? request}) async {
+    if (state == null) return null;
+
+    final engine = ref.read(engineProvider(state!.engineId));
+    if (engine == null) return null;
+
+    // If engine advertises no hint capability, bail out early.
+    if (!engine.capabilities.supportsHints) return null;
+
+    try {
+      final hint = engine.requestHint(
+        currentState: state!.puzzle.state,
+        request: request,
+      );
+      return hint;
+    } catch (e) {
+      // Swallow errors - hint is a best-effort feature.
+      return null;
+    }
+  }
+
 }
 
 /// Game state containing puzzle and game information.

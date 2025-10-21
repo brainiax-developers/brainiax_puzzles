@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/models.dart';
 
 enum Contrast { normal, high }
 
@@ -201,5 +202,53 @@ class AppTheme {
     }
 
     return baseTheme;
+  }
+}
+
+// Puzzle-specific theme tweaks.
+class AppThemeData {
+  /// Return a ThemeData based on [base] but tweaked for [puzzleType].
+  /// This is intentionally lightweight: it changes the colorScheme's primary
+  /// and secondary colors to give each puzzle type a distinct accent.
+  static ThemeData forPuzzleType(PuzzleType? puzzleType, ThemeData base) {
+    if (puzzleType == null) return base;
+
+    // Choose an accent color per puzzle type.
+    Color seedColor;
+    switch (puzzleType) {
+      case PuzzleType.sudokuClassic:
+        seedColor = Colors.teal;
+        break;
+      case PuzzleType.nonogramMono:
+        seedColor = Colors.deepOrange;
+        break;
+      case PuzzleType.kakuroClassic:
+        seedColor = Colors.purple;
+        break;
+      case PuzzleType.slitherlinkLoop:
+        seedColor = Colors.indigo;
+        break;
+      case PuzzleType.mathdokuClassic:
+        seedColor = Colors.green;
+        break;
+      case PuzzleType.futoshikiClassic:
+        seedColor = Colors.amber;
+        break;
+      case PuzzleType.takuzuBinary:
+        seedColor = Colors.blueGrey;
+        break;
+      default:
+        seedColor = Colors.indigo;
+    }
+
+    // Return a copy with a colorScheme seeded from the chosen color.
+    final newBase = base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        primary: seedColor,
+        secondary: seedColor.shade200,
+      ),
+    );
+
+    return newBase;
   }
 }

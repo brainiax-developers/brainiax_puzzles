@@ -209,6 +209,13 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   /// Build error highlight - to be implemented by subclasses.
   Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize);
 
+  /// Build a hint highlight for a single cell. Subclasses should provide
+  /// a widget that visually highlights the cell at `position` using the
+  /// provided `cellSize`. The default implementation returns SizedBox.shrink().
+  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -241,6 +248,11 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
                 // Error highlights
                 for (final position in _errorPositions)
                   buildErrorHighlight(context, position, _getCellSize(size)),
+
+                // Hint highlights (provided by parent)
+                if (widget.hintCells != null)
+                  for (final position in widget.hintCells!)
+                    buildHintHighlight(context, position, _getCellSize(size)),
               ],
             ),
           ),
@@ -265,6 +277,8 @@ abstract class PuzzleRendererWidget extends StatefulWidget {
     this.onCellSelected,
     this.onMove,
     this.onError,
+    this.hintCells,
+    this.hintAnimationValue = 0.0,
   });
 
   final GeneratedPuzzle? puzzle;
@@ -272,4 +286,8 @@ abstract class PuzzleRendererWidget extends StatefulWidget {
   final ValueChanged<Offset>? onCellSelected;
   final ValueChanged<dynamic>? onMove;
   final ValueChanged<String>? onError;
+  // Optional list of grid positions to highlight as a hint (col,row -> Offset(dx=col, dy=row)).
+  final List<Offset>? hintCells;
+  // A small animation value [0..1] supplied by parent to animate hint flashing.
+  final double hintAnimationValue;
 }
