@@ -9,6 +9,7 @@ abstract class PuzzleLocalStore {
     required PuzzleType puzzleType,
     required String difficulty,
     required Duration completionTime,
+    required PuzzleMode mode,
     DateTime? completedAt,
   });
 
@@ -46,6 +47,7 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
     required PuzzleType puzzleType,
     required String difficulty,
     required Duration completionTime,
+    required PuzzleMode mode,
     DateTime? completedAt,
   }) async {
     final timestamp = completedAt ?? DateTime.now();
@@ -53,7 +55,9 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
     final dateKey = _dateKey(normalizedDate);
 
     await _updateBestTime(puzzleType, difficulty, completionTime);
-    await _saveDailyCompletion(puzzleType, dateKey, timestamp);
+    if (mode == PuzzleMode.daily) {
+      await _saveDailyCompletion(puzzleType, dateKey, timestamp);
+    }
     await _updatePuzzleStreak(puzzleType, normalizedDate);
     await _updateGlobalStreak(normalizedDate);
   }

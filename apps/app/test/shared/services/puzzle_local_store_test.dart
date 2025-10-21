@@ -25,6 +25,7 @@ void main() {
         puzzleType: type,
         difficulty: 'easy',
         completionTime: const Duration(seconds: 90),
+        mode: PuzzleMode.random,
         completedAt: day,
       );
 
@@ -32,6 +33,7 @@ void main() {
         puzzleType: type,
         difficulty: 'easy',
         completionTime: const Duration(seconds: 120),
+        mode: PuzzleMode.random,
         completedAt: day,
       );
 
@@ -39,6 +41,7 @@ void main() {
         puzzleType: type,
         difficulty: 'medium',
         completionTime: const Duration(seconds: 80),
+        mode: PuzzleMode.random,
         completedAt: day,
       );
 
@@ -61,6 +64,7 @@ void main() {
         puzzleType: type,
         difficulty: 'hard',
         completionTime: const Duration(minutes: 5),
+        mode: PuzzleMode.daily,
         completedAt: completion,
       );
 
@@ -78,6 +82,7 @@ void main() {
         puzzleType: type,
         difficulty: 'normal',
         completionTime: const Duration(minutes: 7),
+        mode: PuzzleMode.daily,
         completedAt: day1,
       );
       expect(await store.puzzleStreak(type), 1);
@@ -86,6 +91,7 @@ void main() {
         puzzleType: type,
         difficulty: 'normal',
         completionTime: const Duration(minutes: 6),
+        mode: PuzzleMode.daily,
         completedAt: day2,
       );
       expect(await store.puzzleStreak(type), 2);
@@ -94,6 +100,7 @@ void main() {
         puzzleType: type,
         difficulty: 'normal',
         completionTime: const Duration(minutes: 5),
+        mode: PuzzleMode.daily,
         completedAt: day4,
       );
       expect(await store.puzzleStreak(type), 1);
@@ -108,6 +115,7 @@ void main() {
         puzzleType: PuzzleType.sudokuClassic,
         difficulty: 'easy',
         completionTime: const Duration(minutes: 4),
+        mode: PuzzleMode.daily,
         completedAt: sudokuDay1,
       );
       expect(await store.globalStreak(), 1);
@@ -116,6 +124,7 @@ void main() {
         puzzleType: PuzzleType.kakuroClassic,
         difficulty: 'easy',
         completionTime: const Duration(minutes: 6),
+        mode: PuzzleMode.daily,
         completedAt: sudokuDay1,
       );
       expect(await store.globalStreak(), 1, reason: 'same day should not double count');
@@ -124,6 +133,7 @@ void main() {
         puzzleType: PuzzleType.sudokuClassic,
         difficulty: 'easy',
         completionTime: const Duration(minutes: 3),
+        mode: PuzzleMode.daily,
         completedAt: sudokuDay2,
       );
       expect(await store.globalStreak(), 2);
@@ -132,6 +142,7 @@ void main() {
         puzzleType: PuzzleType.sudokuClassic,
         difficulty: 'easy',
         completionTime: const Duration(minutes: 2),
+        mode: PuzzleMode.daily,
         completedAt: sudokuDay4,
       );
       expect(await store.globalStreak(), 1);
@@ -145,6 +156,7 @@ void main() {
         puzzleType: type,
         difficulty: 'expert',
         completionTime: const Duration(minutes: 12),
+        mode: PuzzleMode.daily,
         completedAt: completion,
       );
 
