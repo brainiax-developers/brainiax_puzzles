@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import 'package:app/features/play/puzzle_play_view_model.dart';
+import 'package:app/shared/models/models.dart';
+import 'package:app/shared/providers/puzzle_local_store_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _SolvingStubPuzzleEngine extends core.StubPuzzleEngine {
   _SolvingStubPuzzleEngine()
@@ -39,6 +42,9 @@ class _SolvingStubPuzzleEngine extends core.StubPuzzleEngine {
 
 PuzzlePlaySession _createSession({
   void Function(PuzzleSolvedEvent event)? onSolved,
+  PuzzleType puzzleType = PuzzleType.sudokuClassic,
+  PuzzleMode mode = PuzzleMode.random,
+  String difficulty = 'medium',
 }) {
   final _SolvingStubPuzzleEngine engine = _SolvingStubPuzzleEngine();
   final core.GeneratedPuzzle<dynamic> puzzle = engine.generate(
@@ -51,12 +57,20 @@ PuzzlePlaySession _createSession({
   return PuzzlePlaySession(
     engine: engine,
     puzzle: puzzle,
+    puzzleType: puzzleType,
+    mode: mode,
+    difficulty: difficulty,
     onSolved: onSolved,
   );
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('PuzzlePlayViewModel', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
     test('starts timer immediately and tracks elapsed time', () {
       fakeAsync((FakeAsync async) {
         final PuzzlePlaySession session = _createSession();
@@ -101,6 +115,8 @@ void main() {
           const core.StubPuzzleMove(type: 'solve', data: <String, dynamic>{}),
         );
 
+        async.flushMicrotasks();
+
         final PuzzlePlayState solvedState = container.read(provider(session));
         expect(solvedState.isSolved, isTrue);
         expect(solvedState.isTimerRunning, isFalse);
@@ -111,6 +127,7 @@ void main() {
         expect(event.moveCount, 1);
         expect(event.elapsed, solvedState.elapsed);
         expect(event.moveHistory, hasLength(1));
+        expect(event.completionStatus, isNotNull);
 
         final Duration solvedElapsed = solvedState.elapsed;
         async.elapse(const Duration(seconds: 5));
@@ -156,6 +173,7 @@ void main() {
         viewModel.applyMove(
           const core.StubPuzzleMove(type: 'solve', data: <String, dynamic>{}),
         );
+        async.flushMicrotasks();
         expect(container.read(provider(session)).isSolved, isTrue);
         expect(events, hasLength(1));
 
@@ -170,6 +188,7 @@ void main() {
         viewModel.applyMove(
           const core.StubPuzzleMove(type: 'solve', data: <String, dynamic>{}),
         );
+        async.flushMicrotasks();
         expect(events, hasLength(2));
 
         container.dispose();
@@ -196,6 +215,66 @@ void main() {
 
         container.dispose();
       });
+    });
+
+    test('solving daily puzzle updates completion metrics', () async {
+      SharedPreferences.setMockInitialValues({});
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
+      final ProviderContainer container = ProviderContainer(
+        overrides: <Override>[
+          sharedPreferencesProvider.overrideWithValue(
+            AsyncValue.data(prefs),
+          ),
+        ],
+      );
+      final PuzzlePlaySession session = _createSession(
+        onSolved: events.add,
+        puzzleType: PuzzleType.sudokuClassic,
+        mode: PuzzleMode.daily,
+        difficulty: 'daily',
+      );
+      final AutoDisposeNotifierProviderFamily<
+          PuzzlePlayViewModel,
+          PuzzlePlayState,
+          PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
+
+      container.read(provider(session));
+      final PuzzlePlayViewModel viewModel =
+          container.read(provider(session).notifier);
+
+      viewModel.applyMove(
+        const core.StubPuzzleMove(type: 'solve', data: <String, dynamic>{}),
+      );
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(events, hasLength(1));
+      final PuzzleSolvedEvent event = events.single;
+      final PuzzleCompletionStatus? status = event.completionStatus;
+      expect(status, isNotNull);
+      expect(status!.bestTime, event.elapsed);
+      expect(status.isDailyCompleted, isTrue);
+      expect(status.puzzleStreak, greaterThanOrEqualTo(1));
+      expect(status.globalStreak, greaterThanOrEqualTo(1));
+
+      final store = await container.read(puzzleLocalStoreProvider.future);
+      final DateTime today = DateTime.now();
+      final DateTime normalized =
+          DateTime(today.year, today.month, today.day);
+
+      expect(
+        await store.bestTime(session.puzzleType, 'daily'),
+        event.elapsed,
+      );
+      expect(
+        await store.isCompletedOn(session.puzzleType, normalized),
+        isTrue,
+      );
+      expect(await store.puzzleStreak(session.puzzleType), status.puzzleStreak);
+      expect(await store.globalStreak(), status.globalStreak);
+
+      container.dispose();
     });
   });
 }

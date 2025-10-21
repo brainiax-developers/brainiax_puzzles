@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
+import '../../shared/models/models.dart';
+import '../../shared/providers/puzzle_local_store_providers.dart';
+
 const Duration _tickInterval = Duration(milliseconds: 200);
 
 /// Provider for the puzzle play view model.
@@ -105,7 +108,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     );
 
     if (solved) {
-      _dispatchSolved();
+      unawaited(_dispatchSolved());
     }
   }
 
@@ -227,11 +230,23 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     return _session.engine.isSolved(board);
   }
 
-  void _dispatchSolved() {
+  Future<void> _dispatchSolved() async {
     if (_solvedEmitted) {
       return;
     }
     _solvedEmitted = true;
+    _stopTimer();
+
+    final PuzzleCompletionController controller =
+        ref.read(puzzleCompletionControllerProvider);
+    final PuzzleCompletionStatus completionStatus =
+        await controller.recordCompletion(
+      puzzleType: _session.puzzleType,
+      difficulty: _session.difficulty,
+      completionTime: state.elapsed,
+      mode: _session.mode,
+    );
+
     final void Function(PuzzleSolvedEvent event)? callback = _session.onSolved;
     if (callback != null) {
       callback(
@@ -241,6 +256,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
           elapsed: state.elapsed,
           moveCount: state.moveCount,
           moveHistory: state.moveHistory,
+          completionStatus: completionStatus,
         ),
       );
     }
@@ -386,6 +402,7 @@ class PuzzleSolvedEvent {
     required this.elapsed,
     required this.moveCount,
     required List<PuzzleMoveRecord> moveHistory,
+    this.completionStatus,
   }) : moveHistory = UnmodifiableListView<PuzzleMoveRecord>(moveHistory);
 
   final core.GeneratedPuzzle<dynamic> puzzle;
@@ -393,6 +410,7 @@ class PuzzleSolvedEvent {
   final Duration elapsed;
   final int moveCount;
   final UnmodifiableListView<PuzzleMoveRecord> moveHistory;
+  final PuzzleCompletionStatus? completionStatus;
 }
 
 @immutable
@@ -400,12 +418,18 @@ class PuzzlePlaySession {
   const PuzzlePlaySession({
     required this.engine,
     required this.puzzle,
+    required this.puzzleType,
+    required this.mode,
+    required this.difficulty,
     this.validator,
     this.onSolved,
   });
 
   final core.PuzzleEngine<dynamic, dynamic> engine;
   final core.GeneratedPuzzle<dynamic> puzzle;
+  final PuzzleType puzzleType;
+  final PuzzleMode mode;
+  final String difficulty;
   final core.PuzzleValidator<dynamic>? validator;
   final void Function(PuzzleSolvedEvent event)? onSolved;
 
@@ -416,6 +440,9 @@ class PuzzlePlaySession {
           runtimeType == other.runtimeType &&
           puzzle == other.puzzle &&
           identical(engine, other.engine) &&
+          puzzleType == other.puzzleType &&
+          mode == other.mode &&
+          difficulty == other.difficulty &&
           validator == other.validator &&
           onSolved == other.onSolved;
 
@@ -423,6 +450,9 @@ class PuzzlePlaySession {
   int get hashCode => Object.hash(
         puzzle,
         identityHashCode(engine),
+        puzzleType,
+        mode,
+        difficulty,
         validator,
         onSolved,
       );

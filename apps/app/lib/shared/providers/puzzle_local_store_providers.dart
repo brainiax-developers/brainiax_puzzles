@@ -51,10 +51,11 @@ class PuzzleCompletionController {
 
   final Ref _ref;
 
-  Future<void> recordCompletion({
+  Future<PuzzleCompletionStatus> recordCompletion({
     required PuzzleType puzzleType,
     required String difficulty,
     required Duration completionTime,
+    required PuzzleMode mode,
     DateTime? completedAt,
   }) async {
     final store = await _ref.read(puzzleLocalStoreProvider.future);
@@ -63,20 +64,41 @@ class PuzzleCompletionController {
       puzzleType: puzzleType,
       difficulty: difficulty,
       completionTime: completionTime,
+      mode: mode,
       completedAt: timestamp,
     );
 
     _ref.invalidate(puzzleBestTimeProvider((puzzleType, difficulty)));
-    _ref.invalidate(
-      puzzleDailyCompletionProvider((puzzleType, DateTime(
+    if (mode == PuzzleMode.daily) {
+      final DateTime normalized = DateTime(
         timestamp.year,
         timestamp.month,
         timestamp.day,
-      ))),
-    );
-    _ref.invalidate(puzzleTodayCompletionProvider(puzzleType));
+      );
+      _ref.invalidate(puzzleDailyCompletionProvider((puzzleType, normalized)));
+      _ref.invalidate(puzzleTodayCompletionProvider(puzzleType));
+    }
     _ref.invalidate(puzzleStreakProvider(puzzleType));
     _ref.invalidate(puzzleGlobalStreakProvider);
+
+    final DateTime normalized = DateTime(
+      timestamp.year,
+      timestamp.month,
+      timestamp.day,
+    );
+
+    final Duration? bestTime = await store.bestTime(puzzleType, difficulty);
+    final bool isDailyCompleted =
+        await store.isCompletedOn(puzzleType, normalized);
+    final int puzzleStreak = await store.puzzleStreak(puzzleType);
+    final int globalStreak = await store.globalStreak();
+
+    return PuzzleCompletionStatus(
+      bestTime: bestTime,
+      isDailyCompleted: isDailyCompleted,
+      puzzleStreak: puzzleStreak,
+      globalStreak: globalStreak,
+    );
   }
 }
 
