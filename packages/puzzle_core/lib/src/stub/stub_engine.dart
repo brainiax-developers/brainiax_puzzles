@@ -12,6 +12,7 @@ import '../engine/pipeline_engine.dart';
 import '../generators/generator.dart';
 import '../solver/solver.dart';
 import '../util/determinism.dart';
+import '../util/seeded_rng.dart';
 import '../validation/validator.dart';
 
 class StubPuzzleState {
@@ -264,6 +265,11 @@ class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleM
         );
 
   @override
+  PuzzleCapabilities get capabilities => const PuzzleCapabilities(
+        supportsHints: true,
+      );
+
+  @override
   MoveResult<StubPuzzleState> validateMove({
     required StubPuzzleState currentState,
     required StubPuzzleMove move,
@@ -284,6 +290,78 @@ class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleM
     DeterminismGuard.assertNoFloatsOrDateTimes(newState.data);
 
     return MoveResult.success(newState);
+  }
+
+  @override
+  PuzzleHint? requestHint({
+    required StubPuzzleState currentState,
+    PuzzleHintRequest? request,
+  }) {
+    final Map<String, dynamic>? sizeData =
+        currentState.data['size'] as Map<String, dynamic>?;
+    if (sizeData == null) {
+      return null;
+    }
+
+    final int width = (sizeData['w'] as num?)?.toInt() ?? 0;
+    final int height = (sizeData['h'] as num?)?.toInt() ?? 0;
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+
+    final int baseSeed = request?.seed64 ??
+        (currentState.data['seed'] as int?) ??
+        currentState.id.hashCode;
+    final int iteration = request?.iteration ?? 0;
+    final SeededRng rng = SeededRng(baseSeed ^ iteration);
+
+    final int cellCount = width * height;
+    if (cellCount <= 0) {
+      return null;
+    }
+
+    final int cellIndex = rng.nextIntInRange(cellCount);
+    final int row = cellIndex ~/ width;
+    final int column = cellIndex % width;
+
+    final List<PuzzleHintCell> cells = <PuzzleHintCell>[
+      PuzzleHintCell(
+        row: row,
+        column: column,
+        metadata: const <String, Object?>{
+          'source': 'stub',
+        },
+      ),
+    ];
+
+    final List<PuzzleHintUnit> units = <PuzzleHintUnit>[
+      PuzzleHintUnit(
+        type: 'row',
+        index: row,
+        metadata: const <String, Object?>{
+          'source': 'stub',
+        },
+      ),
+      PuzzleHintUnit(
+        type: 'column',
+        index: column,
+        metadata: const <String, Object?>{
+          'source': 'stub',
+        },
+      ),
+    ];
+
+    final int? moveCount = request?.moveCount;
+
+    return PuzzleHint(
+      cells: cells,
+      units: units,
+      metadata: <String, Object?>{
+        'seed': baseSeed,
+        'iteration': iteration,
+        if (moveCount != null) 'moveCount': moveCount,
+      },
+    );
   }
 }
 

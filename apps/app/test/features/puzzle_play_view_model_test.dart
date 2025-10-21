@@ -40,14 +40,29 @@ class _SolvingStubPuzzleEngine extends core.StubPuzzleEngine {
   }
 }
 
+class _HintlessStubPuzzleEngine extends _SolvingStubPuzzleEngine {
+  @override
+  core.PuzzleCapabilities get capabilities => const core.PuzzleCapabilities();
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.StubPuzzleState currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+}
+
 PuzzlePlaySession _createSession({
   void Function(PuzzleSolvedEvent event)? onSolved,
   PuzzleType puzzleType = PuzzleType.sudokuClassic,
   PuzzleMode mode = PuzzleMode.random,
   String difficulty = 'medium',
+  core.PuzzleEngine<dynamic, dynamic>? engine,
 }) {
-  final _SolvingStubPuzzleEngine engine = _SolvingStubPuzzleEngine();
-  final core.GeneratedPuzzle<dynamic> puzzle = engine.generate(
+  final core.PuzzleEngine<dynamic, dynamic> activeEngine =
+      engine ?? _SolvingStubPuzzleEngine();
+  final core.GeneratedPuzzle<dynamic> puzzle = activeEngine.generate(
     seedStr: 'test-seed',
     seed64: 0xabc123,
     size: const core.SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5),
@@ -55,7 +70,7 @@ PuzzlePlaySession _createSession({
   );
 
   return PuzzlePlaySession(
-    engine: engine,
+    engine: activeEngine,
     puzzle: puzzle,
     puzzleType: puzzleType,
     mode: mode,
@@ -212,6 +227,105 @@ void main() {
           ),
           throwsStateError,
         );
+
+        container.dispose();
+      });
+    });
+
+    test('reflects engine hint capabilities in state', () {
+      fakeAsync((FakeAsync async) {
+        final PuzzlePlaySession hintlessSession =
+            _createSession(engine: _HintlessStubPuzzleEngine());
+        final PuzzlePlaySession hintingSession = _createSession();
+
+        final provider = puzzlePlayViewModelProvider;
+        final container = ProviderContainer();
+
+        final PuzzlePlayState hintlessState = container.read(provider(hintlessSession));
+        final PuzzlePlayState hintingState = container.read(provider(hintingSession));
+
+        expect(hintlessState.supportsHints, isFalse);
+        expect(hintingState.supportsHints, isTrue);
+
+        container.dispose();
+      });
+    });
+
+    test('requestHint emits and auto clears hint highlight', () {
+      fakeAsync((FakeAsync async) {
+        final PuzzlePlaySession session = _createSession();
+        final provider = puzzlePlayViewModelProvider;
+        final container = ProviderContainer();
+        final PuzzlePlayViewModel viewModel =
+            container.read(provider(session).notifier);
+
+        expect(container.read(provider(session)).hintHighlight, isNull);
+
+        viewModel.requestHint();
+
+        PuzzlePlayState stateWithHint = container.read(provider(session));
+        expect(stateWithHint.hintHighlight, isNotNull);
+        expect(stateWithHint.hintHighlight!.cells, isNotEmpty);
+        expect(stateWithHint.hintHighlight!.units, isNotEmpty);
+
+        async.elapse(const Duration(seconds: 4));
+        final PuzzlePlayState clearedState = container.read(provider(session));
+        expect(clearedState.hintHighlight, isNull);
+
+        container.dispose();
+      });
+    });
+
+    test('hint sequence is deterministic for stub engine', () {
+      fakeAsync((FakeAsync async) {
+        final PuzzlePlaySession sessionA = _createSession();
+        final PuzzlePlaySession sessionB = _createSession();
+        final provider = puzzlePlayViewModelProvider;
+
+        final ProviderContainer containerA = ProviderContainer();
+        final PuzzlePlayViewModel viewModelA =
+            containerA.read(provider(sessionA).notifier);
+        viewModelA.requestHint();
+        final core.PuzzleHint? hintA1 =
+            containerA.read(provider(sessionA)).hintHighlight;
+        viewModelA.requestHint();
+        final core.PuzzleHint? hintA2 =
+            containerA.read(provider(sessionA)).hintHighlight;
+
+        final ProviderContainer containerB = ProviderContainer();
+        final PuzzlePlayViewModel viewModelB =
+            containerB.read(provider(sessionB).notifier);
+        viewModelB.requestHint();
+        final core.PuzzleHint? hintB1 =
+            containerB.read(provider(sessionB)).hintHighlight;
+        viewModelB.requestHint();
+        final core.PuzzleHint? hintB2 =
+            containerB.read(provider(sessionB)).hintHighlight;
+
+        expect(hintA1, equals(hintB1));
+        expect(hintA2, equals(hintB2));
+
+        containerA.dispose();
+        containerB.dispose();
+      });
+    });
+
+    test('applyMove clears active hint highlight', () {
+      fakeAsync((FakeAsync async) {
+        final PuzzlePlaySession session = _createSession();
+        final provider = puzzlePlayViewModelProvider;
+        final container = ProviderContainer();
+        final PuzzlePlayViewModel viewModel =
+            container.read(provider(session).notifier);
+
+        viewModel.requestHint();
+        expect(container.read(provider(session)).hintHighlight, isNotNull);
+
+        viewModel.applyMove(
+          const core.StubPuzzleMove(type: 'progress', data: <String, dynamic>{}),
+        );
+
+        expect(container.read(provider(session)).hintHighlight, isNull);
 
         container.dispose();
       });

@@ -432,5 +432,53 @@ void main() {
         expect(deserializedMove.data, equals(move.data));
       });
     });
+
+    group('Hint support', () {
+      test('stub engine advertises hints and returns deterministic highlights', () {
+        const DifficultyScore difficulty =
+            DifficultyScore(value: 0.5, level: 'medium');
+        const SizeOpt size =
+            SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5);
+        final GeneratedPuzzle<StubPuzzleState> puzzle = engine.generate(
+          seedStr: 'hint-seed',
+          seed64: 'hint-seed'.hashCode,
+          size: size,
+          difficulty: difficulty,
+        );
+
+        const PuzzleHintRequest request = PuzzleHintRequest(
+          seed64: 0x12345678,
+          iteration: 0,
+          moveCount: 3,
+        );
+
+        final PuzzleHint? hint1 = engine.requestHint(
+          currentState: puzzle.state,
+          request: request,
+        );
+        final PuzzleHint? hint2 = engine.requestHint(
+          currentState: puzzle.state,
+          request: request,
+        );
+
+        expect(engine.capabilities.supportsHints, isTrue);
+        expect(hint1, isNotNull);
+        expect(hint1!.cells, isNotEmpty);
+        expect(hint1.units, isNotEmpty);
+        expect(hint1, equals(hint2));
+
+        final PuzzleHint? differentIteration = engine.requestHint(
+          currentState: puzzle.state,
+          request: const PuzzleHintRequest(
+            seed64: 0x12345678,
+            iteration: 1,
+            moveCount: 3,
+          ),
+        );
+
+        expect(differentIteration, isNotNull);
+        expect(differentIteration, isNot(equals(hint1)));
+      });
+    });
   });
 }

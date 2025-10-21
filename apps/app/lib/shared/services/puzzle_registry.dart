@@ -21,8 +21,12 @@ class PuzzleRegistry {
 
     // Add metadata for each available puzzle type
     for (final puzzleType in app.PuzzleType.values) {
-      if (engineRegistry.hasEngine(puzzleType.key)) {
-        _metadata[puzzleType] = _createMetadataForType(puzzleType);
+      final core.PuzzleEngine<dynamic, dynamic>? engine =
+          engineRegistry.getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(
+        puzzleType.key,
+      );
+      if (engine != null) {
+        _metadata[puzzleType] = _createMetadataForType(puzzleType, engine);
       }
     }
 
@@ -32,8 +36,12 @@ class PuzzleRegistry {
       
       // Re-check for available engines after creating stubs
       for (final puzzleType in app.PuzzleType.values) {
-        if (engineRegistry.hasEngine(puzzleType.key)) {
-          _metadata[puzzleType] = _createMetadataForType(puzzleType);
+        final core.PuzzleEngine<dynamic, dynamic>? engine =
+            engineRegistry.getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(
+          puzzleType.key,
+        );
+        if (engine != null) {
+          _metadata[puzzleType] = _createMetadataForType(puzzleType, engine);
         }
       }
     }
@@ -96,7 +104,10 @@ class PuzzleRegistry {
   }
 
   /// Create metadata for a specific puzzle type.
-  PuzzleMetadata _createMetadataForType(app.PuzzleType type) {
+  PuzzleMetadata _createMetadataForType(
+    app.PuzzleType type,
+    core.PuzzleEngine<dynamic, dynamic> engine,
+  ) {
     switch (type) {
       case app.PuzzleType.sudokuClassic:
         return PuzzleMetadata(
@@ -106,7 +117,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFF2196F3), Color(0xFF1976D2)],
           supportedSizes: ['9x9', '6x6', '4x4'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -118,7 +129,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFF4CAF50), Color(0xFF388E3C)],
           supportedSizes: ['5x5', '10x10', '15x15', '20x20'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -130,7 +141,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
           supportedSizes: ['6x6', '8x8', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -142,7 +153,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
           supportedSizes: ['5x5', '7x7', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -154,7 +165,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFFE91E63), Color(0xFFC2185B)],
           supportedSizes: ['4x4', '6x6', '8x8'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -166,7 +177,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFF00BCD4), Color(0xFF0097A7)],
           supportedSizes: ['5x5', '6x6', '7x7'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
 
@@ -178,7 +189,7 @@ class PuzzleRegistry {
           accentColors: const [Color(0xFF607D8B), Color(0xFF455A64)],
           supportedSizes: ['6x6', '8x8', '10x10'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-          supportsHints: true,
+          supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
     }

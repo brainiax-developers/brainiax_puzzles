@@ -3,6 +3,22 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:app/shared/services/puzzle_registry.dart';
 import 'package:app/shared/models/puzzle_type.dart' as app;
 
+class _HintlessEngine extends core.StubPuzzleEngine {
+  _HintlessEngine({required String engineId})
+      : super(engineId: engineId, engineName: 'Hintless Engine');
+
+  @override
+  core.PuzzleCapabilities get capabilities => const core.PuzzleCapabilities();
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.StubPuzzleState currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+}
+
 void main() {
   group('PuzzleRegistry', () {
     late PuzzleRegistry registry;
@@ -82,13 +98,25 @@ void main() {
     test('should provide primary and secondary accent colors', () {
       // Register a sudoku engine with correct ID
       core.EngineRegistry().register(core.StubPuzzleEngine(engineId: 'sudoku_classic'));
-      
+
       registry.initialize();
-      
+
       final metadata = registry.getMetadata(app.PuzzleType.sudokuClassic);
       expect(metadata, isNotNull);
       expect(metadata!.primaryAccentColor, isNotNull);
       expect(metadata.secondaryAccentColor, isNotNull);
+    });
+
+    test('uses engine capability probe for hint support', () {
+      core.EngineRegistry().register(
+        _HintlessEngine(engineId: 'sudoku_classic'),
+      );
+
+      registry.initialize();
+
+      final metadata = registry.getMetadata(app.PuzzleType.sudokuClassic);
+      expect(metadata, isNotNull);
+      expect(metadata!.supportsHints, isFalse);
     });
   });
 }
