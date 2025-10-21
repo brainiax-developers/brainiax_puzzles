@@ -10,6 +10,7 @@ import '../../shared/models/models.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 
 const Duration _tickInterval = Duration(milliseconds: 200);
+const Duration _hintHighlightDuration = Duration(seconds: 3);
 
 /// Provider for the puzzle play view model.
 final puzzlePlayViewModelProvider =
@@ -28,6 +29,8 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
   core.PuzzleValidator<dynamic>? _validator;
   Timer? _ticker;
   bool _solvedEmitted = false;
+  Timer? _hintClearTimer;
+  int _hintRequestCount = 0;
 
   @override
   PuzzlePlayState build(PuzzlePlaySession session) {
@@ -39,6 +42,8 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     _stopwatch
       ..stop()
       ..reset();
+    _cancelHintTimer();
+    _hintRequestCount = 0;
 
     final Object? initialBoard = session.puzzle.state;
     final bool initiallySolved = _isSolved(initialBoard);
@@ -52,6 +57,8 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
       isTimerRunning: false,
       moveHistory: const <PuzzleMoveRecord>[],
       moveCount: 0,
+      supportsHints: session.engine.capabilities.supportsHints,
+      hintHighlight: null,
     );
 
     if (!initiallySolved) {
@@ -59,6 +66,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     }
 
     ref.onDispose(_disposeTimer);
+    ref.onDispose(_disposeHintHighlight);
 
     return state;
   }
@@ -92,6 +100,10 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     _history.add(entry);
 
     final bool solved = _isSolved(newBoard);
+    final bool hadHintHighlight = state.hintHighlight != null;
+    if (hadHintHighlight) {
+      _cancelHintTimer();
+    }
     if (solved) {
       _stopTimer();
     } else {
@@ -105,6 +117,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
       isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
+      clearHintHighlight: hadHintHighlight,
     );
 
     if (solved) {
@@ -123,6 +136,10 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
         _history.isEmpty ? _session.puzzle.state : _history.last.resultingState;
 
     final bool solved = _isSolved(board);
+    final bool hadHintHighlight = state.hintHighlight != null;
+    if (hadHintHighlight) {
+      _cancelHintTimer();
+    }
     if (solved) {
       _stopTimer();
     } else {
@@ -139,6 +156,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
       isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
+      clearHintHighlight: hadHintHighlight,
     );
   }
 
@@ -151,6 +169,10 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     final Object? initialBoard = _session.puzzle.state;
     final bool solved = _isSolved(initialBoard);
     _solvedEmitted = solved;
+    final bool hadHintHighlight = state.hintHighlight != null;
+    if (hadHintHighlight) {
+      _cancelHintTimer();
+    }
 
     state = state.copyWith(
       board: initialBoard,
@@ -159,6 +181,7 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
       isTimerRunning: false,
       moveHistory: const <PuzzleMoveRecord>[],
       moveCount: 0,
+      clearHintHighlight: hadHintHighlight,
     );
 
     if (!solved) {
@@ -168,6 +191,53 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
 
   /// Whether there is a move that can be undone.
   bool get canUndo => state.canUndo;
+
+  /// Request a gameplay hint from the active engine.
+  void requestHint() {
+    if (!state.supportsHints) {
+      return;
+    }
+
+    final Object? board = state.board;
+    if (board == null) {
+      return;
+    }
+
+    final int iteration = _hintRequestCount;
+    final core.PuzzleHint? hint = _session.engine.requestHint(
+      currentState: board,
+      request: core.PuzzleHintRequest(
+        seed64: _session.puzzle.meta.seed64,
+        iteration: iteration,
+        moveCount: state.moveCount,
+        metadata: <String, Object?>{
+          'puzzleType': _session.puzzleType.key,
+          'difficulty': _session.difficulty,
+          'mode': _session.mode.name,
+        },
+      ),
+    );
+    _hintRequestCount = iteration + 1;
+
+    if (hint == null || hint.isEmpty) {
+      return;
+    }
+
+    _cancelHintTimer();
+    state = state.copyWith(
+      hintHighlight: hint,
+    );
+    _hintClearTimer = Timer(_hintHighlightDuration, _handleHintTimeout);
+  }
+
+  /// Clear any active hint highlight immediately.
+  void clearHintHighlight() {
+    if (state.hintHighlight == null) {
+      return;
+    }
+    _cancelHintTimer();
+    state = state.copyWith(clearHintHighlight: true);
+  }
 
   void _startTimer() {
     if (!_stopwatch.isRunning) {
@@ -208,11 +278,29 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     }
   }
 
+  void _disposeHintHighlight() {
+    _cancelHintTimer();
+  }
+
   void _updateElapsed() {
     state = state.copyWith(
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
     );
+  }
+
+  void _handleHintTimeout() {
+    _hintClearTimer = null;
+    if (state.hintHighlight != null) {
+      state = state.copyWith(clearHintHighlight: true);
+    }
+  }
+
+  void _cancelHintTimer() {
+    if (_hintClearTimer != null) {
+      _hintClearTimer!.cancel();
+      _hintClearTimer = null;
+    }
   }
 
   bool _isSolved(Object? board) {
@@ -292,6 +380,8 @@ class PuzzlePlayState {
     required this.isTimerRunning,
     required this.moveHistory,
     required this.moveCount,
+    required this.supportsHints,
+    this.hintHighlight,
   });
 
   factory PuzzlePlayState({
@@ -302,6 +392,8 @@ class PuzzlePlayState {
     required bool isTimerRunning,
     required List<PuzzleMoveRecord> moveHistory,
     required int moveCount,
+    required bool supportsHints,
+    core.PuzzleHint? hintHighlight,
   }) {
     return PuzzlePlayState._(
       puzzle: puzzle,
@@ -311,6 +403,8 @@ class PuzzlePlayState {
       isTimerRunning: isTimerRunning,
       moveHistory: UnmodifiableListView<PuzzleMoveRecord>(moveHistory),
       moveCount: moveCount,
+      supportsHints: supportsHints,
+      hintHighlight: hintHighlight,
     );
   }
 
@@ -321,8 +415,11 @@ class PuzzlePlayState {
   final bool isTimerRunning;
   final UnmodifiableListView<PuzzleMoveRecord> moveHistory;
   final int moveCount;
+  final bool supportsHints;
+  final core.PuzzleHint? hintHighlight;
 
   bool get canUndo => moveHistory.isNotEmpty;
+  bool get hasHintHighlight => hintHighlight != null;
 
   PuzzlePlayState copyWith({
     core.GeneratedPuzzle<dynamic>? puzzle,
@@ -332,6 +429,9 @@ class PuzzlePlayState {
     bool? isTimerRunning,
     List<PuzzleMoveRecord>? moveHistory,
     int? moveCount,
+    bool? supportsHints,
+    core.PuzzleHint? hintHighlight,
+    bool clearHintHighlight = false,
   }) {
     return PuzzlePlayState(
       puzzle: puzzle ?? this.puzzle,
@@ -341,6 +441,10 @@ class PuzzlePlayState {
       isTimerRunning: isTimerRunning ?? this.isTimerRunning,
       moveHistory: moveHistory ?? this.moveHistory,
       moveCount: moveCount ?? this.moveCount,
+      supportsHints: supportsHints ?? this.supportsHints,
+      hintHighlight: clearHintHighlight
+          ? null
+          : hintHighlight ?? this.hintHighlight,
     );
   }
 
@@ -355,6 +459,8 @@ class PuzzlePlayState {
           isSolved == other.isSolved &&
           isTimerRunning == other.isTimerRunning &&
           moveCount == other.moveCount &&
+          supportsHints == other.supportsHints &&
+          hintHighlight == other.hintHighlight &&
           _historyEquality.equals(moveHistory, other.moveHistory);
 
   @override
@@ -365,6 +471,8 @@ class PuzzlePlayState {
         isSolved,
         isTimerRunning,
         moveCount,
+        supportsHints,
+        hintHighlight,
         _historyEquality.hash(moveHistory),
       );
 }
