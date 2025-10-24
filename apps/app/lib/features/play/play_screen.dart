@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -11,6 +12,7 @@ import '../../shared/providers/engine_provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/haptics_provider.dart';
 import '../../shared/services/puzzle_preload_service.dart';
+import '../../shared/providers/puzzle_local_store_providers.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
 class PlayScreen extends ConsumerStatefulWidget {
@@ -46,6 +48,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   String _solveStatus = 'In Progress';
   int _hintsUsed = 0;
   int _movesCount = 0;
+  bool _hasRecordedCompletion = false;
+  PuzzleCompletionStatus? _completionStatus;
   // Guard to ensure we only register Riverpod listeners once
   bool _listenersRegistered = false;
 
@@ -310,6 +314,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       _movesCount = 0;
       _solveStatus = 'In Progress';
       _isPaused = false;
+      _hasRecordedCompletion = false;
+      _completionStatus = null;
     });
     _timerController.reset();
     _startTimer();
@@ -325,6 +331,28 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   void _goBack() {
     _triggerHapticFeedback(HapticFeedbackType.light);
     Navigator.of(context).pop();
+  }
+
+  Future<void> _recordCompletion(GameState gameState, Duration elapsed) async {
+    try {
+      final controller = ref.read(puzzleCompletionControllerProvider);
+      final status = await controller.recordCompletion(
+        puzzleType: widget.puzzleType,
+        difficulty: gameState.difficulty,
+        completionTime: elapsed,
+        mode: widget.mode,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _completionStatus = status;
+      });
+    } catch (error) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('Failed to record completion: $error');
+      }
+    }
   }
 
   // Sudoku interaction handlers
@@ -394,12 +422,20 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (!_listenersRegistered) {
       _listenersRegistered = true;
       ref.listen<GameState?>(gameStateProvider, (prev, next) {
-        if ((prev?.isSolved ?? false) == false && (next?.isSolved ?? false) == true) {
+        final bool wasSolved = prev?.isSolved ?? false;
+        final bool isSolved = next?.isSolved ?? false;
+        if (!wasSolved && isSolved && next != null) {
           _triggerHapticFeedback(HapticFeedbackType.heavy);
+          final Duration elapsed = DateTime.now().difference(next.startTime);
           if (mounted) {
             setState(() {
               _solveStatus = 'Solved';
+              _elapsedTime = elapsed;
             });
+          }
+          if (!_hasRecordedCompletion) {
+            _hasRecordedCompletion = true;
+            unawaited(_recordCompletion(next, elapsed));
           }
         }
       });
@@ -947,6 +983,21 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
           const SizedBox(height: 16),
 
+          if (_completionStatus != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _buildCompletionSummary(theme),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+          ],
+
           // Navigation buttons
           Row(
             children: [
@@ -1058,6 +1109,25 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         ),
       ),
     );
+  }
+
+  String _buildCompletionSummary(ThemeData theme) {
+    final status = _completionStatus;
+    if (status == null) {
+      return '';
+    }
+
+    final Duration bestTime = status.bestTime ?? _elapsedTime;
+    final String bestLabel = bestTime > Duration.zero
+        ? 'Best ${_formatTime(bestTime)}'
+        : 'Best --:--';
+    final String dailyLabel = status.isDailyCompleted ? 'Daily ✓' : 'Daily ✗';
+    return [
+      bestLabel,
+      'Streak ${status.puzzleStreak}',
+      'Global ${status.globalStreak}',
+      dailyLabel,
+    ].join(' • ');
   }
 
   Color _getStatusColor(ColorScheme colorScheme) {

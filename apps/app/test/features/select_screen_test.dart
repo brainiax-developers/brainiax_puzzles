@@ -1,14 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app/features/select/select_screen.dart';
 import 'package:app/shared/services/puzzle_registry.dart';
+import 'package:app/shared/services/puzzle_preload_service.dart';
+import 'package:app/shared/models/models.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
+
+import '../helpers/test_puzzle_data.dart';
+
+class _FakePuzzlePreloadService extends PuzzlePreloadService {
+  _FakePuzzlePreloadService(this._cache);
+
+  final Map<String, core.GeneratedPuzzle<dynamic>> _cache;
+
+  String _cacheKey(PuzzleType type, String difficulty) =>
+      '${type.key.toLowerCase()}::${difficulty.toLowerCase()}';
+
+  @override
+  Future<void> preloadAll({Duration interItemYield = const Duration(milliseconds: 50)}) async {}
+
+  @override
+  core.GeneratedPuzzle<dynamic>? getCached(PuzzleType puzzleType, String difficulty) {
+    return _cache[_cacheKey(puzzleType, difficulty)];
+  }
+
+  @override
+  bool get hasPreloaded => _cache.isNotEmpty;
+}
 
 void main() {
   group('SelectScreen', () {
     setUp(() {
       core.EngineRegistry().clear();
+      SharedPreferences.setMockInitialValues({});
     });
 
     tearDown(() {
@@ -135,6 +162,53 @@ void main() {
       await tester.tap(find.text('Daily Challenge'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Play Screen'), findsOneWidget);
+    });
+
+    testWidgets('random play uses cached puzzle and navigates with instance', (WidgetTester tester) async {
+      final engine = TestSudokuEngine();
+      core.EngineRegistry().register(engine);
+      final cached = buildSudokuPuzzle();
+      final preloadService = _FakePuzzlePreloadService({
+        '${PuzzleType.sudokuClassic.key}::easy': cached,
+      });
+
+      dynamic receivedPuzzle;
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (context, state) => const SelectScreen()),
+          GoRoute(
+            path: '/play/:puzzleType/:mode',
+            builder: (context, state) {
+              receivedPuzzle = state.extra;
+              return const Scaffold(body: Text('Play Screen'));
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            puzzlePreloadProvider.overrideWithValue(preloadService),
+          ],
+          child: MaterialApp.router(
+            routeInformationProvider: router.routeInformationProvider,
+            routeInformationParser: router.routeInformationParser,
+            routerDelegate: router.routerDelegate,
+          ),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pump();
+
+      expect(find.text('Random Play'), findsWidgets);
+
+      await tester.tap(find.text('Random Play').first);
+      await tester.pumpAndSettle();
+
+      expect(receivedPuzzle, equals(cached));
       expect(find.text('Play Screen'), findsOneWidget);
     });
   });
