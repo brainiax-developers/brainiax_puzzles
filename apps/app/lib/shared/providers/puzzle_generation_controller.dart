@@ -9,7 +9,7 @@ import '../services/seed_service.dart';
 import 'engine_provider.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
-const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 150);
+const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
 
 /// Riverpod controller responsible for generating puzzles asynchronously.
 final puzzleGenerationControllerProvider =
