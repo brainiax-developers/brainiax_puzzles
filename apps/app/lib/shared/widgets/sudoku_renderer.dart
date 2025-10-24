@@ -411,6 +411,8 @@ class SudokuRendererWidget extends PuzzleRendererWidget {
     super.onCellSelected,
     super.onMove,
     super.onError,
+    super.hintCells,
+    super.hintAnimationValue,
   });
 
   @override

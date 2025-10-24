@@ -245,7 +245,10 @@ class AppThemeData {
     final newBase = base.copyWith(
       colorScheme: base.colorScheme.copyWith(
         primary: seedColor,
-        secondary: seedColor.shade200,
+        // `seedColor` may be a plain Color (not MaterialColor) so use a
+        // slightly transparent variant as the secondary accent instead
+        // of accessing `shade200` which only exists on MaterialColor.
+        secondary: seedColor.withOpacity(0.85),
       ),
     );
 

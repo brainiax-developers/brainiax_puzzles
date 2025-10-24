@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/providers/haptics_provider.dart';
+import '../../shared/services/puzzle_preload_service.dart';
 
 /// Screen for selecting a puzzle type and mode.
-class SelectScreen extends StatefulWidget {
+class SelectScreen extends ConsumerStatefulWidget {
   const SelectScreen({super.key});
 
   @override
-  State<SelectScreen> createState() => _SelectScreenState();
+  ConsumerState<SelectScreen> createState() => _SelectScreenState();
 }
 
-class _SelectScreenState extends State<SelectScreen> {
+class _SelectScreenState extends ConsumerState<SelectScreen> {
   final PuzzleRegistry _registry = PuzzleRegistry();
   bool _isLoading = true;
   Map<PuzzleCategory, List<PuzzleMetadata>> _puzzlesByCategory = {};
@@ -53,6 +54,20 @@ class _SelectScreenState extends State<SelectScreen> {
   }
 
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
+    // First try to use preloaded puzzle if available
+    try {
+      final preload = ref.read(puzzlePreloadProvider);
+      final cached = preload.getCached(puzzleType, difficulty);
+      if (cached != null) {
+        // Navigate immediately with the cached puzzle to avoid waiting for generation
+        context.push('/play/${puzzleType.key}/random', extra: cached);
+        return;
+      }
+    } catch (e) {
+      // If preload service isn't available or something goes wrong, fall back to modal
+    }
+
+    // Fallback: show generation modal as before
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing by tapping outside

@@ -15,53 +15,76 @@ class EngineRegistryService {
 
     final registry = EngineRegistry();
 
-    // Register stub engines for testing
-    registry.register(StubPuzzleEngine());
-    registry.register(StubSudokuEngine());
-
-    // Register real engines
-    try {
-      registry.register(SudokuEngine());
-    } catch (e) {
-      // Engine might not be available, continue
-      if (kDebugMode) print('Warning: Could not register SudokuEngine: $e');
+    // Helper to register a real engine and fall back to registering a stub
+    // with the same engineId if the real engine couldn't be registered.
+    Future<void> _registerWithPerEngineFallback({
+      required PuzzleEngine Function() realEngineFactory,
+      required String fallbackEngineId,
+      required String fallbackEngineName,
+    }) async {
+      try {
+        final engine = realEngineFactory();
+        if (!registry.hasEngine(engine.id)) {
+          registry.register(engine);
+          if (kDebugMode) print('Registered engine ${engine.id}');
+        }
+      } catch (e) {
+        // If registering the real engine failed, register a stub with the
+        // same engine ID so the rest of the app that expects that ID works.
+        try {
+          if (!registry.hasEngine(fallbackEngineId)) {
+            registry.register(StubPuzzleEngine(engineId: fallbackEngineId, engineName: fallbackEngineName));
+            if (kDebugMode) print('Registered stub engine for $fallbackEngineId due to error: $e');
+          }
+        } catch (e2) {
+          if (kDebugMode) print('Warning: Could not register fallback stub for $fallbackEngineId: $e2');
+        }
+      }
     }
 
-    try {
-      registry.register(NonogramEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register NonogramEngine: $e');
-    }
+    // Register engines per-type with per-engine fallback to avoid leaving
+    // specific puzzle types without an engine.
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => SudokuEngine(),
+      fallbackEngineId: 'sudoku_classic',
+      fallbackEngineName: 'Classic Sudoku',
+    );
 
-    try {
-      registry.register(KakuroEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register KakuroEngine: $e');
-    }
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => NonogramEngine(),
+      fallbackEngineId: 'nonogram_mono',
+      fallbackEngineName: 'Monochrome Nonogram',
+    );
 
-    try {
-      registry.register(SlitherlinkEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register SlitherlinkEngine: $e');
-    }
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => KakuroEngine(),
+      fallbackEngineId: 'kakuro_classic',
+      fallbackEngineName: 'Classic Kakuro',
+    );
 
-    try {
-      registry.register(MathdokuEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register MathdokuEngine: $e');
-    }
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => SlitherlinkEngine(),
+      fallbackEngineId: 'slitherlink_loop',
+      fallbackEngineName: 'Slitherlink Loop',
+    );
 
-    try {
-      registry.register(FutoshikiEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register FutoshikiEngine: $e');
-    }
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => MathdokuEngine(),
+      fallbackEngineId: 'mathdoku_classic',
+      fallbackEngineName: 'Classic Mathdoku',
+    );
 
-    try {
-      registry.register(TakuzuEngine());
-    } catch (e) {
-      if (kDebugMode) print('Warning: Could not register TakuzuEngine: $e');
-    }
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => FutoshikiEngine(),
+      fallbackEngineId: 'futoshiki_classic',
+      fallbackEngineName: 'Classic Futoshiki',
+    );
+
+    await _registerWithPerEngineFallback(
+      realEngineFactory: () => TakuzuEngine(),
+      fallbackEngineId: 'takuzu_binary',
+      fallbackEngineName: 'Binary Takuzu',
+    );
 
     _isInitialized = true;
     if (kDebugMode) print('Engine registry initialized with ${registry.engineCount} engines');

@@ -8,6 +8,7 @@ import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
 import 'shared/providers/simple_theme_provider.dart';
+import 'shared/services/puzzle_preload_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,15 +41,15 @@ Future<void> main() async {
 Future<void> _initializeApp() async {
   // Run initialization steps in parallel for faster startup
   final initStartTime = DateTime.now();
-  
+
   // 1) Initialize Firebase and engines in parallel
   final futures = <Future>[
     initFirebase(),
     EngineRegistryService().initialize(),
   ];
-  
+
   await Future.wait(futures);
-  
+
   // 2) Ensure an anonymous user (depends on Firebase)
   await ensureAnonAuth();
 
@@ -58,43 +59,63 @@ Future<void> _initializeApp() async {
   }
 }
 
-class BrainiaxApp extends ConsumerWidget {
+class BrainiaxApp extends ConsumerStatefulWidget {
   const BrainiaxApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BrainiaxApp> createState() => _BrainiaxAppState();
+}
+
+class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Schedule preload after first frame to avoid blocking startup.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        // Start preloading in background; don't await so the UI remains responsive.
+        ref.read(puzzlePreloadProvider).preloadAll();
+      } catch (e) {
+        if (kDebugMode) print('⚠️ Puzzle preload failed to start: $e');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final currentTheme = ref.watch(currentThemeProvider);
     final themeStateAsync = ref.watch(themeStateProvider);
-    
+
     return MaterialApp.router(
       title: 'Brainiax Puzzles',
       debugShowCheckedModeBanner: false,
 
       // Use dynamic theme from provider
       theme: themeStateAsync.when(
-        data: (state) => state.effectiveMode == AppThemeMode.light 
-            ? currentTheme 
+        data: (state) => state.effectiveMode == AppThemeMode.light
+            ? currentTheme
             : AppTheme.light(),
         loading: () => AppTheme.light(),
         error: (_, __) => AppTheme.light(),
       ),
       darkTheme: themeStateAsync.when(
-        data: (state) => state.effectiveMode == AppThemeMode.dark 
-            ? currentTheme 
+        data: (state) => state.effectiveMode == AppThemeMode.dark
+            ? currentTheme
             : AppTheme.dark(),
         loading: () => AppTheme.dark(),
         error: (_, __) => AppTheme.dark(),
       ),
       themeMode: themeStateAsync.when(
-        data: (state) => state.mode == AppThemeMode.system 
-            ? ThemeMode.system 
-            : (state.effectiveMode == AppThemeMode.dark 
-                ? ThemeMode.dark 
+        data: (state) => state.mode == AppThemeMode.system
+            ? ThemeMode.system
+            : (state.effectiveMode == AppThemeMode.dark
+                ? ThemeMode.dark
                 : ThemeMode.light),
         loading: () => ThemeMode.system,
         error: (_, __) => ThemeMode.system,
       ),
-        
+
       routeInformationProvider: appRouter.routeInformationProvider,
       routeInformationParser: appRouter.routeInformationParser,
       routerDelegate: appRouter.routerDelegate,

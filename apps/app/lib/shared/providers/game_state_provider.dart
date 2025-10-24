@@ -60,6 +60,35 @@ class GameStateNotifier extends Notifier<GameState?> {
     state = gameState;
   }
 
+  /// Initialize the game state from an existing generated puzzle instance.
+  ///
+  /// This avoids re-generating the puzzle on-device and preserves the provided
+  /// puzzle as the initial puzzle for undo/redo reconstruction.
+  Future<void> startWithGeneratedPuzzle({
+    required String engineId,
+    required String seed,
+    required String difficulty,
+    required String size,
+    required GeneratedPuzzle puzzle,
+  }) async {
+    // Reset move history
+    _moveHistory.clear();
+    _currentMoveIndex = -1;
+    _initialPuzzle = puzzle;
+
+    final gameState = GameState(
+      engineId: engineId,
+      seed: seed,
+      difficulty: difficulty,
+      size: size,
+      puzzle: puzzle,
+      isSolved: false,
+      startTime: DateTime.now(),
+    );
+
+    state = gameState;
+  }
+
   /// Make a move in the current game.
   Future<void> makeMove(dynamic move) async {
     if (state == null) return;

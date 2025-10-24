@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../../shared/models/models.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/providers/game_state_provider.dart';
+import '../../shared/providers/engine_provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/haptics_provider.dart';
+import '../../shared/services/puzzle_preload_service.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
 class PlayScreen extends ConsumerStatefulWidget {
@@ -43,20 +46,137 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   String _solveStatus = 'In Progress';
   int _hintsUsed = 0;
   int _movesCount = 0;
+  // Guard to ensure we only register Riverpod listeners once
+  bool _listenersRegistered = false;
+
+  // Remember the last logged puzzle so we don't spam logs on every rebuild
+  core.GeneratedPuzzle? _lastLoggedPuzzle;
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _startTimer();
-    // Listen for game solved events to optionally trigger haptic feedback.
-    // Use ref.listen in initState (ConsumerState has `ref`).
-    ref.listen<GameState?>(gameStateProvider, (prev, next) {
-      if ((prev?.isSolved ?? false) == false && (next?.isSolved ?? false) == true) {
-        _triggerHapticFeedback(HapticFeedbackType.heavy);
-        setState(() { _solveStatus = 'Solved'; });
+
+    // If no puzzle instance was passed and there's no active game state,
+    // auto-start a new random game for Random mode so the canvas is populated.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final currentState = ref.read(gameStateProvider);
+        final engineAvailable = ref.read(engineProvider(widget.puzzleType.key)) != null;
+
+        // If a generated puzzle instance was passed via navigation extras, use it directly
+        if (widget.puzzleInstance != null && currentState == null && engineAvailable) {
+          try {
+            final core.GeneratedPuzzle generated = widget.puzzleInstance as core.GeneratedPuzzle;
+            final seed = generated.meta.seedStr;
+            final difficulty = generated.meta.difficulty.level;
+            final size = generated.meta.size.id;
+
+            await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
+              engineId: widget.puzzleType.key,
+              seed: seed,
+              difficulty: difficulty,
+              size: size,
+              puzzle: generated,
+            );
+            // Log once after we've set up the game state
+            _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+            return;
+          } catch (e) {
+            // If casting or initialization fails, fall back to generation below
+          }
+        }
+
+        if (widget.mode == PuzzleMode.random && widget.puzzleInstance == null && currentState == null && engineAvailable) {
+          // Try to use a preloaded puzzle (fast path) if available
+          try {
+            final preload = ref.read(puzzlePreloadProvider);
+            final difficultyKey = (widget.difficulty ?? 'Medium').toLowerCase();
+            final cached = preload.getCached(widget.puzzleType, widget.difficulty ?? 'Medium');
+            if (cached != null) {
+              await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
+                engineId: widget.puzzleType.key,
+                seed: cached.meta.seedStr,
+                difficulty: cached.meta.difficulty.level,
+                size: cached.meta.size.id,
+                puzzle: cached,
+              );
+              _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+              return;
+            }
+          } catch (e) {
+            // ignore preload failures and fall back to on-demand generation
+          }
+          // Build a deterministic-ish random seed string and sensible defaults
+          final seed = 'random:${widget.puzzleType.key}:${DateTime.now().millisecondsSinceEpoch}';
+          const difficulty = 'medium';
+          final size = _defaultSizeForPuzzleType(widget.puzzleType);
+
+          // Fire-and-forget; startNewGame will populate the gameStateProvider
+          await ref.read(gameStateProvider.notifier).startNewGame(
+            engineId: widget.puzzleType.key,
+            seed: seed,
+            difficulty: difficulty,
+            size: size,
+          );
+        }
+      } catch (e) {
+        // Ignore startup errors - they'll be surfaced elsewhere if needed
       }
+
+      // Log once after any generation attempt so we can diagnose which engine/puzzle was used
+      _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the navigation provided a different puzzle instance, log once to help debugging
+    if (!identical(oldWidget.puzzleInstance, widget.puzzleInstance)) {
+      _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+    }
+  }
+
+  void _logPuzzleInfoIfNeeded(GameState? gameState) {
+    final core.GeneratedPuzzle? current = widget.puzzleInstance is core.GeneratedPuzzle
+        ? widget.puzzleInstance as core.GeneratedPuzzle
+        : gameState?.puzzle;
+
+    if (identical(_lastLoggedPuzzle, current)) return;
+    _lastLoggedPuzzle = current;
+
+    if (!kDebugMode) return;
+    // ignore: avoid_print
+    print('PlayScreen: widget.puzzleInstance runtimeType = ${widget.puzzleInstance?.runtimeType}');
+    // ignore: avoid_print
+    print('PlayScreen: gameState runtimeType = ${gameState?.runtimeType}');
+    // ignore: avoid_print
+    print('PlayScreen: gameState?.puzzle runtimeType = ${gameState?.puzzle.runtimeType}');
+  }
+
+  // Provide default size strings for different puzzle types used when
+  // launching a random puzzle without explicit size parameters.
+  String _defaultSizeForPuzzleType(PuzzleType type) {
+    switch (type) {
+      case PuzzleType.sudokuClassic:
+        return '9x9';
+      case PuzzleType.nonogramMono:
+        return '10x10';
+      case PuzzleType.kakuroClassic:
+        return '9x9';
+      case PuzzleType.slitherlinkLoop:
+        return '10x10';
+      case PuzzleType.mathdokuClassic:
+        return '6x6';
+      case PuzzleType.futoshikiClassic:
+        return '6x6';
+      case PuzzleType.takuzuBinary:
+        return '10x10';
+      default:
+        return '9x9';
+    }
   }
 
   void _initializeAnimations() {
@@ -284,6 +404,22 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     final theme = AppThemeData.forPuzzleType(widget.puzzleType, baseTheme);
     final colorScheme = theme.colorScheme;
 
+    // Register Riverpod listeners here (only once) — ref.listen must be used
+    // from the build method of a ConsumerWidget/ConsumerStatefulWidget.
+    if (!_listenersRegistered) {
+      _listenersRegistered = true;
+      ref.listen<GameState?>(gameStateProvider, (prev, next) {
+        if ((prev?.isSolved ?? false) == false && (next?.isSolved ?? false) == true) {
+          _triggerHapticFeedback(HapticFeedbackType.heavy);
+          if (mounted) {
+            setState(() {
+              _solveStatus = 'Solved';
+            });
+          }
+        }
+      });
+    }
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
@@ -486,12 +622,42 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // Get game state from provider
     final gameState = ref.watch(gameStateProvider);
 
+    // Note: debug logging is performed once in initState/didUpdateWidget via
+    // _logPuzzleInfoIfNeeded to avoid spamming logs during rebuilds.
+
+    // Prefer the explicit puzzleInstance passed to the screen; if absent,
+    // fall back to the game state provider's puzzle (if any).
+    final core.GeneratedPuzzle? generatedPuzzle =
+        widget.puzzleInstance is core.GeneratedPuzzle
+            ? widget.puzzleInstance as core.GeneratedPuzzle
+            : gameState?.puzzle;
+
+    // If we still don't have a puzzle, show a loading indicator while
+    // a generator/provider populates it.
+    if (generatedPuzzle == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(
+              'Generating puzzle...',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     // If we have a puzzle instance, render it
-    if (widget.puzzleInstance is core.GeneratedPuzzle) {
-      final puzzle = widget.puzzleInstance as core.GeneratedPuzzle;
+    if (generatedPuzzle is core.GeneratedPuzzle) {
+      final puzzle = generatedPuzzle;
 
       // Check if it's a Sudoku puzzle
-      if (puzzle.state is core.SudokuBoard) {
+      if (puzzle.state is core.SudokuBoard || gameState?.engineId == 'sudoku_classic') {
         return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
       }
     }
@@ -510,33 +676,71 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             flex: 3,
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: SudokuRendererWidget(
-                puzzle: puzzle,
-                gameState: gameState,
-                onCellSelected: _onCellSelected,
-                onMove: _onMove,
-                onError: _onError,
-                hintCells: _hintPositions,
-                hintAnimationValue: _hintAnimationValue,
-              ),
+              child: _buildSudokuGrid(puzzle),
             ),
           ),
 
           // Number pad
           Expanded(
             flex: 1,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: SudokuNumberPad(
-                onDigitPressed: _onDigitPressed,
-                onClearPressed: _onClearPressed,
-                onNotePressed: _onNotePressed,
-                isNoteMode: false, // TODO: Add note mode state
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SudokuNumberPad(
+                  onDigitPressed: _onDigitPressed,
+                  onClearPressed: _onClearPressed,
+                  onNotePressed: _onNotePressed,
+                  isNoteMode: false, // TODO: Add note mode state
+                ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSudokuGrid(core.GeneratedPuzzle puzzle) {
+    List<int> cells;
+    if (puzzle.state is core.SudokuBoard) {
+      cells = (puzzle.state as core.SudokuBoard).cells;
+    } else if (puzzle.state is core.StubPuzzleState) {
+      // For stub, use a sample Sudoku puzzle
+      cells = [
+        5,3,0,0,7,0,0,0,0,
+        6,0,0,1,9,5,0,0,0,
+        0,9,8,0,0,0,0,6,0,
+        8,0,0,0,6,0,0,0,3,
+        4,0,0,8,0,3,0,0,1,
+        7,0,0,0,2,0,0,0,6,
+        0,6,0,0,0,0,2,8,0,
+        0,0,0,4,1,9,0,0,5,
+        0,0,0,0,8,0,0,7,9,
+      ];
+    } else {
+      cells = List.filled(81, 0);
+    }
+
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 9),
+      itemCount: 81,
+      itemBuilder: (context, index) {
+        final cellValue = cells[index];
+        return GestureDetector(
+          onTap: () => _onCellSelected(Offset((index % 9).toDouble(), (index ~/ 9).toDouble())),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black),
+            ),
+            child: Center(
+              child: Text(
+                cellValue == 0 ? '' : cellValue.toString(),
+                style: const TextStyle(fontSize: 20),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
