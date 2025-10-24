@@ -36,12 +36,17 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   late Paint _fixedCellBackgroundPaint;
   late Paint _hintPaint;
 
-  @override
+      @override
   void initState() {
     super.initState();
     _setupAnimations();
-    _setupPaints();
     _updateBoard();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setupPaints();
   }
 
   void _setupAnimations() {
@@ -194,15 +199,20 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   }
 
   @override
-  Widget buildPuzzleContent(BuildContext context, Size size) {
+  Widget build(BuildContext context) {
+    // Initialize grid metrics here, where we have context and constraints
     _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
+      availableSize: MediaQuery.of(context).size,
       rows: _gridSize,
       columns: _gridSize,
       padding: 16.0,
       cellSpacing: 1.0,
     );
+    return super.build(context);
+  }
 
+  @override
+  Widget buildPuzzleContent(BuildContext context, Size size) {
     return CustomPaint(
       painter: SudokuContentPainter(
         board: _board,

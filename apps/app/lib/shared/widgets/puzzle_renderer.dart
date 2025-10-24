@@ -221,6 +221,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
+        final cellSize = _getCellSize(size);
 
         return GestureDetector(
           onTapDown: (details) => onTap(details.localPosition),
@@ -243,16 +244,16 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
                 // Selection highlights
                 if (_selectedPosition != null)
-                  buildSelectionHighlight(context, _selectedPosition!, _getCellSize(size)),
+                  buildSelectionHighlight(context, _selectedPosition!, cellSize),
 
                 // Error highlights
                 for (final position in _errorPositions)
-                  buildErrorHighlight(context, position, _getCellSize(size)),
+                  buildErrorHighlight(context, position, cellSize),
 
                 // Hint highlights (provided by parent)
                 if (widget.hintCells != null)
                   for (final position in widget.hintCells!)
-                    buildHintHighlight(context, position, _getCellSize(size)),
+                    buildHintHighlight(context, position, cellSize),
               ],
             ),
           ),

@@ -127,7 +127,8 @@ class PuzzleRegistry {
           displayName: type.displayName,
           icon: Icons.crop_square,
           accentColors: const [Color(0xFF4CAF50), Color(0xFF388E3C)],
-          supportedSizes: ['5x5', '10x10', '15x15', '20x20'],
+          // Prefer engine-supported defaults first; 5x5 is not supported by current engine
+          supportedSizes: ['10x10', '15x15', '20x20', '5x5'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,

@@ -92,7 +92,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           // Try to use a preloaded puzzle (fast path) if available
           try {
             final preload = ref.read(puzzlePreloadProvider);
-            final difficultyKey = (widget.difficulty ?? 'Medium').toLowerCase();
             final cached = preload.getCached(widget.puzzleType, widget.difficulty ?? 'Medium');
             if (cached != null) {
               await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
@@ -174,8 +173,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return '6x6';
       case PuzzleType.takuzuBinary:
         return '10x10';
-      default:
-        return '9x9';
     }
   }
 
@@ -226,19 +223,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
   }
 
-  void _togglePause() {
-    setState(() {
-      _isPaused = !_isPaused;
-    });
-
-    if (_isPaused) {
-      _timerController.stop();
-    } else {
-      _startTimer();
-    }
-
-    _triggerHapticFeedback(HapticFeedbackType.light);
-  }
+  // Pause/resume handled implicitly by navigation/state; explicit toggle removed.
 
   void _triggerHapticFeedback(HapticFeedbackType type) {
     // Guard haptics by user preference. Default to enabled while loading.
@@ -652,14 +637,106 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       );
     }
 
-    // If we have a puzzle instance, render it
-    if (generatedPuzzle is core.GeneratedPuzzle) {
-      final puzzle = generatedPuzzle;
+    // We have a puzzle instance; render it using the appropriate renderer
+    final core.GeneratedPuzzle puzzle = generatedPuzzle;
+    // Sudoku
+    if (puzzle.state is core.SudokuBoard) {
+      return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
+    }
 
-      // Check if it's a Sudoku puzzle
-      if (puzzle.state is core.SudokuBoard || gameState?.engineId == 'sudoku_classic') {
-        return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
-      }
+    // Nonogram
+    if (puzzle.state is core.NonogramBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: NonogramRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onCellSelected: _onCellSelected,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
+    }
+
+    // Kakuro
+    if (puzzle.state is core.KakuroBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: KakuroRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onCellSelected: _onCellSelected,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
+    }
+
+    // Slitherlink
+    if (puzzle.state is core.SlitherlinkBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: SlitherlinkRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
+    }
+
+    // Mathdoku
+    if (puzzle.state is core.MathdokuBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: MathdokuRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onCellSelected: _onCellSelected,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
+    }
+
+    // Futoshiki
+    if (puzzle.state is core.FutoshikiBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: FutoshikiRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onCellSelected: _onCellSelected,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
+    }
+
+    // Takuzu
+    if (puzzle.state is core.TakuzuBoard) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: TakuzuRendererWidget(
+          puzzle: puzzle,
+          gameState: gameState,
+          onCellSelected: _onCellSelected,
+          onMove: _onMove,
+          onError: _onError,
+          hintCells: _hintPositions,
+          hintAnimationValue: _hintAnimationValue,
+        ),
+      );
     }
 
     // Fallback to placeholder
@@ -701,46 +778,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   Widget _buildSudokuGrid(core.GeneratedPuzzle puzzle) {
-    List<int> cells;
-    if (puzzle.state is core.SudokuBoard) {
-      cells = (puzzle.state as core.SudokuBoard).cells;
-    } else if (puzzle.state is core.StubPuzzleState) {
-      // For stub, use a sample Sudoku puzzle
-      cells = [
-        5,3,0,0,7,0,0,0,0,
-        6,0,0,1,9,5,0,0,0,
-        0,9,8,0,0,0,0,6,0,
-        8,0,0,0,6,0,0,0,3,
-        4,0,0,8,0,3,0,0,1,
-        7,0,0,0,2,0,0,0,6,
-        0,6,0,0,0,0,2,8,0,
-        0,0,0,4,1,9,0,0,5,
-        0,0,0,0,8,0,0,7,9,
-      ];
-    } else {
-      cells = List.filled(81, 0);
-    }
-
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 9),
-      itemCount: 81,
-      itemBuilder: (context, index) {
-        final cellValue = cells[index];
-        return GestureDetector(
-          onTap: () => _onCellSelected(Offset((index % 9).toDouble(), (index ~/ 9).toDouble())),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black),
-            ),
-            child: Center(
-              child: Text(
-                cellValue == 0 ? '' : cellValue.toString(),
-                style: const TextStyle(fontSize: 20),
-              ),
-            ),
-          ),
-        );
-      },
+    return SudokuRendererWidget(
+      puzzle: puzzle,
+      gameState: ref.watch(gameStateProvider),
+      onCellSelected: _onCellSelected,
+      onMove: _onMove,
+      onError: _onError,
+      hintCells: _hintPositions,
+      hintAnimationValue: _hintAnimationValue,
     );
   }
 
