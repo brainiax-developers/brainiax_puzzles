@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -83,7 +84,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
   /// Handle tap events on the puzzle grid.
   void onTap(Offset position) {
-    final gridPosition = _hitTest(position);
+    final gridPosition = hitTest(position);
     if (gridPosition != null) {
       setState(() {
         _selectedPosition = gridPosition;
@@ -99,7 +100,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
   /// Handle drag events for multi-cell selection.
   void onPanStart(DragStartDetails details) {
-    final gridPosition = _hitTest(details.localPosition);
+    final gridPosition = hitTest(details.localPosition);
     if (gridPosition != null) {
       setState(() {
         _selectedPosition = gridPosition;
@@ -110,7 +111,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   }
 
   void onPanUpdate(DragUpdateDetails details) {
-    final gridPosition = _hitTest(details.localPosition);
+    final gridPosition = hitTest(details.localPosition);
     if (gridPosition != null && gridPosition != _selectedPosition) {
       setState(() {
         _selectedPosition = gridPosition;
@@ -131,13 +132,13 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
     Offset? newPosition;
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      newPosition = _moveFocus(_focusPosition!, const Offset(0, -1));
+      newPosition = moveFocus(_focusPosition!, const Offset(0, -1));
     } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      newPosition = _moveFocus(_focusPosition!, const Offset(0, 1));
+      newPosition = moveFocus(_focusPosition!, const Offset(0, 1));
     } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      newPosition = _moveFocus(_focusPosition!, const Offset(-1, 0));
+      newPosition = moveFocus(_focusPosition!, const Offset(-1, 0));
     } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      newPosition = _moveFocus(_focusPosition!, const Offset(1, 0));
+      newPosition = moveFocus(_focusPosition!, const Offset(1, 0));
     } else {
       return;
     }
@@ -151,13 +152,15 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   }
 
   /// Move focus in the specified direction.
-  Offset? _moveFocus(Offset current, Offset direction) {
+  @protected
+  Offset? moveFocus(Offset current, Offset direction) {
     // This should be implemented by subclasses based on their grid structure
     return null;
   }
 
   /// Perform hit testing to convert screen coordinates to grid coordinates.
-  Offset? _hitTest(Offset position) {
+  @protected
+  Offset? hitTest(Offset position) {
     // This should be implemented by subclasses
     return null;
   }
@@ -221,7 +224,7 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        final cellSize = _getCellSize(size);
+        final cellSize = getCellSize(size);
 
         return GestureDetector(
           onTapDown: (details) => onTap(details.localPosition),
@@ -263,7 +266,8 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   }
 
   /// Get the size of individual cells - to be implemented by subclasses.
-  Size _getCellSize(Size totalSize) {
+  @protected
+  Size getCellSize(Size totalSize) {
     // This should be implemented by subclasses
     return Size.zero;
   }
