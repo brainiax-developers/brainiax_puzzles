@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -36,7 +36,6 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   late Paint _fixedCellBackgroundPaint;
   late Paint _hintPaint;
 
-      @override
   void initState() {
     super.initState();
     _setupAnimations();
@@ -130,6 +129,16 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
     }
   }
 
+  void _computeMetrics(Size size) {
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _gridSize,
+      columns: _gridSize,
+      padding: 16.0,
+      cellSpacing: 1.0,
+    );
+  }
+
   void _updateConflicts() {
     _conflictPositions.clear();
 
@@ -181,20 +190,24 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
     }
   }
 
-  Offset? _hitTest(Offset position) {
+  @override
+  Offset? hitTest(Offset position) {
     return PainterUtils.hitTestGrid(
       position: position,
       metrics: _gridMetrics,
     );
   }
 
-  Offset? _moveFocus(Offset current, Offset direction) {
+  @override
+  Offset? moveFocus(Offset current, Offset direction) {
     final newCol = (current.dx + direction.dx).clamp(0.0, (_gridSize - 1).toDouble());
     final newRow = (current.dy + direction.dy).clamp(0.0, (_gridSize - 1).toDouble());
     return Offset(newCol, newRow);
   }
 
-  Size _getCellSize(Size totalSize) {
+  @override
+  Size getCellSize(Size totalSize) {
+    _computeMetrics(totalSize);
     return _gridMetrics.cellSize;
   }
 
@@ -204,13 +217,7 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
     // Calculate grid metrics based on the actual allocated size, not the full screen.
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
-      rows: _gridSize,
-      columns: _gridSize,
-      padding: 16.0,
-      cellSpacing: 1.0,
-    );
+    _computeMetrics(size);
     return CustomPaint(
       painter: SudokuContentPainter(
         board: _board,
@@ -221,6 +228,7 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
         fixedCellBackgroundPaint: _fixedCellBackgroundPaint,
         conflictPaint: _conflictPaint,
         conflictPositions: _conflictPositions,
+        notes: widget.notes,
         theme: Theme.of(context),
       ),
       size: size,
@@ -230,13 +238,7 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
     // Ensure grid metrics are initialized before painting background
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
-      rows: _gridSize,
-      columns: _gridSize,
-      padding: 16.0,
-      cellSpacing: 1.0,
-    );
+    _computeMetrics(size);
     return CustomPaint(
       painter: PuzzleGridPainter(
         metrics: _gridMetrics,
@@ -255,9 +257,6 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
     final value = _board.cellAt(row, col);
     final isFixed = _board.isFixed(row, col);
     final hasConflict = _conflictPositions.contains(position);
-
-    if (value == 0) return const SizedBox.shrink();
-
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -429,7 +428,10 @@ class SudokuRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.notes = const <int, Set<int>>{},
   });
+
+  final Map<int, Set<int>> notes;
 
   @override
   State<SudokuRendererWidget> createState() => SudokuRenderer();
@@ -446,6 +448,7 @@ class SudokuContentPainter extends CustomPainter {
     required this.fixedCellBackgroundPaint,
     required this.conflictPaint,
     required this.conflictPositions,
+    required this.notes,
     required this.theme,
   });
 
@@ -457,6 +460,7 @@ class SudokuContentPainter extends CustomPainter {
   final Paint fixedCellBackgroundPaint;
   final Paint conflictPaint;
   final Set<Offset> conflictPositions;
+  final Map<int, Set<int>> notes;
   final ThemeData theme;
 
   @override
@@ -491,7 +495,7 @@ class SudokuContentPainter extends CustomPainter {
           );
         }
 
-        // Paint cell value
+        // Paint cell value or notes
         final value = board.cellAt(row, col);
         if (value != 0) {
           final textStyle = theme.textTheme.headlineSmall?.copyWith(
@@ -509,6 +513,42 @@ class SudokuContentPainter extends CustomPainter {
             text: value.toString(),
             textStyle: textStyle ?? const TextStyle(),
           );
+        } else {
+          final Set<int> cellNotes = notes[row * SudokuBoard.side + col] ?? const <int>{};
+          if (cellNotes.isNotEmpty) {
+            const int noteGridSize = 3;
+            final List<int> sortedNotes = cellNotes.toList()..sort();
+            final double noteWidth = cellRect.width / noteGridSize;
+            final double noteHeight = cellRect.height / noteGridSize;
+            final TextStyle noteStyle = theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w500,
+                ) ??
+                TextStyle(
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                  fontSize: cellRect.height / 5.5,
+                );
+
+            for (final int note in sortedNotes) {
+              if (note < 1 || note > SudokuBoard.side) {
+                continue;
+              }
+              final int noteRow = (note - 1) ~/ noteGridSize;
+              final int noteCol = (note - 1) % noteGridSize;
+              final Rect noteRect = Rect.fromLTWH(
+                cellRect.left + (noteCol * noteWidth),
+                cellRect.top + (noteRow * noteHeight),
+                noteWidth,
+                noteHeight,
+              );
+              PainterUtils.paintCellText(
+                canvas: canvas,
+                cellRect: noteRect,
+                text: note.toString(),
+                textStyle: noteStyle,
+              );
+            }
+          }
         }
       }
     }
@@ -517,9 +557,25 @@ class SudokuContentPainter extends CustomPainter {
   @override
   bool shouldRepaint(SudokuContentPainter oldDelegate) {
     return board != oldDelegate.board ||
-           metrics != oldDelegate.metrics ||
-           conflictPositions != oldDelegate.conflictPositions ||
-           theme != oldDelegate.theme;
+        metrics != oldDelegate.metrics ||
+        conflictPositions != oldDelegate.conflictPositions ||
+        theme != oldDelegate.theme ||
+        !_notesEqual(notes, oldDelegate.notes);
+  }
+
+  bool _notesEqual(Map<int, Set<int>> a, Map<int, Set<int>> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final MapEntry<int, Set<int>> entry in a.entries) {
+      final Set<int>? other = b[entry.key];
+      if (other == null || entry.value.length != other.length) {
+        return false;
+      }
+      if (!setEquals(entry.value, other)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 

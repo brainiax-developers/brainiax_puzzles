@@ -55,6 +55,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   // Remember the last logged puzzle so we don't spam logs on every rebuild
   core.GeneratedPuzzle? _lastLoggedPuzzle;
+  Offset? _selectedSudokuCell;
+  bool _isNoteMode = false;
+  final Map<int, Set<int>> _sudokuNotes = <int, Set<int>>{};
 
   @override
   void initState() {
@@ -344,45 +347,144 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
   }
 
+  void _showSnackBar(String message, {Color? backgroundColor}) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _toggleNote(core.SudokuBoard board, {required int row, required int col, required int digit}) {
+    final int index = row * core.SudokuBoard.side + col;
+    setState(() {
+      final Set<int> notes = Set<int>.from(_sudokuNotes[index] ?? const <int>{});
+      if (notes.contains(digit)) {
+        notes.remove(digit);
+      } else {
+        notes.add(digit);
+      }
+      if (notes.isEmpty) {
+        _sudokuNotes.remove(index);
+      } else {
+        _sudokuNotes[index] = notes;
+      }
+    });
+  }
+
   // Sudoku interaction handlers
   void _onCellSelected(Offset position) {
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // TODO: Update UI to show selected cell
+    setState(() {
+      _selectedSudokuCell = position;
+    });
   }
 
   void _onMove(dynamic move) {
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // Make the move through the game state provider
-    ref.read(gameStateProvider.notifier).makeMove(move);
-    setState(() {
-      _movesCount++;
+    if (_isNoteMode && move is core.SudokuMove && move.digit != 0) {
+      final gameState = ref.read(gameStateProvider);
+      final board = gameState?.puzzle.state;
+      if (board is core.SudokuBoard) {
+        if (board.isFixed(move.row, move.col)) {
+          _onError('Cannot change a fixed clue');
+        } else {
+          _toggleNote(board, row: move.row, col: move.col, digit: move.digit);
+        }
+        return;
+      }
+    }
+    final notifier = ref.read(gameStateProvider.notifier);
+    notifier.makeMove(move).then((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _movesCount++;
+        if (move is core.SudokuMove && move.digit != 0) {
+          _sudokuNotes.remove(move.row * core.SudokuBoard.side + move.col);
+        }
+      });
+    }).catchError((Object error) {
+      final String message = error.toString().startsWith('Exception: ')
+          ? error.toString().substring('Exception: '.length)
+          : error.toString();
+      _onError(message);
     });
   }
 
   void _onError(String error) {
     _triggerHapticFeedback(HapticFeedbackType.heavy);
-    // TODO: Show error feedback to user
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
-    );
+    _showSnackBar(error, backgroundColor: Theme.of(context).colorScheme.error);
   }
 
   void _onDigitPressed(int digit) {
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // This will be handled by the SudokuRenderer's onDigitInput method
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.SudokuBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell;
+    if (selection == null) {
+      _showSnackBar('Select a cell to place $digit');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+    final core.SudokuBoard board = gameState.puzzle.state as core.SudokuBoard;
+    if (board.isFixed(row, col)) {
+      _onError('Cannot change a fixed clue');
+      return;
+    }
+
+    if (_isNoteMode) {
+      _toggleNote(board, row: row, col: col, digit: digit);
+      return;
+    }
+
+    final core.SudokuMove move = core.SudokuMove(row: row, col: col, digit: digit);
+    _onMove(move);
   }
 
   void _onClearPressed() {
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // This will be handled by the SudokuRenderer's onClearCell method
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.SudokuBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell;
+    if (selection == null) {
+      _showSnackBar('Select a cell to clear');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+    final core.SudokuBoard board = gameState.puzzle.state as core.SudokuBoard;
+    if (board.isFixed(row, col)) {
+      _onError('Cannot change a fixed clue');
+      return;
+    }
+    if (_isNoteMode) {
+      setState(() {
+        _sudokuNotes.remove(row * core.SudokuBoard.side + col);
+      });
+      return;
+    }
+
+    final core.SudokuMove move = core.SudokuMove(row: row, col: col, digit: 0);
+    _onMove(move);
   }
 
   void _onNotePressed() {
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // TODO: Toggle note mode
+    setState(() {
+      _isNoteMode = !_isNoteMode;
+    });
   }
 
   String _formatTime(Duration duration) {
@@ -411,6 +513,16 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (!_listenersRegistered) {
       _listenersRegistered = true;
       ref.listen<GameState?>(gameStateProvider, (prev, next) {
+        if (next != null) {
+          final String? previousSeed = prev?.puzzle.meta.seedStr;
+          final String currentSeed = next.puzzle.meta.seedStr;
+          if (previousSeed != currentSeed && mounted) {
+            setState(() {
+              _sudokuNotes.clear();
+              _selectedSudokuCell = null;
+            });
+          }
+        }
         final bool wasSolved = prev?.isSolved ?? false;
         final bool isSolved = next?.isSolved ?? false;
         if (!wasSolved && isSolved && next != null) {
@@ -792,7 +904,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   onDigitPressed: _onDigitPressed,
                   onClearPressed: _onClearPressed,
                   onNotePressed: _onNotePressed,
-                  isNoteMode: false, // TODO: Add note mode state
+                  isNoteMode: _isNoteMode,
                 ),
               ),
             ),
@@ -803,6 +915,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   Widget _buildSudokuGrid(core.GeneratedPuzzle puzzle) {
+    final Map<int, Set<int>> noteSnapshot = _sudokuNotes.map(
+      (int key, Set<int> value) => MapEntry(key, Set<int>.unmodifiable(value)),
+    );
     return SudokuRendererWidget(
       puzzle: puzzle,
       gameState: ref.watch(gameStateProvider),
@@ -811,6 +926,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       onError: _onError,
       hintCells: _hintPositions,
       hintAnimationValue: _hintAnimationValue,
+      notes: Map.unmodifiable(noteSnapshot),
     );
   }
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../generators/generator.dart';
 import '../solver/solver.dart';
 import '../util/determinism.dart';
@@ -6,6 +8,22 @@ import 'sudoku_board.dart';
 import 'sudoku_solver.dart';
 
 const int _generatorSolverSalt = 0x7dce3a5f4b2916c3;
+
+class _ClueRange {
+  const _ClueRange({required this.minClues, required this.maxClues});
+
+  final int minClues;
+  final int maxClues;
+}
+
+const Map<String, _ClueRange> _difficultyClueRanges = <String, _ClueRange>{
+  'easy': _ClueRange(minClues: 38, maxClues: 49),
+  'medium': _ClueRange(minClues: 32, maxClues: 37),
+  'hard': _ClueRange(minClues: 27, maxClues: 31),
+  'expert': _ClueRange(minClues: 24, maxClues: 26),
+};
+
+const _ClueRange _defaultClueRange = _ClueRange(minClues: 27, maxClues: 36);
 
 class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
   const SudokuGenerator({this.minClues = 26});
@@ -20,6 +38,25 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
 
     final List<int> puzzleCells = List<int>.from(solutionCells);
     final List<bool> fixed = List<bool>.filled(SudokuBoard.cellCount, true);
+
+    final String requestedLevel = context.difficulty.level.toLowerCase();
+    final _ClueRange clueRange = _difficultyClueRanges[requestedLevel] ?? _defaultClueRange;
+
+    int targetMinClues = clueRange.minClues;
+    int targetMaxClues = clueRange.maxClues;
+
+    if (targetMaxClues < targetMinClues) {
+      targetMaxClues = targetMinClues;
+    }
+
+    final double? clueHint = context.difficulty.hint;
+    if (clueHint != null && clueHint.isFinite) {
+      final int hintedClues = clueHint.clamp(17, SudokuBoard.cellCount).round();
+      targetMinClues = hintedClues.clamp(minClues, SudokuBoard.cellCount);
+      targetMaxClues = math.min(SudokuBoard.cellCount, math.max(targetMinClues, hintedClues + 3));
+    }
+
+    final int enforcedMinClues = math.max(minClues, targetMinClues);
 
     final List<int> removalOrder = List<int>.generate(SudokuBoard.cellCount, (int i) => i);
     context.rng.shuffle(removalOrder);
@@ -36,7 +73,7 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
       puzzleCells[index] = 0;
       fixed[index] = false;
 
-      if (_countClues(puzzleCells) < minClues) {
+      if (_countClues(puzzleCells) < enforcedMinClues) {
         puzzleCells[index] = backup;
         fixed[index] = true;
         continue;
@@ -56,6 +93,10 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
         fixed[index] = true;
       } else {
         removals++;
+        final int currentClues = _countClues(puzzleCells);
+        if (currentClues <= targetMinClues) {
+          break;
+        }
       }
     }
 
@@ -68,6 +109,8 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
       'removals': removals,
       'uniquenessChecks': uniquenessChecks,
       'clues': puzzle.clueCount,
+      'targetMinClues': targetMinClues,
+      'targetMaxClues': targetMaxClues,
       'solutionSignature': solutionCells.join(),
     };
 
