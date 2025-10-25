@@ -1,9 +1,114 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 
+// Spacing scale ThemeExtension for consistent paddings and gaps across the app.
+@immutable
+class AppSpacing extends ThemeExtension<AppSpacing> {
+  final double xs; // 4
+  final double s; // 8
+  final double m; // 12
+  final double l; // 16
+  final double xl; // 24
+  final double xxl; // 32
+
+  const AppSpacing({
+    this.xs = 4,
+    this.s = 8,
+    this.m = 12,
+    this.l = 16,
+    this.xl = 24,
+    this.xxl = 32,
+  });
+
+  static const standard = AppSpacing();
+
+  @override
+  AppSpacing copyWith({double? xs, double? s, double? m, double? l, double? xl, double? xxl}) {
+    return AppSpacing(
+      xs: xs ?? this.xs,
+      s: s ?? this.s,
+      m: m ?? this.m,
+      l: l ?? this.l,
+      xl: xl ?? this.xl,
+      xxl: xxl ?? this.xxl,
+    );
+  }
+
+  @override
+  AppSpacing lerp(ThemeExtension<AppSpacing>? other, double t) {
+    if (other is! AppSpacing) return this;
+    double _lerp(double a, double b) => a + (b - a) * t;
+    return AppSpacing(
+      xs: _lerp(xs, other.xs),
+      s: _lerp(s, other.s),
+      m: _lerp(m, other.m),
+      l: _lerp(l, other.l),
+      xl: _lerp(xl, other.xl),
+      xxl: _lerp(xxl, other.xxl),
+    );
+  }
+}
+
 enum Contrast { normal, high }
 
 class AppTheme {
+  static ThemeData _applyCommonTweaks(ThemeData baseTheme) {
+    final withTextContrast = baseTheme.copyWith(
+      textTheme: baseTheme.textTheme.apply(
+        bodyColor: baseTheme.colorScheme.onSurface,
+        displayColor: baseTheme.colorScheme.onSurface,
+      ),
+    );
+
+    return withTextContrast.copyWith(
+      materialTapTargetSize: MaterialTapTargetSize.padded, // 48px min
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        elevation: 2,
+        insetPadding: const EdgeInsets.all(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(64, 48),
+          textStyle: withTextContrast.textTheme.labelLarge,
+          disabledForegroundColor: withTextContrast.colorScheme.onSurface.withOpacity(0.38),
+          disabledBackgroundColor: withTextContrast.colorScheme.onSurface.withOpacity(0.12),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(64, 48),
+          textStyle: withTextContrast.textTheme.labelLarge,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          tapTargetSize: MaterialTapTargetSize.padded,
+          minimumSize: MaterialStateProperty.all(const Size.square(48)),
+          padding: MaterialStateProperty.all(const EdgeInsets.all(12)),
+        ),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        isDense: false,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        border: OutlineInputBorder(),
+      ),
+      listTileTheme: const ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        horizontalTitleGap: 12,
+        minVerticalPadding: 8,
+        minLeadingWidth: 24,
+      ),
+      extensions: const <ThemeExtension<dynamic>>[
+        AppSpacing.standard,
+      ],
+    );
+  }
+
   static ThemeData light([Contrast c = Contrast.normal]) {
     final baseTheme = ThemeData(
       brightness: Brightness.light,
@@ -13,7 +118,7 @@ class AppTheme {
     );
 
     if (c == Contrast.high) {
-      return baseTheme.copyWith(
+      final high = baseTheme.copyWith(
         // Enhanced contrast colors
         colorScheme: baseTheme.colorScheme.copyWith(
           primary: const Color(0xFF000080), // Darker blue
@@ -99,9 +204,9 @@ class AppTheme {
           ),
         ),
       );
+      return _applyCommonTweaks(high);
     }
-
-    return baseTheme;
+    return _applyCommonTweaks(baseTheme);
   }
 
   static ThemeData dark([Contrast c = Contrast.normal]) {
@@ -113,7 +218,7 @@ class AppTheme {
     );
 
     if (c == Contrast.high) {
-      return baseTheme.copyWith(
+      final high = baseTheme.copyWith(
         // Enhanced contrast colors for dark theme
         colorScheme: baseTheme.colorScheme.copyWith(
           primary: const Color(0xFF4FC3F7), // Bright cyan
@@ -199,9 +304,9 @@ class AppTheme {
           ),
         ),
       );
+      return _applyCommonTweaks(high);
     }
-
-    return baseTheme;
+    return _applyCommonTweaks(baseTheme);
   }
 }
 
@@ -214,7 +319,7 @@ class AppThemeData {
     if (puzzleType == null) return base;
 
     // Choose an accent color per puzzle type.
-    Color seedColor;
+    Color seedColor = Colors.indigo;
     switch (puzzleType) {
       case PuzzleType.sudokuClassic:
         seedColor = Colors.teal;
@@ -237,8 +342,6 @@ class AppThemeData {
       case PuzzleType.takuzuBinary:
         seedColor = Colors.blueGrey;
         break;
-      default:
-        seedColor = Colors.indigo;
     }
 
     // Return a copy with a colorScheme seeded from the chosen color.

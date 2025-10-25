@@ -85,6 +85,14 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
+    // Initialize metrics before painting background
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _board.size,
+      columns: _board.size,
+      padding: 16,
+      cellSpacing: 1,
+    );
     return CustomPaint(
       painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
       size: size,

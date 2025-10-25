@@ -5,7 +5,6 @@ import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/services/puzzle_preload_service.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
@@ -54,20 +53,7 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   }
 
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
-    // First try to use preloaded puzzle if available
-    try {
-      final preload = ref.read(puzzlePreloadProvider);
-      final cached = preload.getCached(puzzleType, difficulty);
-      if (cached != null) {
-        // Navigate immediately with the cached puzzle to avoid waiting for generation
-        context.push('/play/${puzzleType.key}/random', extra: cached);
-        return;
-      }
-    } catch (e) {
-      // If preload service isn't available or something goes wrong, fall back to modal
-    }
-
-    // Fallback: show generation modal as before
+    // Generate on-demand with a modal progress dialog
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing by tapping outside
@@ -79,7 +65,6 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
           Navigator.of(context).pop();
 
           // Navigate to play screen with the generated puzzle
-          // TODO: Pass the puzzle instance to the play screen
           context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
         },
         onCancel: () {
@@ -159,44 +144,15 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   }
 
   Widget _buildEmptyState() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.extension_outlined,
-              size: 64,
-              color: colorScheme.onSurface.withOpacity(0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No Puzzles Available',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No puzzle engines are currently registered. Please check your configuration.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadPuzzles,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
+    return AppEmptyState(
+      icon: Icons.extension_outlined,
+      title: 'No Puzzles Available',
+      message:
+          'No puzzle engines are currently registered. Please check your configuration.',
+      action: ElevatedButton.icon(
+        onPressed: _loadPuzzles,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Retry'),
       ),
     );
   }

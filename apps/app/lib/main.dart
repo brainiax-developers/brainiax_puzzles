@@ -8,7 +8,8 @@ import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
 import 'shared/providers/simple_theme_provider.dart';
-import 'shared/services/puzzle_preload_service.dart';
+import 'shared/services/snack_bar_service.dart';
+// Preloading disabled: puzzles will be generated on demand only
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,26 +71,18 @@ class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
   @override
   void initState() {
     super.initState();
-
-    // Schedule preload after first frame to avoid blocking startup.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        // Start preloading in background; don't await so the UI remains responsive.
-        ref.read(puzzlePreloadProvider).preloadAll();
-      } catch (e) {
-        if (kDebugMode) print('⚠️ Puzzle preload failed to start: $e');
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final currentTheme = ref.watch(currentThemeProvider);
     final themeStateAsync = ref.watch(themeStateProvider);
+    final snackBar = ref.watch(snackBarServiceProvider);
 
     return MaterialApp.router(
       title: 'Brainiax Puzzles',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: snackBar.scaffoldMessengerKey,
 
       // Use dynamic theme from provider
       theme: themeStateAsync.when(

@@ -91,6 +91,7 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
 
   @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
+    // Metrics are initialized in buildGridBackground; compute here too to stay in sync if needed
     _gridMetrics = PainterUtils.calculateGridMetrics(
       availableSize: size,
       rows: _board.height,
@@ -113,6 +114,14 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
+    // Initialize metrics first so background paints with correct layout
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _board.height,
+      columns: _board.width,
+      padding: 16,
+      cellSpacing: 1,
+    );
     return CustomPaint(
       painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
       size: size,

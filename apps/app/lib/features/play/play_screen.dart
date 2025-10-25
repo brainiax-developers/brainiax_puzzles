@@ -11,7 +11,7 @@ import '../../shared/providers/game_state_provider.dart';
 import '../../shared/providers/engine_provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/haptics_provider.dart';
-import '../../shared/services/puzzle_preload_service.dart';
+import '../../shared/services/puzzle_registry.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
@@ -93,24 +93,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         }
 
         if (widget.mode == PuzzleMode.random && widget.puzzleInstance == null && currentState == null && engineAvailable) {
-          // Try to use a preloaded puzzle (fast path) if available
-          try {
-            final preload = ref.read(puzzlePreloadProvider);
-            final cached = preload.getCached(widget.puzzleType, widget.difficulty ?? 'Medium');
-            if (cached != null) {
-              await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
-                engineId: widget.puzzleType.key,
-                seed: cached.meta.seedStr,
-                difficulty: cached.meta.difficulty.level,
-                size: cached.meta.size.id,
-                puzzle: cached,
-              );
-              _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
-              return;
-            }
-          } catch (e) {
-            // ignore preload failures and fall back to on-demand generation
-          }
           // Build a deterministic-ish random seed string and sensible defaults
           final seed = 'random:${widget.puzzleType.key}:${DateTime.now().millisecondsSinceEpoch}';
           const difficulty = 'medium';
@@ -162,21 +144,28 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   // Provide default size strings for different puzzle types used when
   // launching a random puzzle without explicit size parameters.
   String _defaultSizeForPuzzleType(PuzzleType type) {
+    final registry = PuzzleRegistry();
+    registry.initialize();
+    final meta = registry.getMetadata(type);
+    if (meta != null && meta.supportedSizes.isNotEmpty) {
+      return meta.supportedSizes.first;
+    }
+    // Fallbacks aligned with PuzzleGenerationController
     switch (type) {
       case PuzzleType.sudokuClassic:
         return '9x9';
       case PuzzleType.nonogramMono:
         return '10x10';
       case PuzzleType.kakuroClassic:
-        return '9x9';
+        return '8x8';
       case PuzzleType.slitherlinkLoop:
-        return '10x10';
+        return '7x7';
       case PuzzleType.mathdokuClassic:
         return '6x6';
       case PuzzleType.futoshikiClassic:
         return '6x6';
       case PuzzleType.takuzuBinary:
-        return '10x10';
+        return '8x8';
     }
   }
 

@@ -198,21 +198,19 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
     return _gridMetrics.cellSize;
   }
 
+  // Note: Do not override build(); base class handles layout. Compute metrics
+  // using the exact size provided to the content/background builders.
+
   @override
-  Widget build(BuildContext context) {
-    // Initialize grid metrics here, where we have context and constraints
+  Widget buildPuzzleContent(BuildContext context, Size size) {
+    // Calculate grid metrics based on the actual allocated size, not the full screen.
     _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: MediaQuery.of(context).size,
+      availableSize: size,
       rows: _gridSize,
       columns: _gridSize,
       padding: 16.0,
       cellSpacing: 1.0,
     );
-    return super.build(context);
-  }
-
-  @override
-  Widget buildPuzzleContent(BuildContext context, Size size) {
     return CustomPaint(
       painter: SudokuContentPainter(
         board: _board,
@@ -231,6 +229,14 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
+    // Ensure grid metrics are initialized before painting background
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _gridSize,
+      columns: _gridSize,
+      padding: 16.0,
+      cellSpacing: 1.0,
+    );
     return CustomPaint(
       painter: PuzzleGridPainter(
         metrics: _gridMetrics,

@@ -49,24 +49,43 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
     final resolvedSize = size != null ? _parseSize(size) : _defaultSizeFor(puzzleType);
     final difficultyScore = _parseDifficulty(difficulty);
 
     final token = ++_generationToken;
 
     try {
-      final generated = engine.generate(
-        seedStr: resolvedSeed,
-        seed64: resolvedSeed.hashCode,
-        size: resolvedSize,
-        difficulty: difficultyScore,
-      );
-      
-      if (token == _generationToken) {
-        state = AsyncValue.data(generated);
+      // Some engines (e.g., Kakuro) may fail for specific seeds; retry with fresh seeds a few times
+      const int maxAttempts = 3;
+      Object? lastError;
+      StackTrace? lastStack;
+      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        final attemptSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
+        try {
+          final generated = engine.generate(
+            seedStr: attemptSeed,
+            seed64: attemptSeed.hashCode,
+            size: resolvedSize,
+            difficulty: difficultyScore,
+          );
+          if (token == _generationToken) {
+            state = AsyncValue.data(generated);
+          }
+          return generated;
+        } catch (e, st) {
+          lastError = e;
+          lastStack = st;
+          // Try next attempt with a new seed
+          if (attempt == maxAttempts) break;
+          // brief microtask yield to keep UI responsive
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
       }
-      return generated;
+      // If we get here, all attempts failed
+      if (token == _generationToken) {
+        state = AsyncValue.error(lastError ?? StateError('Generation failed'), lastStack ?? StackTrace.current);
+      }
+      throw lastError ?? StateError('Generation failed');
     } catch (err, stackTrace) {
       if (token == _generationToken) {
         state = AsyncValue.error(err, stackTrace);

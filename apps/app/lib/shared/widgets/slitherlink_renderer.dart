@@ -124,6 +124,14 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
+    // Initialize metrics first for background painter
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _board.height,
+      columns: _board.width,
+      padding: 16,
+      cellSpacing: 1,
+    );
     return CustomPaint(
       painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
       size: size,

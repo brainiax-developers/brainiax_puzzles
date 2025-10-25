@@ -124,6 +124,14 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
+    // Initialize metrics before background paint to avoid late-init error
+    _gridMetrics = PainterUtils.calculateGridMetrics(
+      availableSize: size,
+      rows: _board.height,
+      columns: _board.width,
+      padding: 16,
+      cellSpacing: 1,
+    );
     return CustomPaint(
       painter: PuzzleGridPainter(
         metrics: _gridMetrics,

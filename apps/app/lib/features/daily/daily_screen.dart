@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/models/puzzle_type.dart';
+import '../../shared/widgets/async_value_view.dart';
 import 'daily_providers.dart';
 import 'daily_seed_generator.dart';
 
@@ -17,15 +18,13 @@ class DailyScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Daily Challenge')),
-      body: puzzleAsync.when(
+      body: AsyncValueView(
+        value: puzzleAsync,
+        onRetry: () => ref.refresh(dailyPuzzleProvider(puzzleType.key)),
         data: (puzzle) => Center(
           child: Text(
             'Type=${puzzleType.key} • ${todaysSeed.formattedDate} • seed64=${puzzle.meta.seed64}',
           ),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-          child: Text('Failed to load puzzle: $error'),
         ),
       ),
     );
