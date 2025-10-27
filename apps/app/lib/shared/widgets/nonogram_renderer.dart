@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -72,24 +74,33 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   }
 
   void _updateBoard() {
-    if (widget.puzzle?.state is NonogramBoard) {
-      _board = widget.puzzle!.state as NonogramBoard;
-    } else {
-      // Fallback empty board if state is not available yet
-      _board = NonogramBoard.empty(
-        width: 5,
-        height: 5,
-        rowClues: List.generate(5, (_) => <int>[]),
-        columnClues: List.generate(5, (_) => <int>[]),
-      );
-    }
+    final NonogramBoard? boardState =
+        widget.puzzle?.state is NonogramBoard ? widget.puzzle!.state as NonogramBoard : null;
+    _board = boardState ?? _emptyBoard();
+  }
+
+  NonogramBoard _emptyBoard() {
+    return NonogramBoard.empty(
+      width: 5,
+      height: 5,
+      rowClues: List.generate(5, (_) => <int>[]),
+      columnClues: List.generate(5, (_) => <int>[]),
+    );
   }
 
   @override
   void didUpdateWidget(covariant NonogramRendererWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.puzzle != oldWidget.puzzle) {
-      _updateBoard();
+    final NonogramBoard? nextBoard =
+        widget.puzzle?.state is NonogramBoard ? widget.puzzle!.state as NonogramBoard : null;
+    final NonogramBoard? previousBoard =
+        oldWidget.puzzle?.state is NonogramBoard ? oldWidget.puzzle!.state as NonogramBoard : null;
+    if (nextBoard != null) {
+      if (_board != nextBoard) {
+        _board = nextBoard;
+      }
+    } else if (previousBoard != null) {
+      _board = _emptyBoard();
     }
   }
 
@@ -97,18 +108,107 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     return PainterUtils.hitTestGrid(position: position, metrics: _gridMetrics);
   }
 
+  _NonogramLayout _calculateLayout(Size size) {
+    const double basePadding = 16.0;
+    const double clueSpacing = 8.0;
+    const double cellSpacing = 1.0;
+
+    final ThemeData theme = Theme.of(context);
+    final TextStyle baseStyle = theme.textTheme.bodySmall ??
+        theme.textTheme.bodyMedium ??
+        const TextStyle(fontSize: 12);
+    final TextStyle clueStyle = baseStyle.copyWith(
+      color: theme.colorScheme.onSurface.withOpacity(0.8),
+    );
+
+    double rowClueWidth = 0;
+    final TextPainter rowPainter = TextPainter(
+      textAlign: TextAlign.right,
+      textDirection: TextDirection.ltr,
+    );
+    for (int row = 0; row < _board.height; row++) {
+      final List<int> clue =
+          row < _board.rowClues.length ? _board.rowClues[row] : const <int>[];
+      final String text = clue.isEmpty ? '0' : clue.join(' ');
+      rowPainter.text = TextSpan(text: text, style: clueStyle);
+      rowPainter.layout();
+      rowClueWidth = math.max(rowClueWidth, rowPainter.width);
+    }
+    if (rowClueWidth == 0) {
+      rowClueWidth = (clueStyle.fontSize ?? 12) * 1.2;
+    }
+
+    int maxColumnLines = 0;
+    for (int col = 0; col < _board.width; col++) {
+      final List<int> clue =
+          col < _board.columnClues.length ? _board.columnClues[col] : const <int>[];
+      final int lines = clue.isEmpty ? 1 : clue.length;
+      if (lines > maxColumnLines) {
+        maxColumnLines = lines;
+      }
+    }
+    if (maxColumnLines == 0) {
+      maxColumnLines = 1;
+    }
+
+    final TextPainter columnPainter = TextPainter(
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+      text: TextSpan(text: '88', style: clueStyle),
+    )..layout();
+    final double lineHeight = columnPainter.height;
+    final double columnClueHeight =
+        (lineHeight * maxColumnLines) + clueSpacing * (maxColumnLines - 1);
+
+    final double leftMargin = basePadding + rowClueWidth + clueSpacing;
+    final double topMargin = basePadding + columnClueHeight + clueSpacing;
+    final double rightMargin = basePadding;
+    final double bottomMargin = basePadding;
+
+    final double usableWidth = math.max(0, size.width - leftMargin - rightMargin);
+    final double usableHeight = math.max(0, size.height - topMargin - bottomMargin);
+
+    final double cellWidth = _board.width > 0
+        ? (usableWidth - cellSpacing * (_board.width - 1)) / _board.width
+        : 0;
+    final double cellHeight = _board.height > 0
+        ? (usableHeight - cellSpacing * (_board.height - 1)) / _board.height
+        : 0;
+    final double cellSize = math.max(0, math.min(cellWidth, cellHeight));
+
+    final double gridWidth = cellSize * _board.width +
+        cellSpacing * (_board.width > 0 ? _board.width - 1 : 0);
+    final double gridHeight = cellSize * _board.height +
+        cellSpacing * (_board.height > 0 ? _board.height - 1 : 0);
+
+    final double offsetX = leftMargin + math.max(0, (usableWidth - gridWidth) / 2);
+    final double offsetY = topMargin + math.max(0, (usableHeight - gridHeight) / 2);
+
+    final GridMetrics metrics = GridMetrics(
+      cellSize: Size(cellSize, cellSize),
+      gridSize: Size(gridWidth, gridHeight),
+      gridOffset: Offset(offsetX, offsetY),
+      padding: basePadding,
+      cellSpacing: cellSpacing,
+      rows: _board.height,
+      columns: _board.width,
+    );
+
+    return _NonogramLayout(
+      metrics: metrics,
+      rowClueWidth: rowClueWidth,
+      clueSpacing: clueSpacing,
+      clueTextStyle: clueStyle,
+    );
+  }
+
   // Note: keyboard arrow navigation is handled by the base class; for now we
   // rely on tap interaction for selection in Nonogram.
 
   @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
-      rows: _board.height,
-      columns: _board.width,
-      padding: 16,
-      cellSpacing: 1,
-    );
+    final _NonogramLayout layout = _calculateLayout(size);
+    _gridMetrics = layout.metrics;
 
     return CustomPaint(
       painter: _NonogramContentPainter(
@@ -116,7 +216,9 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
         metrics: _gridMetrics,
         filledPaint: _filledPaint,
         emptyPaint: _emptyPaint,
-        theme: Theme.of(context),
+        clueTextStyle: layout.clueTextStyle,
+        rowClueWidth: layout.rowClueWidth,
+        clueSpacing: layout.clueSpacing,
       ),
       size: size,
     );
@@ -124,14 +226,8 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
-    // Initialize metrics before background paint to avoid late-init error
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
-      rows: _board.height,
-      columns: _board.width,
-      padding: 16,
-      cellSpacing: 1,
-    );
+    final _NonogramLayout layout = _calculateLayout(size);
+    _gridMetrics = layout.metrics;
     return CustomPaint(
       painter: PuzzleGridPainter(
         metrics: _gridMetrics,
@@ -212,10 +308,7 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
       next = null;
     }
     widget.onMove?.call(NonogramMove(row: row, col: col, value: next));
-    setState(() {
-      // local selection feedback
-      super.onTap(position);
-    });
+    super.onTap(position);
   }
 
   @override
@@ -267,17 +360,67 @@ class _NonogramContentPainter extends CustomPainter {
     required this.metrics,
     required this.filledPaint,
     required this.emptyPaint,
-    required this.theme,
+    required this.clueTextStyle,
+    required this.rowClueWidth,
+    required this.clueSpacing,
   });
 
   final NonogramBoard board;
   final GridMetrics metrics;
   final Paint filledPaint;
   final Paint emptyPaint;
-  final ThemeData theme;
+  final TextStyle clueTextStyle;
+  final double rowClueWidth;
+  final double clueSpacing;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final TextPainter rowPainter = TextPainter(
+      textAlign: TextAlign.right,
+      textDirection: TextDirection.ltr,
+    );
+    final TextPainter columnPainter = TextPainter(
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    );
+
+    for (int row = 0; row < board.height; row++) {
+      final List<int> rowClue = row < board.rowClues.length ? board.rowClues[row] : const <int>[];
+      final String clueText = rowClue.isEmpty ? '0' : rowClue.join(' ');
+      rowPainter.text = TextSpan(text: clueText, style: clueTextStyle);
+      rowPainter.layout();
+      final Rect cellRect = PainterUtils.getCellRect(
+        gridPosition: Offset(0, row.toDouble()),
+        metrics: metrics,
+      );
+      final double clueRight = metrics.gridOffset.dx - clueSpacing;
+      final double clueLeft = clueRight - rowClueWidth;
+      final double dx = clueLeft + (rowClueWidth - rowPainter.width);
+      final double dy = cellRect.center.dy - rowPainter.height / 2;
+      rowPainter.paint(canvas, Offset(dx, dy));
+    }
+
+    final double columnBaseline = metrics.gridOffset.dy - clueSpacing;
+    for (int col = 0; col < board.width; col++) {
+      final List<int> columnClue =
+          col < board.columnClues.length ? board.columnClues[col] : const <int>[];
+      final List<int> clues = columnClue.isEmpty ? const <int>[0] : columnClue;
+      double y = columnBaseline;
+      for (int i = clues.length - 1; i >= 0; i--) {
+        final String clueText = clues[i].toString();
+        columnPainter.text = TextSpan(text: clueText, style: clueTextStyle);
+        columnPainter.layout();
+        y -= columnPainter.height;
+        final Rect cellRect = PainterUtils.getCellRect(
+          gridPosition: Offset(col.toDouble(), 0),
+          metrics: metrics,
+        );
+        final double dx = cellRect.center.dx - columnPainter.width / 2;
+        columnPainter.paint(canvas, Offset(dx, y));
+        y -= clueSpacing;
+      }
+    }
+
     for (int row = 0; row < board.height; row++) {
       for (int col = 0; col < board.width; col++) {
         final rect = PainterUtils.getCellRect(
@@ -303,12 +446,17 @@ class _NonogramContentPainter extends CustomPainter {
         }
       }
     }
-    // Optional TODO: render clues around grid margins (future enhancement)
   }
 
   @override
   bool shouldRepaint(covariant _NonogramContentPainter oldDelegate) {
-    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme;
+    return oldDelegate.board != board ||
+        oldDelegate.metrics != metrics ||
+        oldDelegate.filledPaint != filledPaint ||
+        oldDelegate.emptyPaint != emptyPaint ||
+        oldDelegate.clueTextStyle != clueTextStyle ||
+        oldDelegate.rowClueWidth != rowClueWidth ||
+        oldDelegate.clueSpacing != clueSpacing;
   }
 }
 
@@ -318,6 +466,20 @@ extension on NonogramMove {
         col: col ?? this.col,
         value: value ?? this.value,
       );
+}
+
+class _NonogramLayout {
+  const _NonogramLayout({
+    required this.metrics,
+    required this.rowClueWidth,
+    required this.clueSpacing,
+    required this.clueTextStyle,
+  });
+
+  final GridMetrics metrics;
+  final double rowClueWidth;
+  final double clueSpacing;
+  final TextStyle clueTextStyle;
 }
 
 class _CellHighlightPainter extends CustomPainter {

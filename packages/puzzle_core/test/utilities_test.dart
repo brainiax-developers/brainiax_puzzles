@@ -79,6 +79,23 @@ void main() {
     expect(intersection.length, equals(5));
   });
 
+  test('Nonogram line solver detects impossible clue lengths', () {
+    final List<List<int>> placements = NonogramLineSolver.generatePlacements(
+      5,
+      <int>[3, 3],
+    );
+    expect(placements, isEmpty);
+  });
+
+  test('Nonogram line solver detects excessive filled cells', () {
+    final List<List<int>> placements = NonogramLineSolver.generatePlacements(
+      5,
+      <int>[2],
+      current: <int?>[1, 1, 1, null, null],
+    );
+    expect(placements, isEmpty);
+  });
+
   test('Kakuro dictionary covers known combination', () {
     final Set<int>? combos = KakuroDictionary.getCombinations(2, 16);
     expect(combos, isNotNull);
