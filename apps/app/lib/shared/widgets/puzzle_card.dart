@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/difficulty_preference_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/puzzle_progress_service.dart';
+import 'package:go_router/go_router.dart';
 import 'daily_surface.dart';
 
 /// A card widget displaying puzzle information with difficulty chips and CTA buttons.
@@ -25,6 +28,8 @@ class PuzzleCard extends StatefulWidget {
 class _PuzzleCardState extends State<PuzzleCard> {
   String? _selectedDifficulty;
   bool _isLoading = true;
+  bool _hasProgress = false;
+  bool _isCheckingProgress = false;
 
   @override
   void initState() {
@@ -34,16 +39,49 @@ class _PuzzleCardState extends State<PuzzleCard> {
 
   Future<void> _loadPreferredDifficulty() async {
     final preferred = await DifficultyPreferenceService.getPreferredDifficulty(widget.metadata.type);
+    // Check for in-progress saved puzzle for this type
+    bool hasProgress = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      hasProgress = progress.exists(widget.metadata.type);
+    } catch (_) {}
     if (mounted) {
       setState(() {
         _selectedDifficulty = preferred;
         _isLoading = false;
+        _hasProgress = hasProgress;
       });
+    }
+  }
+
+  Future<void> _checkAndUpdateProgress() async {
+    if (_isCheckingProgress) return;
+    _isCheckingProgress = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      final bool exists = progress.exists(widget.metadata.type);
+      if (mounted && exists != _hasProgress) {
+        setState(() {
+          _hasProgress = exists;
+        });
+      }
+    } catch (_) {
+      // ignore
+    } finally {
+      _isCheckingProgress = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Re-check progress availability after the current frame.
+    // This ensures that when navigating back from Play, the button state
+    // reflects the latest saved progress.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkAndUpdateProgress();
+    });
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     
@@ -159,13 +197,38 @@ class _PuzzleCardState extends State<PuzzleCard> {
               ),
               
               const SizedBox(height: 12),
+
+              // Continue Game (when in-progress exists)
+              if (_hasProgress) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: _ActionButton(
+                    label: 'Continue Game',
+                    icon: Icons.play_circle_fill,
+                    isPrimary: false,
+                    color: widget.metadata.primaryAccentColor,
+                    onPressed: () async {
+                      try {
+                        final prefs = await SharedPreferences.getInstance();
+                        final progress = PuzzleProgressService(prefs);
+                        final puzzle = progress.load(widget.metadata.type);
+                        if (puzzle != null && mounted) {
+                          if (!context.mounted) return;
+                          context.push('/play/${widget.metadata.type.key}/random', extra: puzzle);
+                        }
+                      } catch (_) {}
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               
-              // Random Play Button (only show if difficulty is selected)
+              // New Game Button (only show if difficulty is selected)
               if (_selectedDifficulty != null) ...[
                 SizedBox(
                   width: double.infinity,
                   child: _ActionButton(
-                    label: 'Random Play',
+                    label: 'New Game',
                     icon: Icons.play_arrow,
                     isPrimary: true,
                     color: widget.metadata.primaryAccentColor,

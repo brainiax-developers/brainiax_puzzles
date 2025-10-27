@@ -199,6 +199,27 @@ class GameStateNotifier extends Notifier<GameState?> {
     );
   }
 
+  /// Reset the game to the initial generated puzzle, clearing all moves.
+  void resetToInitial() {
+    if (_initialPuzzle == null || state == null) return;
+
+    final engine = ref.read(engineProvider(state!.engineId));
+    if (engine == null) return;
+
+    // Clear history and restore initial puzzle
+    _moveHistory.clear();
+    _currentMoveIndex = -1;
+
+    final bool isSolved = engine.isSolved(_initialPuzzle!.state);
+
+    state = state!.copyWith(
+      puzzle: _initialPuzzle!,
+      isSolved: isSolved,
+      startTime: DateTime.now(),
+      lastMoveTime: null,
+    );
+  }
+
   /// Save game state to JSON.
   Map<String, dynamic> toJson() {
     if (state == null) return {};

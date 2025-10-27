@@ -51,9 +51,15 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
 
     final double? clueHint = context.difficulty.hint;
     if (clueHint != null && clueHint.isFinite) {
-      final int hintedClues = clueHint.clamp(17, SudokuBoard.cellCount).round();
+      // Treat hint as a normalized 0..1 difficulty preference where
+      // 0.0 => easy (more clues), 1.0 => expert (fewer clues).
+      final double h = clueHint.clamp(0.0, 1.0);
+      final int hintedClues = (44 - (h * 20)).round(); // map to [24,44]
       targetMinClues = hintedClues.clamp(minClues, SudokuBoard.cellCount);
-      targetMaxClues = math.min(SudokuBoard.cellCount, math.max(targetMinClues, hintedClues + 3));
+      targetMaxClues = math.min(
+        SudokuBoard.cellCount,
+        math.max(targetMinClues, hintedClues + 3),
+      );
     }
 
     final int enforcedMinClues = math.max(minClues, targetMinClues);
@@ -111,6 +117,7 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
       'clues': puzzle.clueCount,
       'targetMinClues': targetMinClues,
       'targetMaxClues': targetMaxClues,
+      'requestedDifficulty': context.difficulty.level,
       'solutionSignature': solutionCells.join(),
     };
 

@@ -13,6 +13,8 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/haptics_provider.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../shared/services/puzzle_progress_service.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
 class PlayScreen extends ConsumerStatefulWidget {
@@ -72,24 +74,34 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         final currentState = ref.read(gameStateProvider);
         final engineAvailable = ref.read(engineProvider(widget.puzzleType.key)) != null;
 
-        // If a generated puzzle instance was passed via navigation extras, use it directly
-        if (widget.puzzleInstance != null && currentState == null && engineAvailable) {
+        // If a generated puzzle instance was passed via navigation extras, use it.
+        // Replace any existing game state if the seed differs, so Random Play
+        // always shows the newly generated puzzle.
+        if (widget.puzzleInstance != null && engineAvailable) {
           try {
             final core.GeneratedPuzzle generated = widget.puzzleInstance as core.GeneratedPuzzle;
-            final seed = generated.meta.seedStr;
-            final difficulty = generated.meta.difficulty.level;
-            final size = generated.meta.size.id;
-
-            await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
-              engineId: widget.puzzleType.key,
-              seed: seed,
-              difficulty: difficulty,
-              size: size,
-              puzzle: generated,
-            );
-            // Log once after we've set up the game state
-            _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
-            return;
+            final String newSeed = generated.meta.seedStr;
+            final String? existingSeed = currentState?.puzzle.meta.seedStr;
+            if (currentState == null || existingSeed != newSeed) {
+              final String difficulty = generated.meta.difficulty.level;
+              final String size = generated.meta.size.id;
+              await ref.read(gameStateProvider.notifier).startWithGeneratedPuzzle(
+                engineId: widget.puzzleType.key,
+                seed: newSeed,
+                difficulty: difficulty,
+                size: size,
+                puzzle: generated,
+              );
+              // Persist in-progress puzzle
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                final progress = PuzzleProgressService(prefs);
+                await progress.save(widget.puzzleType, generated);
+              } catch (_) {}
+              // Log once after we've set up the game state
+              _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+              return;
+            }
           } catch (e) {
             // If casting or initialization fails, fall back to generation below
           }
@@ -108,6 +120,15 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             difficulty: difficulty,
             size: size,
           );
+          // Save initial in-progress state
+          try {
+            final current = ref.read(gameStateProvider)?.puzzle;
+            if (current != null) {
+              final prefs = await SharedPreferences.getInstance();
+              final progress = PuzzleProgressService(prefs);
+              await progress.save(widget.puzzleType, current);
+            }
+          } catch (_) {}
         }
       } catch (e) {
         // Ignore startup errors - they'll be surfaced elsewhere if needed
@@ -292,27 +313,67 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   void _undoMove() {
-    setState(() {
-      _movesCount = (_movesCount - 1).clamp(0, double.infinity).toInt();
-    });
     _triggerHapticFeedback(HapticFeedbackType.light);
-    // TODO: Implement actual undo logic
+    final notifier = ref.read(gameStateProvider.notifier);
+    if (notifier.canUndo) {
+      notifier.undo();
+      // Reflect current move count based on history index
+      setState(() {
+        _movesCount = notifier.currentMoveIndex + 1;
+      });
+    } else {
+      _showSnackBar('Nothing to undo');
+    }
   }
 
   void _restartPuzzle() {
-    setState(() {
-      _elapsedTime = Duration.zero;
-      _hintsUsed = 0;
-      _movesCount = 0;
-      _solveStatus = 'In Progress';
-      _isPaused = false;
-      _hasRecordedCompletion = false;
-      _completionStatus = null;
-    });
-    _timerController.reset();
-    _startTimer();
     _triggerHapticFeedback(HapticFeedbackType.medium);
-    // TODO: Implement actual restart logic
+    showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        final cs = theme.colorScheme;
+        return AlertDialog(
+          title: const Text('Restart puzzle?'),
+          content: const Text('This will reset the board to its initial state and clear your moves.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: cs.error,
+                foregroundColor: cs.onError,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Restart'),
+            ),
+          ],
+        );
+      },
+    ).then((confirmed) {
+      if (confirmed != true) return;
+
+      // Reset provider state
+      final notifier = ref.read(gameStateProvider.notifier);
+      notifier.resetToInitial();
+
+      // Reset local UI state
+      setState(() {
+        _elapsedTime = Duration.zero;
+        _hintsUsed = 0;
+        _movesCount = 0;
+        _solveStatus = 'In Progress';
+        _isPaused = false;
+        _hasRecordedCompletion = false;
+        _completionStatus = null;
+        _sudokuNotes.clear();
+        _selectedSudokuCell = null;
+      });
+      _timerController.reset();
+      _startTimer();
+    });
   }
 
   void _generateNewPuzzle() {
@@ -400,7 +461,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       }
     }
     final notifier = ref.read(gameStateProvider.notifier);
-    notifier.makeMove(move).then((_) {
+    notifier.makeMove(move).then((_) async {
       if (!mounted) {
         return;
       }
@@ -410,6 +471,27 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           _sudokuNotes.remove(move.row * core.SudokuBoard.side + move.col);
         }
       });
+
+      // Persist in-progress after each successful move
+      try {
+        final current = ref.read(gameStateProvider)?.puzzle;
+        if (current != null) {
+          final prefs = await SharedPreferences.getInstance();
+          final progress = PuzzleProgressService(prefs);
+          await progress.save(widget.puzzleType, current);
+        }
+      } catch (_) {}
+
+      // Detect filled-but-incorrect board for Sudoku and show feedback
+      final gameState = ref.read(gameStateProvider);
+      final board = gameState?.puzzle.state;
+      if (board is core.SudokuBoard) {
+        final bool filled = board.emptyCount == 0;
+        final bool solved = gameState?.isSolved ?? false;
+        if (filled && !solved) {
+          _onError('Incorrect solution');
+        }
+      }
     }).catchError((Object error) {
       final String message = error.toString().startsWith('Exception: ')
           ? error.toString().substring('Exception: '.length)
@@ -512,7 +594,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // from the build method of a ConsumerWidget/ConsumerStatefulWidget.
     if (!_listenersRegistered) {
       _listenersRegistered = true;
-      ref.listen<GameState?>(gameStateProvider, (prev, next) {
+      ref.listen<GameState?>(gameStateProvider, (prev, next) async {
         if (next != null) {
           final String? previousSeed = prev?.puzzle.meta.seedStr;
           final String currentSeed = next.puzzle.meta.seedStr;
@@ -534,6 +616,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               _elapsedTime = elapsed;
             });
           }
+          // Clear in-progress persistence on completion
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final progress = PuzzleProgressService(prefs);
+            await progress.clear(widget.puzzleType);
+          } catch (_) {}
           if (!_hasRecordedCompletion) {
             _hasRecordedCompletion = true;
             unawaited(_recordCompletion(next, elapsed));
@@ -749,10 +837,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     // Prefer the explicit puzzleInstance passed to the screen; if absent,
     // fall back to the game state provider's puzzle (if any).
-    final core.GeneratedPuzzle? generatedPuzzle =
-        widget.puzzleInstance is core.GeneratedPuzzle
-            ? widget.puzzleInstance as core.GeneratedPuzzle
-            : gameState?.puzzle;
+  // Prefer the live game state's puzzle so UI reflects moves; fall back
+  // to a navigation-provided instance only if state hasn't initialized yet.
+  final core.GeneratedPuzzle? generatedPuzzle =
+    gameState?.puzzle ??
+    (widget.puzzleInstance is core.GeneratedPuzzle
+      ? widget.puzzleInstance as core.GeneratedPuzzle
+      : null);
 
     // If we still don't have a puzzle, show a loading indicator while
     // a generator/provider populates it.

@@ -5,7 +5,6 @@ import 'package:puzzle_core/puzzle_core.dart';
 import 'painter_utils.dart';
 import 'puzzle_renderer.dart';
 import 'performance_optimizations.dart';
-import '../providers/game_state_provider.dart';
 
 /// Sudoku puzzle renderer with full interaction support.
 class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
@@ -185,7 +184,11 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
   @override
   void didUpdateWidget(SudokuRendererWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.puzzle != oldWidget.puzzle) {
+    // GeneratedPuzzle equality ignores the state field; compare state explicitly
+    // so the renderer refreshes when moves update the board.
+    final Object? newState = widget.puzzle?.state;
+    final Object? oldState = oldWidget.puzzle?.state;
+    if (widget.puzzle != oldWidget.puzzle || newState != oldState) {
       _updateBoard();
     }
   }
