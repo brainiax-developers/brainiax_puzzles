@@ -45,6 +45,24 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
       }
     }
 
+    if (issues.isEmpty && board.rowClues.length == board.height) {
+      for (int row = 0; row < board.height; row++) {
+        if (_minimumRequiredLength(board.rowClues[row]) > board.width) {
+          issues.add('row_clues_overflow:$row');
+          break;
+        }
+      }
+    }
+
+    if (issues.isEmpty && board.columnClues.length == board.width) {
+      for (int col = 0; col < board.width; col++) {
+        if (_minimumRequiredLength(board.columnClues[col]) > board.height) {
+          issues.add('column_clues_overflow:$col');
+          break;
+        }
+      }
+    }
+
     if (issues.isEmpty) {
       for (int row = 0; row < board.height; row++) {
         final List<int?> values = board.rowValues(row);
@@ -174,5 +192,16 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
       }
     }
     return true;
+  }
+
+  int _minimumRequiredLength(List<int> clues) {
+    if (clues.isEmpty) {
+      return 0;
+    }
+    int total = 0;
+    for (final int clue in clues) {
+      total += clue;
+    }
+    return total + clues.length - 1;
   }
 }
