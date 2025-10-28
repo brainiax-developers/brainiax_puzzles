@@ -1,0 +1,6 @@
+{
+  "name": "flutter",
+  "image": "ghcr.io/cirruslabs/flutter:3.35.6",
+  "features": {},
+  "postCreateCommand": "flutter --version && dart --version && flutter doctor -v"
+}

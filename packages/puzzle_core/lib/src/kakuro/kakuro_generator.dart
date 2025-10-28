@@ -168,7 +168,6 @@ class _KakuroTemplate {
       int col = 0;
       while (col < width) {
         if (layout[row][col] == '.') {
-          final int start = col;
           final List<int> cells = <int>[];
           while (col < width && layout[row][col] == '.') {
             final int index = row * width + col;
@@ -198,7 +197,6 @@ class _KakuroTemplate {
       int row = 0;
       while (row < height) {
         if (layout[row][col] == '.') {
-          final int start = row;
           final List<int> cells = <int>[];
           while (row < height && layout[row][col] == '.') {
             final int index = row * width + col;
@@ -471,25 +469,6 @@ class _EntryState {
     assignedMask &= ~(1 << digit);
     assignedCount--;
     remainingCells++;
-  }
-}
-
-class _TemplateSolution {
-  _TemplateSolution({
-    required this.values,
-    required this.entrySums,
-  }) : signature = _computeSignature(values);
-
-  final List<int> values;
-  final Map<int, int> entrySums;
-  final String signature;
-
-  static String _computeSignature(List<int> values) {
-    final StringBuffer buffer = StringBuffer();
-    for (final int value in values) {
-      buffer.write(value);
-    }
-    return buffer.toString();
   }
 }
 

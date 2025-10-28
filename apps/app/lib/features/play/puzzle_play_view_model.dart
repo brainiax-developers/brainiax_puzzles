@@ -13,13 +13,14 @@ const Duration _tickInterval = Duration(milliseconds: 200);
 const Duration _hintHighlightDuration = Duration(seconds: 3);
 
 /// Provider for the puzzle play view model.
-final puzzlePlayViewModelProvider =
-    AutoDisposeNotifierProviderFamily<PuzzlePlayViewModel, PuzzlePlayState,
-        PuzzlePlaySession>(PuzzlePlayViewModel.new);
+final puzzlePlayViewModelProvider = NotifierProvider.autoDispose
+    .family<PuzzlePlayViewModel, PuzzlePlayState, PuzzlePlaySession>(
+  (PuzzlePlaySession session) => PuzzlePlayViewModel()..init(session),
+);
 
 /// View model responsible for managing puzzle play state including timer,
 /// move history, undo, restart, and solve detection.
-class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
+class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   PuzzlePlayViewModel();
 
   final Stopwatch _stopwatch = Stopwatch();
@@ -32,10 +33,13 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
   Timer? _hintClearTimer;
   int _hintRequestCount = 0;
 
-  @override
-  PuzzlePlayState build(PuzzlePlaySession session) {
+  void init(PuzzlePlaySession session) {
     _session = session;
-    _validator = session.validator ?? _deriveValidator(session.engine);
+  }
+
+  @override
+  PuzzlePlayState build() {
+    _validator = _session.validator ?? _deriveValidator(_session.engine);
     _history.clear();
     _ticker?.cancel();
     _ticker = null;
@@ -45,19 +49,19 @@ class PuzzlePlayViewModel extends AutoDisposeNotifier<PuzzlePlayState> {
     _cancelHintTimer();
     _hintRequestCount = 0;
 
-    final Object? initialBoard = session.puzzle.state;
+  final Object? initialBoard = _session.puzzle.state;
     final bool initiallySolved = _isSolved(initialBoard);
     _solvedEmitted = initiallySolved;
 
     state = PuzzlePlayState(
-      puzzle: session.puzzle,
+  puzzle: _session.puzzle,
       board: initialBoard,
       elapsed: Duration.zero,
       isSolved: initiallySolved,
       isTimerRunning: false,
       moveHistory: const <PuzzleMoveRecord>[],
       moveCount: 0,
-      supportsHints: session.engine.capabilities.supportsHints,
+  supportsHints: _session.engine.capabilities.supportsHints,
       hintHighlight: null,
     );
 
@@ -504,7 +508,7 @@ class PuzzleMoveRecord {
 
 @immutable
 class PuzzleSolvedEvent {
-  const PuzzleSolvedEvent({
+  PuzzleSolvedEvent({
     required this.puzzle,
     required this.board,
     required this.elapsed,
