@@ -79,8 +79,8 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
 
     _majorLinePaint = PerformanceOptimizations.getCachedPaint(
       key: 'sudoku_major_line',
-      color: colorScheme.outline.withOpacity(0.6),
-      strokeWidth: 2.0,
+      color: colorScheme.onSurface.withOpacity(0.8),
+      strokeWidth: 3.0,
     );
 
     _selectionPaint = PerformanceOptimizations.getCachedPaint(
@@ -432,9 +432,11 @@ class SudokuRendererWidget extends PuzzleRendererWidget {
     super.hintCells,
     super.hintAnimationValue,
     this.notes = const <int, Set<int>>{},
+    this.hintFilledCells = const <int>{},
   });
 
   final Map<int, Set<int>> notes;
+  final Set<int> hintFilledCells;
 
   @override
   State<SudokuRendererWidget> createState() => SudokuRenderer();
@@ -453,6 +455,7 @@ class SudokuContentPainter extends CustomPainter {
     required this.conflictPositions,
     required this.notes,
     required this.theme,
+    this.hintFilledCells = const <int>{},
   });
 
   final SudokuBoard board;
@@ -465,6 +468,7 @@ class SudokuContentPainter extends CustomPainter {
   final Set<Offset> conflictPositions;
   final Map<int, Set<int>> notes;
   final ThemeData theme;
+  final Set<int> hintFilledCells;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -503,10 +507,12 @@ class SudokuContentPainter extends CustomPainter {
         if (value != 0) {
           final textStyle = theme.textTheme.headlineSmall?.copyWith(
             color: hasConflict
-              ? colorScheme.error
-              : isFixed
-                ? colorScheme.onSurface
-                : colorScheme.primary,
+                ? colorScheme.error
+                : isFixed
+                    ? colorScheme.onSurface
+                    : (hintFilledCells.contains(row * SudokuBoard.side + col)
+                        ? colorScheme.tertiary
+                        : colorScheme.primary),
             fontWeight: isFixed ? FontWeight.bold : FontWeight.normal,
           );
 

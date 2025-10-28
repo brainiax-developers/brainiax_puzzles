@@ -21,18 +21,8 @@ class SudokuNumberPad extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outline.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
+    // Blend with canvas area: no box/background around the pad.
+  return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Note mode toggle
@@ -58,22 +48,20 @@ class SudokuNumberPad extends StatelessWidget {
               ),
             ),
           
-          // Number grid
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 3,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.2,
+          // Number row (single row, borderless, no scroll, fits width)
+          Row(
             children: [
               for (int digit = 1; digit <= 9; digit++)
-                _NumberButton(
-                  digit: digit,
-                  onPressed: enabledDigits.contains(digit) 
-                    ? () => onDigitPressed(digit)
-                    : null,
-                  isNoteMode: isNoteMode,
+                Expanded(
+                  child: Center(
+                    child: _NumberButton(
+                      digit: digit,
+                      onPressed: enabledDigits.contains(digit)
+                          ? () => onDigitPressed(digit)
+                          : null,
+                      isNoteMode: isNoteMode,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -106,8 +94,7 @@ class SudokuNumberPad extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
+      );
   }
 }
 
@@ -127,36 +114,19 @@ class _NumberButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          decoration: BoxDecoration(
-            color: onPressed != null 
-              ? colorScheme.primary.withOpacity(0.1)
-              : colorScheme.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: onPressed != null 
-                ? colorScheme.primary.withOpacity(0.3)
-                : colorScheme.outline.withOpacity(0.2),
-              width: 1,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              digit.toString(),
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: onPressed != null 
-                  ? colorScheme.primary
-                  : colorScheme.onSurface.withOpacity(0.3),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        backgroundColor: Colors.transparent,
+        foregroundColor: onPressed != null ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.3),
+        shape: const RoundedRectangleBorder(),
+      ),
+      child: Text(
+        digit.toString(),
+        style: theme.textTheme.titleLarge?.copyWith(
+          color: onPressed != null ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.3),
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

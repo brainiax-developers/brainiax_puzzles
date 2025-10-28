@@ -59,7 +59,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   core.GeneratedPuzzle? _lastLoggedPuzzle;
   Offset? _selectedSudokuCell;
   bool _isNoteMode = false;
+  bool _isCrossMode = false;
   final Map<int, Set<int>> _sudokuNotes = <int, Set<int>>{};
+  final Set<int> _sudokuHintFilled = <int>{};
+  bool _shownSolvedDialog = false;
 
   @override
   void initState() {
@@ -237,6 +240,27 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           seconds: _timerController.value.round(),
         );
       });
+      // Also listen specifically to the isSolved flag in case other changes
+      // to GameState prevent the above listener from firing reliably in some
+      // environments. This listener receives only the boolean and will call
+      // the same completion handler.
+      ref.listen<bool?>(
+        gameStateProvider.select((s) => s?.isSolved),
+        (prevSolved, nextSolved) async {
+          if (kDebugMode) {
+            // ignore: avoid_print
+            print('PlayScreen.isSolved changed: prev=$prevSolved next=$nextSolved');
+          }
+          final bool was = prevSolved ?? false;
+          final bool isNow = nextSolved ?? false;
+          if (!was && isNow) {
+            final GameState? gs = ref.read(gameStateProvider);
+            if (gs != null) {
+              unawaited(_handleCompletion(gs));
+            }
+          }
+        },
+      );
     }
   }
 
@@ -266,13 +290,30 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   void _useHint() {
-    // Increment local counter and request a hint from the ViewModel
-    setState(() {
-      _hintsUsed++;
-    });
     _triggerHapticFeedback(HapticFeedbackType.medium);
 
-    // Fire-and-forget: request hint from game state notifier and animate overlay
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null) return;
+    final board = gameState.puzzle.state;
+
+    if (board is core.SudokuBoard) {
+      final hint = _computeSudokuHint(board);
+      if (hint == null) {
+        _showSnackBar('No hint available');
+        return;
+      }
+      final move = core.SudokuMove(row: hint.row, col: hint.col, digit: hint.digit);
+      ref.read(gameStateProvider.notifier).makeMove(move).then((_) async {
+        setState(() {
+          _sudokuHintFilled.add(hint.row * core.SudokuBoard.side + hint.col);
+          _movesCount++;
+        });
+        await _incrementHintCountPersistent();
+      }).catchError((_) {});
+      return;
+    }
+
+    // Non-Sudoku: request engine-provided hint and flash highlight
     () async {
       try {
         final hint = await ref.read(gameStateProvider.notifier).requestHint(
@@ -281,35 +322,151 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             moveCount: _movesCount,
           ),
         );
-
         if (hint == null || hint.isEmpty) {
-          // no hint available
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No hint available')),
-          );
+          _showSnackBar('No hint available');
           return;
         }
-
-        final positions = hint.cells.map((c) => Offset(c.column.toDouble(), c.row.toDouble())).toList();
-
         setState(() {
-          _hintPositions = positions;
+          _hintPositions = hint.cells
+              .map((c) => Offset(c.column.toDouble(), c.row.toDouble()))
+              .toList();
         });
-
-        // Animate the hint flashing and then clear
         await _hintController.forward(from: 0.0);
         await _hintController.reverse();
-
-        // Keep visible briefly then clear
         await Future.delayed(const Duration(milliseconds: 200));
         setState(() {
           _hintPositions = [];
           _hintAnimationValue = 0.0;
         });
-      } catch (e) {
-        // ignore
-      }
+        await _incrementHintCountPersistent();
+      } catch (_) {}
     }();
+  }
+
+  Future<void> _incrementHintCountPersistent() async {
+    setState(() {
+      _hintsUsed++;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'hints_used:${widget.puzzleType.key}:${ref.read(gameStateProvider)?.puzzle.meta.seedStr}';
+      final current = prefs.getInt(key) ?? 0;
+      await prefs.setInt(key, current + 1);
+    } catch (_) {}
+  }
+
+  ({int row, int col, int digit})? _computeSudokuHint(core.SudokuBoard board) {
+    // Naked singles: candidates per cell
+    for (int row = 0; row < core.SudokuBoard.side; row++) {
+      for (int col = 0; col < core.SudokuBoard.side; col++) {
+        if (board.cellAt(row, col) != 0) continue;
+        final candidates = _sudokuCandidates(board, row, col);
+        if (candidates.length == 1) {
+          return (row: row, col: col, digit: candidates.first);
+        }
+      }
+    }
+    // Hidden singles in rows
+    for (int row = 0; row < core.SudokuBoard.side; row++) {
+      for (int digit = 1; digit <= 9; digit++) {
+        if (_rowHasDigit(board, row, digit)) continue;
+        final cells = <int>[];
+        for (int col = 0; col < core.SudokuBoard.side; col++) {
+          if (board.cellAt(row, col) != 0) continue;
+          if (!_wouldCauseUnitConflict(board, row, col, digit)) {
+            cells.add(col);
+          }
+        }
+        if (cells.length == 1) return (row: row, col: cells.first, digit: digit);
+      }
+    }
+    // Hidden singles in columns
+    for (int col = 0; col < core.SudokuBoard.side; col++) {
+      for (int digit = 1; digit <= 9; digit++) {
+        if (_colHasDigit(board, col, digit)) continue;
+        final cells = <int>[];
+        for (int row = 0; row < core.SudokuBoard.side; row++) {
+          if (board.cellAt(row, col) != 0) continue;
+          if (!_wouldCauseUnitConflict(board, row, col, digit)) {
+            cells.add(row);
+          }
+        }
+        if (cells.length == 1) return (row: cells.first, col: col, digit: digit);
+      }
+    }
+    // Hidden singles in boxes
+    for (int br = 0; br < 3; br++) {
+      for (int bc = 0; bc < 3; bc++) {
+        final int startRow = br * 3;
+        final int startCol = bc * 3;
+        for (int digit = 1; digit <= 9; digit++) {
+          if (_boxHasDigit(board, startRow, startCol, digit)) continue;
+          int count = 0;
+          int? tr;
+          int? tc;
+          for (int r = startRow; r < startRow + 3; r++) {
+            for (int c = startCol; c < startCol + 3; c++) {
+              if (board.cellAt(r, c) != 0) continue;
+              if (!_wouldCauseUnitConflict(board, r, c, digit)) {
+                count++;
+                tr = r;
+                tc = c;
+              }
+            }
+          }
+          if (count == 1 && tr != null && tc != null) {
+            return (row: tr, col: tc, digit: digit);
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  Set<int> _sudokuCandidates(core.SudokuBoard board, int row, int col) {
+    final used = <int>{};
+    for (final idx in core.SudokuBoard.rowIndices(row)) {
+      final v = board.cells[idx];
+      if (v != 0) used.add(v);
+    }
+    for (final idx in core.SudokuBoard.columnIndices(col)) {
+      final v = board.cells[idx];
+      if (v != 0) used.add(v);
+    }
+    for (final idx in core.SudokuBoard.boxIndices(row, col)) {
+      final int r = idx ~/ core.SudokuBoard.side;
+      final int c = idx % core.SudokuBoard.side;
+      final v = board.cellAt(r, c);
+      if (v != 0) used.add(v);
+    }
+    final candidates = <int>{};
+    for (int d = 1; d <= 9; d++) {
+      if (!used.contains(d)) candidates.add(d);
+    }
+    return candidates;
+  }
+
+  bool _rowHasDigit(core.SudokuBoard board, int row, int digit) {
+    for (int c = 0; c < core.SudokuBoard.side; c++) {
+      if (board.cellAt(row, c) == digit) return true;
+    }
+    return false;
+  }
+
+  bool _colHasDigit(core.SudokuBoard board, int col, int digit) {
+    for (int r = 0; r < core.SudokuBoard.side; r++) {
+      if (board.cellAt(r, col) == digit) return true;
+    }
+    return false;
+  }
+
+  bool _boxHasDigit(core.SudokuBoard board, int startRow, int startCol, int digit) {
+    for (int r = startRow; r < startRow + 3; r++) {
+      for (int c = startCol; c < startCol + 3; c++) {
+        if (board.cellAt(r, c) == digit) return true;
+      }
+    }
+    return false;
   }
 
   void _undoMove() {
@@ -376,15 +533,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     });
   }
 
-  void _generateNewPuzzle() {
-    _triggerHapticFeedback(HapticFeedbackType.heavy);
-    // TODO: Navigate to puzzle generation or generate new puzzle
-  }
-
-  void _goBack() {
-    _triggerHapticFeedback(HapticFeedbackType.light);
-    Navigator.of(context).pop();
-  }
+  // Navigation actions (New/Back) removed from UI per UX request.
 
   Future<void> _recordCompletion(GameState gameState, Duration elapsed) async {
     try {
@@ -405,6 +554,48 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         // ignore: avoid_print
         print('Failed to record completion: $error');
       }
+    }
+  }
+
+  /// Centralized completion handler so multiple listeners can invoke the
+  /// same follow-up (persist clearing, recording completion, dialog).
+  Future<void> _handleCompletion(GameState next) async {
+    _triggerHapticFeedback(HapticFeedbackType.heavy);
+    final Duration elapsed = DateTime.now().difference(next.startTime);
+    if (mounted) {
+      setState(() {
+        _solveStatus = 'Solved';
+        _elapsedTime = elapsed;
+      });
+    }
+    // Clear in-progress persistence on completion
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      await progress.clear(widget.puzzleType);
+    } catch (_) {}
+    if (!_hasRecordedCompletion) {
+      _hasRecordedCompletion = true;
+      unawaited(_recordCompletion(next, elapsed));
+    }
+
+    // Show completion popup once
+    if (!_shownSolvedDialog && mounted) {
+      _shownSolvedDialog = true;
+      // ignore: use_build_context_synchronously
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Congratulations!'),
+          content: const Text('Puzzle completed successfully.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -529,8 +720,42 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       return;
     }
 
+    // Pre-check duplicate digit in the same unit (row/col/box). If the
+    // same digit already exists in row/column/box, trigger haptic feedback
+    // and do not apply the move. For other incorrect numbers, allow the
+    // move to be applied (the engine or validator may accept/reject it).
+    if (_wouldCauseUnitConflict(board, row, col, digit)) {
+      // Give subtle haptic feedback for unit-duplication attempts.
+      _triggerHapticFeedback(HapticFeedbackType.medium);
+      return;
+    }
+
     final core.SudokuMove move = core.SudokuMove(row: row, col: col, digit: digit);
     _onMove(move);
+  }
+
+  bool _wouldCauseUnitConflict(core.SudokuBoard board, int row, int col, int digit) {
+    if (digit == 0) return false;
+    final int targetIndex = row * core.SudokuBoard.side + col;
+    // Check row
+    for (final idx in core.SudokuBoard.rowIndices(row)) {
+      if (idx == targetIndex) continue;
+      if (board.cells[idx] == digit) return true;
+    }
+    // Check column
+    for (final idx in core.SudokuBoard.columnIndices(col)) {
+      if (idx == targetIndex) continue;
+      if (board.cells[idx] == digit) return true;
+    }
+    // Check box
+    for (final idx in core.SudokuBoard.boxIndices(row, col)) {
+      // boxIndices may include the target cell; skip it
+      if (idx == targetIndex) continue;
+      final int r = idx ~/ core.SudokuBoard.side;
+      final int c = idx % core.SudokuBoard.side;
+      if (board.cellAt(r, c) == digit) return true;
+    }
+    return false;
   }
 
   void _onClearPressed() {
@@ -595,6 +820,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (!_listenersRegistered) {
       _listenersRegistered = true;
       ref.listen<GameState?>(gameStateProvider, (prev, next) async {
+        if (kDebugMode) {
+          // Debug log to help diagnose why completion may not be detected.
+          // This will print the previous and next isSolved values when the
+          // gameStateProvider changes.
+          // ignore: avoid_print
+          print('PlayScreen.gameState changed: prev.isSolved=${prev?.isSolved} next.isSolved=${next?.isSolved}');
+        }
         if (next != null) {
           final String? previousSeed = prev?.puzzle.meta.seedStr;
           final String currentSeed = next.puzzle.meta.seedStr;
@@ -608,24 +840,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         final bool wasSolved = prev?.isSolved ?? false;
         final bool isSolved = next?.isSolved ?? false;
         if (!wasSolved && isSolved && next != null) {
-          _triggerHapticFeedback(HapticFeedbackType.heavy);
-          final Duration elapsed = DateTime.now().difference(next.startTime);
-          if (mounted) {
-            setState(() {
-              _solveStatus = 'Solved';
-              _elapsedTime = elapsed;
-            });
-          }
-          // Clear in-progress persistence on completion
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            final progress = PuzzleProgressService(prefs);
-            await progress.clear(widget.puzzleType);
-          } catch (_) {}
-          if (!_hasRecordedCompletion) {
-            _hasRecordedCompletion = true;
-            unawaited(_recordCompletion(next, elapsed));
-          }
+          // Delegate to centralized handler
+          unawaited(_handleCompletion(next));
         }
       });
     }
@@ -874,17 +1090,46 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     // Nonogram
     if (puzzle.state is core.NonogramBoard) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: NonogramRendererWidget(
-          puzzle: puzzle,
-          gameState: gameState,
-          onCellSelected: _onCellSelected,
-          onMove: _onMove,
-          onError: _onError,
-          hintCells: _hintPositions,
-          hintAnimationValue: _hintAnimationValue,
-        ),
+      return Column(
+        children: [
+          // Cross-mode toggle for nonogram (adds/removes crosses instead of toggling filled)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Cross mode',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                  value: _isCrossMode,
+                  onChanged: (v) => setState(() => _isCrossMode = v),
+                  activeColor: Theme.of(context).colorScheme.primary,
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: NonogramRendererWidget(
+                puzzle: puzzle,
+                gameState: gameState,
+                onCellSelected: _onCellSelected,
+                onMove: _onMove,
+                onError: _onError,
+                hintCells: _hintPositions,
+                hintAnimationValue: _hintAnimationValue,
+                crossMode: _isCrossMode,
+              ),
+            ),
+          ),
+        ],
       );
     }
 
@@ -978,14 +1223,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         children: [
           // Puzzle renderer
           Expanded(
-            flex: 3,
+            flex: 4,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: _buildSudokuGrid(puzzle),
             ),
           ),
 
-          // Number pad
+          // Number pad (kept smaller)
           Expanded(
             flex: 1,
             child: SingleChildScrollView(
@@ -1018,6 +1263,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       hintCells: _hintPositions,
       hintAnimationValue: _hintAnimationValue,
       notes: Map.unmodifiable(noteSnapshot),
+      hintFilledCells: Set<int>.unmodifiable(_sudokuHintFilled),
     );
   }
 
@@ -1026,7 +1272,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Animated puzzle icon
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (context, child) {
@@ -1048,9 +1293,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               );
             },
           ),
-
           const SizedBox(height: 16),
-
           Text(
             'Puzzle Canvas',
             style: theme.textTheme.titleLarge?.copyWith(
@@ -1058,16 +1301,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               fontWeight: FontWeight.w500,
             ),
           ),
-
           const SizedBox(height: 8),
-
           Text(
             'Game logic will be implemented here',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withOpacity(0.5),
             ),
           ),
-
           if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
             const SizedBox(height: 16),
             Container(
@@ -1160,13 +1400,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               Row(
                 children: [
                   _buildStatChip(
-                    icon: Icons.lightbulb_outline,
-                    value: _hintsUsed.toString(),
-                    theme: theme,
-                    colorScheme: colorScheme,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildStatChip(
                     icon: Icons.touch_app,
                     value: _movesCount.toString(),
                     theme: theme,
@@ -1194,35 +1427,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             const SizedBox(height: 12),
           ],
 
-          // Navigation buttons
-          Row(
-            children: [
-              // New puzzle button
-              Expanded(
-                child: _buildNavigationButton(
-                  icon: Icons.add_circle_outline,
-                  label: 'New',
-                  onTap: _generateNewPuzzle,
-                  color: colorScheme.primary,
-                  theme: theme,
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // Back button
-              Expanded(
-                child: _buildNavigationButton(
-                  icon: Icons.arrow_back,
-                  label: 'Back',
-                  onTap: _goBack,
-                  color: colorScheme.onSurface,
-                  theme: theme,
-                  isOutlined: true,
-                ),
-              ),
-            ],
-          ),
+          // Navigation buttons removed per UX request (New & Back hidden)
         ],
       ),
     );
@@ -1261,51 +1466,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     );
   }
 
-  Widget _buildNavigationButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    required Color color,
-    required ThemeData theme,
-    bool isOutlined = false,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isOutlined ? Colors.transparent : color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withOpacity(0.3),
-              width: isOutlined ? 1 : 0,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: color,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // Navigation button builder removed — New/Back buttons are hidden per UX request.
 
   String _buildCompletionSummary(ThemeData theme) {
     final status = _completionStatus;

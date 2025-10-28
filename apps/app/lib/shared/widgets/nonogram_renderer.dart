@@ -298,16 +298,24 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     if (gp == null) return;
     final row = gp.dy.toInt();
     final col = gp.dx.toInt();
-    final current = _board.cellAt(row, col);
-    int? next;
-    if (current == null) {
-      next = 1; // filled
-    } else if (current == 1) {
-      next = 0; // marked empty
+    // If crossMode is enabled, toggle cross (0) <-> empty (null). Otherwise
+    // keep the previous cycle behavior: null -> filled (1) -> cross (0) -> null.
+    if (widget.crossMode) {
+      final current = _board.cellAt(row, col);
+      final int? next = (current == 0) ? null : 0;
+      widget.onMove?.call(NonogramMove(row: row, col: col, value: next));
     } else {
-      next = null;
+      final current = _board.cellAt(row, col);
+      int? next;
+      if (current == null) {
+        next = 1; // filled
+      } else if (current == 1) {
+        next = 0; // marked empty
+      } else {
+        next = null;
+      }
+      widget.onMove?.call(NonogramMove(row: row, col: col, value: next));
     }
-    widget.onMove?.call(NonogramMove(row: row, col: col, value: next));
     super.onTap(position);
   }
 
@@ -348,7 +356,10 @@ class NonogramRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.crossMode = false,
   });
+
+  final bool crossMode;
 
   @override
   State<NonogramRendererWidget> createState() => NonogramRenderer();
