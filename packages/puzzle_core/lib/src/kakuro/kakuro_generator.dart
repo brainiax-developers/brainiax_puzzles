@@ -237,9 +237,7 @@ class _KakuroTemplate {
   _TemplateSolution? buildSolution(SeededRng rng) {
     final int cellCount = width * height;
     final List<int> values = List<int>.filled(cellCount, 0);
-    final Map<int, int> entrySums = <int, int>{};
-    final Map<int, List<int>> entryDigits = <int, List<int>>{};
-
+    final Map<int, _EntryState> entryStates = <int, _EntryState>{};
     for (final _TemplateEntry entry in entries) {
       final Map<int, Set<int>>? combos =
           KakuroDictionary.getCombinationsForLength(entry.length);
@@ -249,101 +247,120 @@ class _KakuroTemplate {
       final List<_CombinationOption> options = <_CombinationOption>[];
       combos.forEach((int sum, Set<int> masks) {
         for (final int mask in masks) {
-          options.add(_CombinationOption(sum: sum, mask: mask));
+          options.add(
+            _CombinationOption(
+              sum: sum,
+              mask: mask,
+              digitCount: entry.length,
+            ),
+          );
         }
       });
       if (options.isEmpty) {
         return null;
       }
-      final _CombinationOption choice = options[rng.nextIntInRange(options.length)];
-      entrySums[entry.id] = choice.sum;
-      entryDigits[entry.id] = _digitsFromMask(choice.mask);
+      entryStates[entry.id] = _EntryState(entry: entry, options: options);
     }
 
-    final List<int> fillOrder = <int>[];
+    final List<int> valueCells = <int>[];
     for (int index = 0; index < cellCount; index++) {
       if (kinds[index] == KakuroCellKind.value) {
-        fillOrder.add(index);
+        valueCells.add(index);
       }
     }
-    rng.shuffle(fillOrder);
 
-    final Map<int, List<int>> remaining = <int, List<int>>{};
-    entryDigits.forEach((int id, List<int> digits) {
-      remaining[id] = List<int>.from(digits);
-    });
-
-    if (_assignCell(0, fillOrder, values, remaining, rng)) {
-      return _TemplateSolution(values: values, entrySums: entrySums);
+    if (!_fillCells(values, valueCells, entryStates, rng)) {
+      return null;
     }
-    return null;
+
+    final Map<int, int> entrySums = <int, int>{};
+    for (final _TemplateEntry entry in entries) {
+      int sum = 0;
+      for (final int cellIndex in entry.cells) {
+        sum += values[cellIndex];
+      }
+      entrySums[entry.id] = sum;
+    }
+
+    return _TemplateSolution(values: values, entrySums: entrySums);
   }
 
-  bool _assignCell(
-    int depth,
-    List<int> order,
+  bool _fillCells(
     List<int> values,
-    Map<int, List<int>> remaining,
+    List<int> valueCells,
+    Map<int, _EntryState> entryStates,
     SeededRng rng,
   ) {
-    if (depth >= order.length) {
-      return true;
-    }
-    final int index = order[depth];
-    if (values[index] != 0) {
-      return _assignCell(depth + 1, order, values, remaining, rng);
-    }
-    final int acrossId = acrossEntryForCell[index];
-    final int downId = downEntryForCell[index];
-    final List<int> acrossDigits = acrossId >= 0 ? remaining[acrossId]! : <int>[];
-    final List<int> downDigits = downId >= 0 ? remaining[downId]! : <int>[];
+    int? targetIndex;
+    List<int>? targetCandidates;
 
-    final Set<int> candidateSet = <int>{};
-    if (acrossDigits.isEmpty && downDigits.isEmpty) {
-      return false;
-    } else if (acrossDigits.isEmpty) {
-      candidateSet.addAll(downDigits);
-    } else if (downDigits.isEmpty) {
-      candidateSet.addAll(acrossDigits);
-    } else {
-      for (final int digit in acrossDigits) {
-        if (downDigits.contains(digit)) {
-          candidateSet.add(digit);
+    for (final int index in valueCells) {
+      if (values[index] != 0) {
+        continue;
+      }
+      final List<int> candidates = _candidateDigits(index, entryStates);
+      if (candidates.isEmpty) {
+        return false;
+      }
+      if (targetIndex == null || candidates.length < targetCandidates!.length) {
+        targetIndex = index;
+        targetCandidates = candidates;
+        if (candidates.length == 1) {
+          break;
         }
       }
     }
 
-    if (candidateSet.isEmpty) {
-      return false;
+    if (targetIndex == null) {
+      return true;
     }
 
-    final List<int> candidates = rng.permute(candidateSet);
-    for (final int digit in candidates) {
-      if (acrossId >= 0 && !remaining[acrossId]!.contains(digit)) {
+    final _EntryState? across = entryStates[acrossEntryForCell[targetIndex]];
+    final _EntryState? down = entryStates[downEntryForCell[targetIndex]];
+
+    final List<int> shuffled = rng.permute(targetCandidates!);
+    for (final int digit in shuffled) {
+      if (across != null && !across.canAssignDigit(digit)) {
         continue;
       }
-      if (downId >= 0 && !remaining[downId]!.contains(digit)) {
+      if (down != null && !down.canAssignDigit(digit)) {
         continue;
       }
-      values[index] = digit;
-      if (acrossId >= 0) {
-        remaining[acrossId]!.remove(digit);
-      }
-      if (downId >= 0) {
-        remaining[downId]!.remove(digit);
-      }
-      if (_assignCell(depth + 1, order, values, remaining, rng)) {
+      across?.assignDigit(digit);
+      down?.assignDigit(digit);
+      values[targetIndex] = digit;
+      if (_fillCells(values, valueCells, entryStates, rng)) {
         return true;
       }
-      if (acrossId >= 0) {
-        remaining[acrossId]!.add(digit);
-      }
-      if (downId >= 0) {
-        remaining[downId]!.add(digit);
-      }
-      values[index] = 0;
+      values[targetIndex] = 0;
+      down?.unassignDigit(digit);
+      across?.unassignDigit(digit);
     }
+
     return false;
+  }
+
+  List<int> _candidateDigits(
+    int index,
+    Map<int, _EntryState> entryStates,
+  ) {
+    Set<int>? candidates;
+    final _EntryState? across = entryStates[acrossEntryForCell[index]];
+    final _EntryState? down = entryStates[downEntryForCell[index]];
+
+    if (across != null) {
+      candidates = across.possibleDigits().toSet();
+    }
+    if (down != null) {
+      final Set<int> downDigits = down.possibleDigits().toSet();
+      if (candidates == null) {
+        candidates = downDigits;
+      } else {
+        candidates.retainAll(downDigits);
+      }
+    }
+
+    return candidates?.toList(growable: false) ?? const <int>[];
   }
 
   KakuroBoard buildBoard(Map<int, int> entrySums) {
@@ -394,22 +411,96 @@ class _KakuroTemplate {
   }
 }
 
+class _EntryState {
+  _EntryState({
+    required this.entry,
+    required this.options,
+  }) : remainingCells = entry.cells.length;
+
+  final _TemplateEntry entry;
+  final List<_CombinationOption> options;
+
+  int assignedMask = 0;
+  int assignedCount = 0;
+  int remainingCells;
+
+  List<int> possibleDigits() {
+    if (remainingCells == 0) {
+      return const <int>[];
+    }
+    final List<int> digits = <int>[];
+    for (int digit = 1; digit <= 9; digit++) {
+      if (canAssignDigit(digit)) {
+        digits.add(digit);
+      }
+    }
+    return digits;
+  }
+
+  bool canAssignDigit(int digit) {
+    final int bit = 1 << digit;
+    if ((assignedMask & bit) != 0) {
+      return false;
+    }
+    final int newMask = assignedMask | bit;
+    final int newAssignedCount = assignedCount + 1;
+    final int newRemaining = remainingCells - 1;
+    for (final _CombinationOption option in options) {
+      if ((option.mask & newMask) != newMask) {
+        continue;
+      }
+      final int availableDigits = option.digitCount - newAssignedCount;
+      if (availableDigits < newRemaining) {
+        continue;
+      }
+      if (newRemaining == 0 && option.mask != newMask) {
+        continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  void assignDigit(int digit) {
+    assignedMask |= 1 << digit;
+    assignedCount++;
+    remainingCells--;
+  }
+
+  void unassignDigit(int digit) {
+    assignedMask &= ~(1 << digit);
+    assignedCount--;
+    remainingCells++;
+  }
+}
+
+class _TemplateSolution {
+  _TemplateSolution({
+    required this.values,
+    required this.entrySums,
+  }) : signature = _computeSignature(values);
+
+  final List<int> values;
+  final Map<int, int> entrySums;
+  final String signature;
+
+  static String _computeSignature(List<int> values) {
+    final StringBuffer buffer = StringBuffer();
+    for (final int value in values) {
+      buffer.write(value);
+    }
+    return buffer.toString();
+  }
+}
+
 class _CombinationOption {
   const _CombinationOption({
     required this.sum,
     required this.mask,
+    required this.digitCount,
   });
 
   final int sum;
   final int mask;
-}
-
-List<int> _digitsFromMask(int mask) {
-  final List<int> digits = <int>[];
-  for (int digit = 1; digit <= 9; digit++) {
-    if ((mask & (1 << digit)) != 0) {
-      digits.add(digit);
-    }
-  }
-  return digits;
+  final int digitCount;
 }

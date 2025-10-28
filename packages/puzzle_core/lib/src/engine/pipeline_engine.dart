@@ -102,6 +102,15 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
     );
 
     final String bucket = difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
+    final String requestedLevel = difficulty.level;
+    final bool enforceDifficulty = requestedLevel.isNotEmpty &&
+        difficultyConfig.buckets
+            .any((DifficultyBucketThreshold threshold) => threshold.id == requestedLevel);
+    if (enforceDifficulty && bucket != requestedLevel) {
+      throw StateError(
+        'Generated puzzle difficulty mismatch: requested $requestedLevel, got $bucket for seed $seedStr',
+      );
+    }
     final DifficultyTelemetry normalizedTelemetry = DifficultyTelemetry(
       rawScore: difficultyTelemetry.rawScore,
       bucket: bucket,
