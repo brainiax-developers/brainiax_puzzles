@@ -96,7 +96,7 @@ class PuzzlePreloadService {
       case PuzzleType.nonogramMono:
         return const core.SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10);
       case PuzzleType.kakuroClassic:
-        return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
       case PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7);
       case PuzzleType.mathdokuClassic:

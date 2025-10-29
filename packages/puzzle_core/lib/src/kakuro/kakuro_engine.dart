@@ -20,7 +20,7 @@ class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
       : super(
           engineId: 'kakuro_classic',
           engineName: 'Classic Kakuro',
-          engineVersion: '1.0.0',
+          engineVersion: '1.1.0',
           generator: const KakuroGenerator(),
           solver: const KakuroSolver(),
           validator: const KakuroValidator(),

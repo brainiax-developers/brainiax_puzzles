@@ -31,7 +31,7 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
   const Map<String, SizeOpt> defaults = {
     'sudoku_classic': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
     'nonogram_mono': SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10),
-    'kakuro_classic': SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8),
+    'kakuro_classic': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
     'slitherlink_loop': SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7),
     'mathdoku_classic': SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6),
     'futoshiki_classic': SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6),
