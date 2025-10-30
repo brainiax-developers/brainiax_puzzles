@@ -3,12 +3,83 @@ import '../difficulty/telemetry.dart';
 import '../generators/generator.dart';
 import '../solver/solver.dart';
 import '../util/determinism.dart';
+import '../util/kakuro_dictionary.dart';
 import '../util/seeded_rng.dart';
 import 'kakuro_board.dart';
 import 'kakuro_difficulty.dart';
 import 'kakuro_solver.dart';
 
 const int _solverSalt = 0x6f95c2c1ab7342ed;
+const int _mixMultiplier = 0x9e3779b97f4a7c15;
+const int _mask64 = 0xffffffffffffffff;
+
+class _DifficultyProfile {
+  const _DifficultyProfile({
+    required this.level,
+    required this.minGivenRatio,
+    required this.maxGivenRatio,
+  });
+
+  final String level;
+  final double minGivenRatio;
+  final double maxGivenRatio;
+
+  int minGivens(int total) {
+    final int raw = (total * minGivenRatio).ceil();
+    if (raw < 1) {
+      return 1;
+    }
+    if (raw > total) {
+      return total;
+    }
+    return raw;
+  }
+
+  int maxGivens(int total) {
+    final int raw = (total * maxGivenRatio).round();
+    final int min = minGivens(total);
+    if (raw < 1) {
+      return 1;
+    }
+    if (raw > total) {
+      return total;
+    }
+    if (raw < min) {
+      return min;
+    }
+    return raw;
+  }
+
+}
+
+const Map<String, _DifficultyProfile> _difficultyProfiles = <String, _DifficultyProfile>{
+  'easy': _DifficultyProfile(
+    level: 'easy',
+    minGivenRatio: 0.45,
+    maxGivenRatio: 0.58,
+  ),
+  'medium': _DifficultyProfile(
+    level: 'medium',
+    minGivenRatio: 0.32,
+    maxGivenRatio: 0.45,
+  ),
+  'hard': _DifficultyProfile(
+    level: 'hard',
+    minGivenRatio: 0.20,
+    maxGivenRatio: 0.32,
+  ),
+  'expert': _DifficultyProfile(
+    level: 'expert',
+    minGivenRatio: 0.13,
+    maxGivenRatio: 0.22,
+  ),
+};
+
+int _deriveSolverSeed(int baseSeed, int attempt, int stage) {
+  final int attemptSalt = (attempt * _mixMultiplier) & _mask64;
+  final int combined = baseSeed ^ _solverSalt ^ attemptSalt ^ stage;
+  return combined & _mask64;
+}
 
 class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   const KakuroGenerator({this.maxTemplateAttempts = 64});
@@ -25,62 +96,82 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     final Stopwatch stopwatch = Stopwatch()..start();
     final String requestedLevel = context.difficulty.level.trim().toLowerCase();
     final _KakuroTemplate template = _KakuroTemplate.templateForDifficulty(requestedLevel);
+    final _DifficultyProfile profile =
+        _difficultyProfiles[requestedLevel] ?? _difficultyProfiles['hard']!;
     final KakuroSolver solver = const KakuroSolver();
 
     int attempts = 0;
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
 
-    // Adjust attempt limit based on grid size - smaller grids need fewer attempts
-    // Easy (5x5): 3x base, Medium (7x7): 8x base, Hard (9x9): 10x base
-    final int multiplier = template.width <= 5 ? 3 : (template.width <= 7 ? 8 : 10);
+    final int multiplier = template.attemptMultiplier;
     final int attemptLimit = maxTemplateAttempts * multiplier;
 
     while (attempts < attemptLimit) {
       attempts++;
-      final _TemplateSolution? solution = template.buildSolution(context.rng);
+      int solverStage = 0;
+      SeededRng nextSolverRng() {
+        solverStage++;
+        return SeededRng(
+          _deriveSolverSeed(context.seed64, attempts, solverStage),
+        );
+      }
+
+      final _TemplateSolution? solution = template.buildSolvedSolution(
+        rng: context.rng,
+        solver: solver,
+        solverRngFactory: nextSolverRng,
+        maxTries: 48,
+      );
       if (solution == null) {
         continue;
       }
-      final KakuroBoard candidate = template.buildBoard(solution.entrySums, solution.givenCells, solution.values);
-      final SolverResult<KakuroBoard> result = solver.solve(
-        candidate,
-        SolverContext(
-          rng: SeededRng(context.seed64 ^ _solverSalt ^ attempts),
-          maxSolutions: 2,
-        ),
+
+      final _PuzzleCandidate? candidate = _carvePuzzle(
+        template: template,
+        solver: solver,
+        solution: solution,
+        profile: profile,
+        rng: context.rng,
+        nextSolverRng: nextSolverRng,
       );
-      if (!result.isUnique || result.solutions.isEmpty) {
+      if (candidate == null) {
         continue;
       }
-      final KakuroBoard solved = result.solutions.first;
-      if (!_matchesSolution(solved, solution.values)) {
+
+      if (candidate.uniqueResult.solutions.isEmpty) {
         continue;
       }
 
       final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
-        puzzle: candidate,
-        solution: solved,
+        puzzle: candidate.board,
+        solution: candidate.uniqueResult.solutions.first,
         context: DifficultyContext(
-          generatorTelemetry: const <String, Object?>{},
-          solverTelemetry: result.telemetry,
+          generatorTelemetry: <String, Object?>{
+            'givens': candidate.givenCount,
+            'valueCells': template.valueCellCount,
+            'removalAttempts': candidate.removalAttempts,
+            'removalAccepts': candidate.removalAccepts,
+          },
+          solverTelemetry: candidate.uniqueResult.telemetry,
         ),
       );
       final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
-      // Difficulty enforcement disabled - accept any difficulty level
-      // if (enforceDifficulty && bucket != requestedLevel) {
-      //   continue;
-      // }
+      if (bucket != profile.level) {
+        if (attempts < attemptLimit) {
+          continue;
+        }
+      }
 
       final Map<String, Object?> sanitizedSolverTelemetry =
-          result.telemetry.map((String key, Object? value) {
+          candidate.uniqueResult.telemetry.map((String key, Object? value) {
         if (value is double) {
           return MapEntry<String, Object?>(key, (value * 1000).round());
         }
         return MapEntry<String, Object?>(key, value);
       });
 
-      puzzle = candidate;
+      puzzle = candidate.board;
       telemetry = <String, Object?>{
         'attempts': attempts,
         'attemptLimit': attemptLimit,
@@ -90,6 +181,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'difficultyBucket': bucket,
         'requestedDifficulty': requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
+        'valueCellCount': template.valueCellCount,
+        'givensCount': candidate.givenCount,
+        'givenRatioMilli':
+            candidate.givenCount * 1000 ~/ (template.valueCellCount == 0 ? 1 : template.valueCellCount),
+        'removalAttempts': candidate.removalAttempts,
+        'removalAccepts': candidate.removalAccepts,
       };
       break;
     }
@@ -108,32 +205,106 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     );
   }
 
-  bool _matchesSolution(KakuroBoard solved, List<int> expectedValues) {
-    if (solved.values.length != expectedValues.length) {
-      return false;
-    }
-    for (int i = 0; i < solved.values.length; i++) {
-      if (expectedValues[i] == 0) {
+  _PuzzleCandidate? _carvePuzzle({
+    required _KakuroTemplate template,
+    required KakuroSolver solver,
+    required _TemplateSolution solution,
+    required _DifficultyProfile profile,
+    required SeededRng rng,
+    required SeededRng Function() nextSolverRng,
+  }) {
+    final Set<int> givenCells = template.valueCells.toSet();
+    final int valueCellCount = template.valueCellCount;
+    final int minGivens = profile.minGivens(valueCellCount);
+    final int maxGivens = profile.maxGivens(valueCellCount);
+
+    final List<int> removalOrder = rng.permute(givenCells.toList(growable: false));
+    int removalAttempts = 0;
+    int removalAccepts = 0;
+
+    for (final int cellIndex in removalOrder) {
+      if (givenCells.length <= minGivens) {
+        break;
+      }
+      removalAttempts++;
+      givenCells.remove(cellIndex);
+      final KakuroBoard trialBoard = template.buildBoard(
+        solution.entrySums,
+        givenCells,
+        solution.values,
+      );
+      final SolverResult<KakuroBoard> uniquenessResult = solver.solve(
+        trialBoard,
+        SolverContext(
+          rng: nextSolverRng(),
+          maxSolutions: 2,
+        ),
+      );
+      if (!uniquenessResult.isUnique) {
+        givenCells.add(cellIndex);
         continue;
       }
-      if (solved.values[i] != expectedValues[i]) {
-        return false;
-      }
+
+      removalAccepts++;
     }
-    return true;
+
+    final KakuroBoard puzzleBoard = template.buildBoard(
+      solution.entrySums,
+      givenCells,
+      solution.values,
+    );
+    final SolverResult<KakuroBoard> finalResult = solver.solve(
+      puzzleBoard,
+      SolverContext(
+        rng: nextSolverRng(),
+        maxSolutions: 2,
+      ),
+    );
+    if (!finalResult.isUnique) {
+      return null;
+    }
+
+    final int givenCount = givenCells.length;
+    if (givenCount < minGivens || givenCount > maxGivens) {
+      return null;
+    }
+
+    return _PuzzleCandidate(
+      board: puzzleBoard,
+      uniqueResult: finalResult,
+      givenCells: givenCells,
+      removalAttempts: removalAttempts,
+      removalAccepts: removalAccepts,
+    );
   }
+}
+
+class _PuzzleCandidate {
+  const _PuzzleCandidate({
+    required this.board,
+    required this.uniqueResult,
+    required this.givenCells,
+    required this.removalAttempts,
+    required this.removalAccepts,
+  });
+
+  final KakuroBoard board;
+  final SolverResult<KakuroBoard> uniqueResult;
+  final Set<int> givenCells;
+  final int removalAttempts;
+  final int removalAccepts;
+
+  int get givenCount => givenCells.length;
 }
 
 class _TemplateSolution {
   _TemplateSolution({
     required this.values,
     required this.entrySums,
-    this.givenCells = const <int>{},
   }) : signature = _computeSignature(values);
 
   final List<int> values;
   final Map<int, int> entrySums;
-  final Set<int> givenCells;
   final String signature;
 
   static String _computeSignature(List<int> values) {
@@ -143,6 +314,16 @@ class _TemplateSolution {
     }
     return buffer.toString();
   }
+}
+
+class _CombinationChoice {
+  const _CombinationChoice({
+    required this.sum,
+    required this.mask,
+  });
+
+  final int sum;
+  final int mask;
 }
 
 class _TemplateEntry {
@@ -168,6 +349,7 @@ class _KakuroTemplate {
     required this.entries,
     required this.acrossEntryForCell,
     required this.downEntryForCell,
+    required this.valueCells,
   });
 
   final int width;
@@ -177,10 +359,24 @@ class _KakuroTemplate {
   final List<_TemplateEntry> entries;
   final List<int> acrossEntryForCell;
   final List<int> downEntryForCell;
+  final List<int> valueCells;
+
+  int get valueCellCount => valueCells.length;
+
+  int get attemptMultiplier {
+    if (width <= 5) {
+      return 3;
+    }
+    if (width <= 7) {
+      return 8;
+    }
+    return 10;
+  }
 
   static _KakuroTemplate? _cachedEasy;
   static _KakuroTemplate? _cachedMedium;
   static _KakuroTemplate? _cachedHard;
+  static _KakuroTemplate? _cachedExpert;
 
   static _KakuroTemplate templateForDifficulty(String difficulty) {
     final String level = difficulty.trim().toLowerCase();
@@ -189,6 +385,8 @@ class _KakuroTemplate {
         return _cachedEasy ??= _buildEasy();
       case 'medium':
         return _cachedMedium ??= _buildMedium();
+      case 'expert':
+        return _cachedExpert ??= _buildHard();
       case 'hard':
       default:
         return _cachedHard ??= _buildHard();
@@ -196,7 +394,6 @@ class _KakuroTemplate {
   }
 
   static _KakuroTemplate _buildEasy() {
-    // 5x5 grid - simpler layout for easy difficulty
     const List<String> layout = <String>[
       '#####',
       '#...#',
@@ -208,7 +405,6 @@ class _KakuroTemplate {
   }
 
   static _KakuroTemplate _buildMedium() {
-    // 7x7 grid - moderate complexity for medium difficulty
     const List<String> layout = <String>[
       '#######',
       '#.....#',
@@ -222,7 +418,6 @@ class _KakuroTemplate {
   }
 
   static _KakuroTemplate _buildHard() {
-    // 9x9 grid - complex layout for hard difficulty
     const List<String> layout = <String>[
       '#########',
       '##.....##',
@@ -237,17 +432,78 @@ class _KakuroTemplate {
     return _buildFromLayout(layout);
   }
 
+  static final Map<int, List<_CombinationChoice>> _combinationCache =
+      <int, List<_CombinationChoice>>{};
+
+  static List<_CombinationChoice> _choicesForLength(int length) {
+    return _combinationCache.putIfAbsent(length, () {
+      final Map<int, Set<int>>? combos =
+          KakuroDictionary.getCombinationsForLength(length);
+      if (combos == null || combos.isEmpty) {
+        return const <_CombinationChoice>[];
+      }
+      final List<_CombinationChoice> choices = <_CombinationChoice>[];
+      combos.forEach((int sum, Set<int> masks) {
+        for (final int mask in masks) {
+          choices.add(_CombinationChoice(sum: sum, mask: mask));
+        }
+      });
+      return choices;
+    });
+  }
+
+  _TemplateSolution? buildSolvedSolution({
+    required SeededRng rng,
+    required KakuroSolver solver,
+    required SeededRng Function() solverRngFactory,
+    int maxTries = 32,
+  }) {
+    for (int attempt = 0; attempt < maxTries; attempt++) {
+      final Map<int, int> entrySums = <int, int>{};
+      bool valid = true;
+      for (final _TemplateEntry entry in entries) {
+        final List<_CombinationChoice> choices = _choicesForLength(entry.length);
+        if (choices.isEmpty) {
+          valid = false;
+          break;
+        }
+        final _CombinationChoice choice =
+            choices[rng.nextIntInRange(choices.length)];
+        entrySums[entry.id] = choice.sum;
+      }
+      if (!valid) {
+        continue;
+      }
+
+      final KakuroBoard board = buildBoard(entrySums);
+      final SolverResult<KakuroBoard> result = solver.solve(
+        board,
+        SolverContext(
+          rng: solverRngFactory(),
+          maxSolutions: 1,
+        ),
+      );
+      if (!result.hasSolution || result.solutions.isEmpty) {
+        continue;
+      }
+      return _TemplateSolution(
+        values: List<int>.from(result.solutions.first.values),
+        entrySums: entrySums,
+      );
+    }
+    return null;
+  }
+
   static _KakuroTemplate _buildFromLayout(List<String> layout) {
     final int height = layout.length;
     final int width = layout.first.length;
     final List<KakuroCellKind> kinds =
-        List<KakuroCellKind>.generate(width * height, (int index) => KakuroCellKind.block);
+        List<KakuroCellKind>.generate(width * height, (int _) => KakuroCellKind.block);
     final List<int> acrossEntryForCell = List<int>.filled(width * height, -1);
     final List<int> downEntryForCell = List<int>.filled(width * height, -1);
     final List<_TemplateEntry> entries = <_TemplateEntry>[];
 
     int entryId = 0;
-    // Across entries
     for (int row = 0; row < height; row++) {
       int col = 0;
       while (col < width) {
@@ -276,7 +532,6 @@ class _KakuroTemplate {
       }
     }
 
-    // Down entries
     for (int col = 0; col < width; col++) {
       int row = 0;
       while (row < height) {
@@ -305,6 +560,13 @@ class _KakuroTemplate {
       }
     }
 
+    final List<int> valueCells = <int>[];
+    for (int i = 0; i < kinds.length; i++) {
+      if (kinds[i] == KakuroCellKind.value) {
+        valueCells.add(i);
+      }
+    }
+
     return _KakuroTemplate(
       width: width,
       height: height,
@@ -313,86 +575,15 @@ class _KakuroTemplate {
       entries: entries,
       acrossEntryForCell: acrossEntryForCell,
       downEntryForCell: downEntryForCell,
+      valueCells: valueCells,
     );
   }
 
-  _TemplateSolution? buildSolution(SeededRng rng) {
-    // Strategy: Generate random target sums for each entry within valid ranges,
-    // then use solver to find a valid solution that satisfies those sums
-    
-    // Generate random but valid sums for each entry
-    // Use a more conservative middle range to increase solvability
-    final Map<int, int> targetSums = <int, int>{};
-    for (final _TemplateEntry entry in entries) {
-      final int length = entry.cells.length;
-      // Minimum sum: 1+2+...+length
-      final int minSum = (length * (length + 1)) ~/ 2;
-      // Maximum sum: (9)+(9-1)+...+(9-length+1)
-      int maxSum = 0;
-      for (int i = 0; i < length; i++) {
-        maxSum += (9 - i);
-      }
-      // Bias toward middle range for better solvability (25%-75% of range)
-      final int range = maxSum - minSum;
-      final int quarterRange = range ~/ 4;
-      final int start = minSum + quarterRange;
-      final int end = maxSum - quarterRange;
-      final int sum = rng.randIntRange(start, end + 1);
-      targetSums[entry.id] = sum;
-    }
-    
-    final KakuroBoard tempBoard = buildBoard(targetSums);
-    final KakuroSolver solver = const KakuroSolver(maxSearchDepth: 50);
-    
-    // Use solver to find ONE solution with the randomized RNG
-    final SolverResult<KakuroBoard> result = solver.solve(
-      tempBoard,
-      SolverContext(rng: rng, maxSolutions: 1),
-    );
-    
-    if (!result.hasSolution || result.solutions.isEmpty) {
-      return null;
-    }
-    
-    final KakuroBoard solved = result.solutions.first;
-    final List<int> values = List<int>.from(solved.values);
-    
-    // Extract actual sums from the solution
-    final Map<int, int> entrySums = <int, int>{};
-    for (final _TemplateEntry entry in entries) {
-      int sum = 0;
-      for (final int cellIndex in entry.cells) {
-        sum += values[cellIndex];
-      }
-      entrySums[entry.id] = sum;
-    }
-
-    // NEW: Add some pre-filled cells to increase uniqueness probability
-    // Select 15-30% of cells to be givens, with variation based on RNG
-    final List<int> playableCells = <int>[];
-    for (int i = 0; i < values.length; i++) {
-      if (kinds[i] == KakuroCellKind.value && values[i] != 0) {
-        playableCells.add(i);
-      }
-    }
-    
-    // Randomize the percentage of givens between 15-30%
-    final double givenRatio = 0.15 + (rng.nextIntInRange(16) / 100.0);
-    final int givenCount = (playableCells.length * givenRatio).round();
-    final List<int> shuffledCells = rng.permute(playableCells);
-    final List<int> givenCells = shuffledCells.take(givenCount).toList();
-    
-    // Store which cells have pre-filled values
-    final Set<int> givenSet = givenCells.toSet();
-    
-    return _TemplateSolution(
-      values: values,
-      entrySums: entrySums,
-      givenCells: givenSet,
-    );
-  }
-
-  KakuroBoard buildBoard(Map<int, int> entrySums, [Set<int> givenCells = const <int>{}, List<int>? solutionValues]) {
+  KakuroBoard buildBoard(
+    Map<int, int> entrySums, [
+    Set<int> givenCells = const <int>{},
+    List<int>? solutionValues,
+  ]) {
     final int cellCount = width * height;
     final List<int?> acrossClues = List<int?>.filled(cellCount, null);
     final List<int?> downClues = List<int?>.filled(cellCount, null);
@@ -424,7 +615,6 @@ class _KakuroTemplate {
       }
     }
 
-    // Initialize values - fill in given cells if provided
     final List<int> values = List<int>.filled(cellCount, 0);
     if (solutionValues != null) {
       for (final int cellIndex in givenCells) {
