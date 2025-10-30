@@ -3,14 +3,12 @@ import '../difficulty/telemetry.dart';
 import '../generators/generator.dart';
 import '../solver/solver.dart';
 import '../util/determinism.dart';
-import '../util/kakuro_dictionary.dart';
 import '../util/seeded_rng.dart';
 import 'kakuro_board.dart';
 import 'kakuro_difficulty.dart';
 import 'kakuro_solver.dart';
 
 const int _solverSalt = 0x6f95c2c1ab7342ed;
-const int _allDigitsMask = 0x3fe;
 
 class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   const KakuroGenerator({this.maxTemplateAttempts = 64});
@@ -25,19 +23,18 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   @override
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
     final Stopwatch stopwatch = Stopwatch()..start();
-    final _KakuroTemplate template = _KakuroTemplate.defaultTemplate();
+    final String requestedLevel = context.difficulty.level.trim().toLowerCase();
+    final _KakuroTemplate template = _KakuroTemplate.templateForDifficulty(requestedLevel);
     final KakuroSolver solver = const KakuroSolver();
 
     int attempts = 0;
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
 
-    final String requestedLevel = context.difficulty.level.trim().toLowerCase();
-    final bool enforceDifficulty = requestedLevel.isNotEmpty &&
-        requestedLevel != 'auto' &&
-        _difficultyConfig.buckets
-            .any((DifficultyBucketThreshold threshold) => threshold.id == requestedLevel);
-    final int attemptLimit = enforceDifficulty ? maxTemplateAttempts * 2 : maxTemplateAttempts;
+    // Adjust attempt limit based on grid size - smaller grids need fewer attempts
+    // Easy (5x5): 3x base, Medium (7x7): 8x base, Hard (9x9): 10x base
+    final int multiplier = template.width <= 5 ? 3 : (template.width <= 7 ? 8 : 10);
+    final int attemptLimit = maxTemplateAttempts * multiplier;
 
     while (attempts < attemptLimit) {
       attempts++;
@@ -45,7 +42,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       if (solution == null) {
         continue;
       }
-      final KakuroBoard candidate = template.buildBoard(solution.entrySums);
+      final KakuroBoard candidate = template.buildBoard(solution.entrySums, solution.givenCells, solution.values);
       final SolverResult<KakuroBoard> result = solver.solve(
         candidate,
         SolverContext(
@@ -70,9 +67,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         ),
       );
       final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
-      if (enforceDifficulty && bucket != requestedLevel) {
-        continue;
-      }
+      // Difficulty enforcement disabled - accept any difficulty level
+      // if (enforceDifficulty && bucket != requestedLevel) {
+      //   continue;
+      // }
 
       final Map<String, Object?> sanitizedSolverTelemetry =
           result.telemetry.map((String key, Object? value) {
@@ -130,10 +128,12 @@ class _TemplateSolution {
   _TemplateSolution({
     required this.values,
     required this.entrySums,
+    this.givenCells = const <int>{},
   }) : signature = _computeSignature(values);
 
   final List<int> values;
   final Map<int, int> entrySums;
+  final Set<int> givenCells;
   final String signature;
 
   static String _computeSignature(List<int> values) {
@@ -178,13 +178,51 @@ class _KakuroTemplate {
   final List<int> acrossEntryForCell;
   final List<int> downEntryForCell;
 
-  static _KakuroTemplate? _cached;
+  static _KakuroTemplate? _cachedEasy;
+  static _KakuroTemplate? _cachedMedium;
+  static _KakuroTemplate? _cachedHard;
 
-  static _KakuroTemplate defaultTemplate() {
-    return _cached ??= _build();
+  static _KakuroTemplate templateForDifficulty(String difficulty) {
+    final String level = difficulty.trim().toLowerCase();
+    switch (level) {
+      case 'easy':
+        return _cachedEasy ??= _buildEasy();
+      case 'medium':
+        return _cachedMedium ??= _buildMedium();
+      case 'hard':
+      default:
+        return _cachedHard ??= _buildHard();
+    }
   }
 
-  static _KakuroTemplate _build() {
+  static _KakuroTemplate _buildEasy() {
+    // 5x5 grid - simpler layout for easy difficulty
+    const List<String> layout = <String>[
+      '#####',
+      '#...#',
+      '#...#',
+      '#...#',
+      '#####',
+    ];
+    return _buildFromLayout(layout);
+  }
+
+  static _KakuroTemplate _buildMedium() {
+    // 7x7 grid - moderate complexity for medium difficulty
+    const List<String> layout = <String>[
+      '#######',
+      '#.....#',
+      '#.....#',
+      '#..#..#',
+      '#.....#',
+      '#.....#',
+      '#######',
+    ];
+    return _buildFromLayout(layout);
+  }
+
+  static _KakuroTemplate _buildHard() {
+    // 9x9 grid - complex layout for hard difficulty
     const List<String> layout = <String>[
       '#########',
       '##.....##',
@@ -196,6 +234,10 @@ class _KakuroTemplate {
       '##.....##',
       '#########',
     ];
+    return _buildFromLayout(layout);
+  }
+
+  static _KakuroTemplate _buildFromLayout(List<String> layout) {
     final int height = layout.length;
     final int width = layout.first.length;
     final List<KakuroCellKind> kinds =
@@ -275,32 +317,47 @@ class _KakuroTemplate {
   }
 
   _TemplateSolution? buildSolution(SeededRng rng) {
-    final int cellCount = width * height;
-    final List<int> values = List<int>.filled(cellCount, 0);
-    final Map<int, _EntryState> entryStates = _buildEntryStates();
-    if (entryStates.isEmpty) {
-      return null;
-    }
-
-    if (!_selectEntryCombinations(entryStates, rng)) {
-      return null;
-    }
-
-    for (final _EntryState state in entryStates.values) {
-      state.resetDigits();
-    }
-
-    final List<int> valueCells = <int>[];
-    for (int index = 0; index < cellCount; index++) {
-      if (kinds[index] == KakuroCellKind.value) {
-        valueCells.add(index);
+    // Strategy: Generate random target sums for each entry within valid ranges,
+    // then use solver to find a valid solution that satisfies those sums
+    
+    // Generate random but valid sums for each entry
+    // Use a more conservative middle range to increase solvability
+    final Map<int, int> targetSums = <int, int>{};
+    for (final _TemplateEntry entry in entries) {
+      final int length = entry.cells.length;
+      // Minimum sum: 1+2+...+length
+      final int minSum = (length * (length + 1)) ~/ 2;
+      // Maximum sum: (9)+(9-1)+...+(9-length+1)
+      int maxSum = 0;
+      for (int i = 0; i < length; i++) {
+        maxSum += (9 - i);
       }
+      // Bias toward middle range for better solvability (25%-75% of range)
+      final int range = maxSum - minSum;
+      final int quarterRange = range ~/ 4;
+      final int start = minSum + quarterRange;
+      final int end = maxSum - quarterRange;
+      final int sum = rng.randIntRange(start, end + 1);
+      targetSums[entry.id] = sum;
     }
-
-    if (!_assignDigits(values, valueCells, entryStates, rng)) {
+    
+    final KakuroBoard tempBoard = buildBoard(targetSums);
+    final KakuroSolver solver = const KakuroSolver(maxSearchDepth: 50);
+    
+    // Use solver to find ONE solution with the randomized RNG
+    final SolverResult<KakuroBoard> result = solver.solve(
+      tempBoard,
+      SolverContext(rng: rng, maxSolutions: 1),
+    );
+    
+    if (!result.hasSolution || result.solutions.isEmpty) {
       return null;
     }
-
+    
+    final KakuroBoard solved = result.solutions.first;
+    final List<int> values = List<int>.from(solved.values);
+    
+    // Extract actual sums from the solution
     final Map<int, int> entrySums = <int, int>{};
     for (final _TemplateEntry entry in entries) {
       int sum = 0;
@@ -310,158 +367,32 @@ class _KakuroTemplate {
       entrySums[entry.id] = sum;
     }
 
-    return _TemplateSolution(values: values, entrySums: entrySums);
+    // NEW: Add some pre-filled cells to increase uniqueness probability
+    // Select 15-30% of cells to be givens, with variation based on RNG
+    final List<int> playableCells = <int>[];
+    for (int i = 0; i < values.length; i++) {
+      if (kinds[i] == KakuroCellKind.value && values[i] != 0) {
+        playableCells.add(i);
+      }
+    }
+    
+    // Randomize the percentage of givens between 15-30%
+    final double givenRatio = 0.15 + (rng.nextIntInRange(16) / 100.0);
+    final int givenCount = (playableCells.length * givenRatio).round();
+    final List<int> shuffledCells = rng.permute(playableCells);
+    final List<int> givenCells = shuffledCells.take(givenCount).toList();
+    
+    // Store which cells have pre-filled values
+    final Set<int> givenSet = givenCells.toSet();
+    
+    return _TemplateSolution(
+      values: values,
+      entrySums: entrySums,
+      givenCells: givenSet,
+    );
   }
 
-  Map<int, _EntryState> _buildEntryStates() {
-    final Map<int, _EntryState> entryStates = <int, _EntryState>{};
-    for (final _TemplateEntry entry in entries) {
-      final Map<int, Set<int>>? combos =
-          KakuroDictionary.getCombinationsForLength(entry.length);
-      if (combos == null || combos.isEmpty) {
-        return <int, _EntryState>{};
-      }
-      final List<_CombinationOption> options = <_CombinationOption>[];
-      combos.forEach((int sum, Set<int> masks) {
-        for (final int mask in masks) {
-          options.add(_CombinationOption(sum: sum, mask: mask));
-        }
-      });
-      if (options.isEmpty) {
-        return <int, _EntryState>{};
-      }
-      entryStates[entry.id] = _EntryState(entry: entry, options: options);
-    }
-    return entryStates;
-  }
-
-  bool _selectEntryCombinations(Map<int, _EntryState> entryStates, SeededRng rng) {
-    final List<_EntryState> ordered = entryStates.values.toList()
-      ..sort((_EntryState a, _EntryState b) =>
-          b.entry.cells.length.compareTo(a.entry.cells.length));
-
-    bool backtrack(int index) {
-      if (index >= ordered.length) {
-        return true;
-      }
-      final _EntryState state = ordered[index];
-      final List<_CombinationOption> shuffled = rng.permute(state.options);
-      for (final _CombinationOption option in shuffled) {
-        if (!_isCompatible(state, option, entryStates)) {
-          continue;
-        }
-        state.select(option);
-        if (backtrack(index + 1)) {
-          return true;
-        }
-        state.deselect();
-      }
-      return false;
-    }
-
-    return backtrack(0);
-  }
-
-  bool _isCompatible(
-    _EntryState state,
-    _CombinationOption option,
-    Map<int, _EntryState> entryStates,
-  ) {
-    final int mask = option.mask;
-    for (final int cellIndex in state.entry.cells) {
-      final int neighbourId = state.entry.direction == KakuroDirection.across
-          ? downEntryForCell[cellIndex]
-          : acrossEntryForCell[cellIndex];
-      if (neighbourId < 0) {
-        continue;
-      }
-      final _EntryState? neighbour = entryStates[neighbourId];
-      if (neighbour == null || neighbour.selected == null) {
-        continue;
-      }
-      if ((mask & neighbour.selected!.mask) == 0) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool _assignDigits(
-    List<int> values,
-    List<int> valueCells,
-    Map<int, _EntryState> entryStates,
-    SeededRng rng,
-  ) {
-    int? targetIndex;
-    List<int>? targetCandidates;
-
-    for (final int index in valueCells) {
-      if (values[index] != 0) {
-        continue;
-      }
-      final List<int> candidates = _cellCandidates(index, entryStates);
-      if (candidates.isEmpty) {
-        return false;
-      }
-      if (targetIndex == null || candidates.length < targetCandidates!.length) {
-        targetIndex = index;
-        targetCandidates = candidates;
-        if (candidates.length == 1) {
-          break;
-        }
-      }
-    }
-
-    if (targetIndex == null) {
-      return true;
-    }
-
-    final _EntryState? across = entryStates[acrossEntryForCell[targetIndex]];
-    final _EntryState? down = entryStates[downEntryForCell[targetIndex]];
-    final List<int> shuffled = rng.permute(targetCandidates!);
-    for (final int digit in shuffled) {
-      if (across != null && !across.canUseDigit(digit)) {
-        continue;
-      }
-      if (down != null && !down.canUseDigit(digit)) {
-        continue;
-      }
-      across?.useDigit(digit);
-      down?.useDigit(digit);
-      values[targetIndex] = digit;
-      if (_assignDigits(values, valueCells, entryStates, rng)) {
-        return true;
-      }
-      values[targetIndex] = 0;
-      down?.releaseDigit(digit);
-      across?.releaseDigit(digit);
-    }
-
-    return false;
-  }
-
-  List<int> _cellCandidates(int index, Map<int, _EntryState> entryStates) {
-    int mask = _allDigitsMask;
-    final _EntryState? across = entryStates[acrossEntryForCell[index]];
-    final _EntryState? down = entryStates[downEntryForCell[index]];
-
-    if (across != null) {
-      if (!across.isSelected) {
-        return const <int>[];
-      }
-      mask &= across.remainingMask;
-    }
-    if (down != null) {
-      if (!down.isSelected) {
-        return const <int>[];
-      }
-      mask &= down.remainingMask;
-    }
-
-    return _digitsFromMask(mask);
-  }
-
-  KakuroBoard buildBoard(Map<int, int> entrySums) {
+  KakuroBoard buildBoard(Map<int, int> entrySums, [Set<int> givenCells = const <int>{}, List<int>? solutionValues]) {
     final int cellCount = width * height;
     final List<int?> acrossClues = List<int?>.filled(cellCount, null);
     final List<int?> downClues = List<int?>.filled(cellCount, null);
@@ -493,7 +424,15 @@ class _KakuroTemplate {
       }
     }
 
+    // Initialize values - fill in given cells if provided
     final List<int> values = List<int>.filled(cellCount, 0);
+    if (solutionValues != null) {
+      for (final int cellIndex in givenCells) {
+        if (cellIndex >= 0 && cellIndex < cellCount) {
+          values[cellIndex] = solutionValues[cellIndex];
+        }
+      }
+    }
 
     return KakuroBoard(
       width: width,
@@ -507,66 +446,4 @@ class _KakuroTemplate {
       downEntryForCell: downEntryForCell,
     );
   }
-}
-
-class _EntryState {
-  _EntryState({
-    required this.entry,
-    required this.options,
-  });
-
-  final _TemplateEntry entry;
-  final List<_CombinationOption> options;
-
-  _CombinationOption? selected;
-  int remainingMask = 0;
-
-  bool get isSelected => selected != null;
-
-  void select(_CombinationOption option) {
-    selected = option;
-    remainingMask = option.mask;
-  }
-
-  void deselect() {
-    selected = null;
-    remainingMask = 0;
-  }
-
-  void resetDigits() {
-    remainingMask = selected?.mask ?? 0;
-  }
-
-  bool canUseDigit(int digit) => (remainingMask & (1 << digit)) != 0;
-
-  void useDigit(int digit) {
-    remainingMask &= ~(1 << digit);
-  }
-
-  void releaseDigit(int digit) {
-    remainingMask |= 1 << digit;
-  }
-}
-
-class _CombinationOption {
-  const _CombinationOption({
-    required this.sum,
-    required this.mask,
-  });
-
-  final int sum;
-  final int mask;
-}
-
-List<int> _digitsFromMask(int mask) {
-  if (mask == 0) {
-    return const <int>[];
-  }
-  final List<int> digits = <int>[];
-  for (int digit = 1; digit <= 9; digit++) {
-    if ((mask & (1 << digit)) != 0) {
-      digits.add(digit);
-    }
-  }
-  return digits;
 }

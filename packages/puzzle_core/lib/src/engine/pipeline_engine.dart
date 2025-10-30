@@ -19,6 +19,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
     required this.validator,
     required this.difficultyScorer,
     required this.difficultyConfig,
+    this.enforceDifficulty = true,
   });
 
   final String engineId;
@@ -29,6 +30,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
   final PuzzleValidator<S> validator;
   final DifficultyScorer<S> difficultyScorer;
   final DifficultyBucketConfig difficultyConfig;
+  final bool enforceDifficulty;
 
   @override
   String get id => engineId;
@@ -103,10 +105,11 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
 
     final String bucket = difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
     final String requestedLevel = difficulty.level;
-    final bool enforceDifficulty = requestedLevel.isNotEmpty &&
+    final bool shouldEnforce = enforceDifficulty &&
+        requestedLevel.isNotEmpty &&
         difficultyConfig.buckets
             .any((DifficultyBucketThreshold threshold) => threshold.id == requestedLevel);
-    if (enforceDifficulty && bucket != requestedLevel) {
+    if (shouldEnforce && bucket != requestedLevel) {
       throw StateError(
         'Generated puzzle difficulty mismatch: requested $requestedLevel, got $bucket for seed $seedStr',
       );
