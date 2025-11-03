@@ -42,6 +42,7 @@ export 'src/nonogram/nonogram_engine.dart';
 export 'src/kakuro/kakuro_board.dart';
 export 'src/kakuro/kakuro_move.dart';
 export 'src/kakuro/kakuro_engine.dart';
+export 'src/kakuro/kakuro_format.dart';
 
 // Slitherlink engine implementation
 export 'src/slitherlink/slitherlink_board.dart';

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
+import 'generation_isolate.dart';
 
 import '../models/models.dart';
 import 'puzzle_registry.dart';
@@ -59,13 +60,16 @@ class PuzzlePreloadService {
             final sizeOpt = sizeStr != null ? _parseSize(sizeStr) : _defaultSizeFor(metadata.type);
             final diffScore = _parseDifficulty(difficulty);
 
-            // Generate (may be CPU-heavy). Run synchronously but yield occasionally.
-            final generated = engine.generate(
+            // Generate on a background isolate to avoid jank.
+            final Duration attemptTimeout =
+                metadata.type == PuzzleType.kakuroClassic ? const Duration(seconds: 3) : const Duration(seconds: 2);
+            final generated = await generatePuzzleIsolated(
+              engineId: metadata.type.key,
               seedStr: seed,
               seed64: seed.hashCode,
               size: sizeOpt,
               difficulty: diffScore,
-            );
+            ).timeout(attemptTimeout);
             _cache[key] = generated;
             if (kDebugMode) print('Preloaded puzzle for ${metadata.type.key} @ $difficulty (seed: $seed)');
           } catch (e) {

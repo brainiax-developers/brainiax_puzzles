@@ -167,22 +167,13 @@ class _PuzzleCardState extends State<PuzzleCard> {
                       spacing: 16,
                       runSpacing: 8,
                       children: widget.metadata.supportedDifficulties.map((difficulty) {
-                        // Use chip style for Kakuro, radio buttons for others
-                        if (widget.metadata.type.key == 'kakuro_classic') {
-                          return _DifficultyChip(
-                            difficulty: difficulty,
-                            color: widget.metadata.primaryAccentColor,
-                            isSelected: _selectedDifficulty == difficulty,
-                            onTap: () => _onDifficultySelected(difficulty),
-                          );
-                        } else {
-                          return _DifficultyRadioButton(
-                            difficulty: difficulty,
-                            color: widget.metadata.primaryAccentColor,
-                            isSelected: _selectedDifficulty == difficulty,
-                            onChanged: (value) => _onDifficultySelected(difficulty),
-                          );
-                        }
+                        // Use chip style for all puzzles (radio behavior with chip visuals)
+                        return _DifficultyChip(
+                          difficulty: difficulty,
+                          color: widget.metadata.primaryAccentColor,
+                          isSelected: _selectedDifficulty == difficulty,
+                          onTap: () => _onDifficultySelected(difficulty),
+                        );
                       }).toList(),
                     ),
                   ],
@@ -311,43 +302,7 @@ class _DifficultyChip extends StatelessWidget {
 }
 
 /// A radio button for difficulty selection.
-class _DifficultyRadioButton extends StatelessWidget {
-  const _DifficultyRadioButton({
-    required this.difficulty,
-    required this.color,
-    required this.isSelected,
-    required this.onChanged,
-  });
-
-  final String difficulty;
-  final Color color;
-  final bool isSelected;
-  final ValueChanged<bool?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Radio<String>(
-          value: difficulty,
-          groupValue: isSelected ? difficulty : null,
-          onChanged: (value) => onChanged(value != null),
-          activeColor: color,
-        ),
-        Text(
-          difficulty,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-}
+// Note: legacy radio button widget removed in favor of chips for all puzzles.
 
 /// An action button for puzzle modes.
 class _ActionButton extends StatelessWidget {

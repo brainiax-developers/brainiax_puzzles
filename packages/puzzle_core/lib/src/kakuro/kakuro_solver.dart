@@ -38,9 +38,10 @@ List<int> _digitsFromMask(int mask) {
 }
 
 class KakuroSolver extends PuzzleSolver<KakuroBoard> {
-  const KakuroSolver({this.maxSearchDepth = 16});
+  const KakuroSolver({this.maxSearchDepth = 16, this.maxBacktrackNodes});
 
   final int maxSearchDepth;
+  final int? maxBacktrackNodes;
 
   @override
   SolverResult<KakuroBoard> solve(KakuroBoard board, SolverContext context) {
@@ -49,6 +50,7 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
       board: board,
       maxSolutions: context.maxSolutions,
       maxSearchDepth: maxSearchDepth,
+      maxBacktrackNodes: maxBacktrackNodes,
     );
     search.solve();
     stopwatch.stop();
@@ -127,6 +129,7 @@ class _KakuroSearch {
     required this.board,
     required this.maxSolutions,
     required this.maxSearchDepth,
+    this.maxBacktrackNodes,
   })  : cellCount = board.cellCount,
         values = List<int>.from(board.values),
         candidates = List<int>.filled(board.cellCount, _allDigitsMask),
@@ -140,6 +143,7 @@ class _KakuroSearch {
   final KakuroBoard board;
   final int maxSolutions;
   final int maxSearchDepth;
+  final int? maxBacktrackNodes;
   final int cellCount;
 
   final List<int> values;
@@ -235,6 +239,9 @@ class _KakuroSearch {
     if (solutions.length >= maxSolutions) {
       return;
     }
+    if (maxBacktrackNodes != null && backtrackNodes >= maxBacktrackNodes!) {
+      return;
+    }
 
     if (!_propagate()) {
       return;
@@ -261,6 +268,10 @@ class _KakuroSearch {
       }
       final _Snapshot snapshot = _Snapshot.capture(this);
       backtrackNodes++;
+      if (maxBacktrackNodes != null && backtrackNodes > maxBacktrackNodes!) {
+        snapshot.restore(this);
+        return;
+      }
       values[cellIndex] = digit;
       candidates[cellIndex] = _bitFor(digit);
       _search(depth + 1);

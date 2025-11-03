@@ -20,7 +20,7 @@ class SudokuEngine extends PipelinePuzzleEngine<SudokuBoard, SudokuMove> {
           engineId: 'sudoku_classic',
           engineName: 'Classic Sudoku',
           engineVersion: '1.0.0',
-          generator: const SudokuGenerator(),
+          generator: const SudokuGenerator(minClues: 22),
           solver: const SudokuSolver(),
           validator: const SudokuValidator(),
           difficultyScorer: const SudokuDifficultyScorer(),

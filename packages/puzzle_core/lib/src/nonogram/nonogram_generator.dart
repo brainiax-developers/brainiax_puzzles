@@ -23,7 +23,14 @@ class NonogramGenerator extends PuzzleGenerator<NonogramBoard> {
     }
 
     final int cellCount = width * height;
-    List<int> solution = _deriveBitmap(context.rng, width, height);
+    // Build a target solution bitmap influenced by requested difficulty to better
+    // control average clue lengths and alternations for easier levels.
+    List<int> solution = _deriveBitmapForDifficulty(
+      context.rng,
+      width,
+      height,
+      context.difficulty.level.toLowerCase(),
+    );
     if (!_hasAnyFilled(solution)) {
       solution = _injectDeterministicPattern(width, height);
     }
@@ -66,6 +73,57 @@ class NonogramGenerator extends PuzzleGenerator<NonogramBoard> {
     }
 
     throw StateError('Unable to generate unique nonogram for seed ${context.seedStr}');
+  }
+
+  List<int> _deriveBitmapForDifficulty(
+    SeededRng rng,
+    int width,
+    int height,
+    String level,
+  ) {
+    switch (level) {
+      case 'easy':
+        return _blockyBitmap(rng, width, height, blocks: 3, minSize: 3, maxSize: 6);
+      case 'medium':
+        return _blockyBitmap(rng, width, height, blocks: 4, minSize: 2, maxSize: 5);
+      default:
+        return _deriveBitmap(rng, width, height);
+    }
+  }
+
+  List<int> _blockyBitmap(
+    SeededRng rng,
+    int width,
+    int height, {
+    required int blocks,
+    required int minSize,
+    required int maxSize,
+  }) {
+    final List<int> bitmap =
+        List<int>.filled(width * height, NonogramLineSolver.empty);
+    for (int i = 0; i < blocks; i++) {
+      final int w = rng.randIntRange(minSize, (maxSize + 1).clamp(minSize, width));
+      final int h = rng.randIntRange(minSize, (maxSize + 1).clamp(minSize, height));
+      final int x0 = rng.randIntRange(0, (width - w + 1).clamp(0, width));
+      final int y0 = rng.randIntRange(0, (height - h + 1).clamp(0, height));
+      for (int y = y0; y < y0 + h && y < height; y++) {
+        for (int x = x0; x < x0 + w && x < width; x++) {
+          bitmap[y * width + x] = NonogramLineSolver.filled;
+        }
+      }
+    }
+
+    // Light random noise to avoid triviality, but keep fragmentation low.
+    final int flips = (width * height) ~/ 12; // ~8% cells
+    for (int k = 0; k < flips; k++) {
+      final int idx = rng.randIntRange(0, width * height);
+      // 2/3 chance to keep as is to favor larger contiguous areas
+      if (rng.nextIntInRange(3) == 0) {
+        bitmap[idx] =
+            bitmap[idx] == NonogramLineSolver.filled ? NonogramLineSolver.empty : NonogramLineSolver.filled;
+      }
+    }
+    return bitmap;
   }
 
   bool _supportedSize(int width, int height) {

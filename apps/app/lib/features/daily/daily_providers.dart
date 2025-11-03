@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
+import '../../shared/services/generation_isolate.dart';
 
 import '../../shared/providers/engine_provider.dart';
 import 'daily_seed_generator.dart';
@@ -19,12 +20,16 @@ final dailyPuzzleProvider = FutureProvider.family<GeneratedPuzzle<dynamic>, Stri
   final size = _defaultSizeFor(puzzleTypeKey);
   final difficulty = _defaultDifficultyFor(puzzleTypeKey);
 
-  return engine.generate(
+  final Duration timeout = puzzleTypeKey == 'kakuro_classic'
+      ? const Duration(seconds: 3)
+      : const Duration(seconds: 2);
+  return generatePuzzleIsolated(
+    engineId: puzzleTypeKey,
     seedStr: seed.seedStr,
     seed64: seed.seed64,
     size: size,
     difficulty: difficulty,
-  );
+  ).timeout(timeout);
 });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {

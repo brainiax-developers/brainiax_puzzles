@@ -20,7 +20,7 @@ const Map<String, _ClueRange> _difficultyClueRanges = <String, _ClueRange>{
   'easy': _ClueRange(minClues: 38, maxClues: 49),
   'medium': _ClueRange(minClues: 32, maxClues: 37),
   'hard': _ClueRange(minClues: 27, maxClues: 31),
-  'expert': _ClueRange(minClues: 24, maxClues: 26),
+  'expert': _ClueRange(minClues: 22, maxClues: 24),
 };
 
 const _ClueRange _defaultClueRange = _ClueRange(minClues: 27, maxClues: 36);
@@ -51,10 +51,11 @@ class SudokuGenerator extends PuzzleGenerator<SudokuBoard> {
 
     final double? clueHint = context.difficulty.hint;
     if (clueHint != null && clueHint.isFinite) {
-      // Treat hint as a normalized 0..1 difficulty preference where
-      // 0.0 => easy (more clues), 1.0 => expert (fewer clues).
+      // Nudge within the selected difficulty range instead of overriding it globally.
+      // h=0 -> toward maxClues (easier), h=1 -> toward minClues (harder) but stay in-range.
       final double h = clueHint.clamp(0.0, 1.0);
-      final int hintedClues = (44 - (h * 20)).round(); // map to [24,44]
+      final int span = (targetMaxClues - targetMinClues).abs().clamp(0, SudokuBoard.cellCount);
+      final int hintedClues = (targetMaxClues - (h * span)).round();
       targetMinClues = hintedClues.clamp(minClues, SudokuBoard.cellCount);
       targetMaxClues = math.min(
         SudokuBoard.cellCount,

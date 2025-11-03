@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
+import '../services/generation_isolate.dart';
 import 'engine_provider.dart';
 
 /// Provider for current game state.
@@ -33,13 +34,16 @@ class GameStateNotifier extends Notifier<GameState?> {
     final sizeOpt = _parseSize(size);
     final seed64 = seed.hashCode;
 
-    // Generate puzzle
-    final puzzle = engine.generate(
+    // Generate puzzle on a background isolate to keep UI responsive.
+    final Duration timeout =
+        engineId == 'kakuro_classic' ? const Duration(seconds: 3) : const Duration(seconds: 2);
+    final puzzle = await generatePuzzleIsolated(
+      engineId: engineId,
       seedStr: seed,
       seed64: seed64,
       size: sizeOpt,
       difficulty: difficultyScore,
-    );
+    ).timeout(timeout);
 
     // Create game state
     final gameState = GameState(

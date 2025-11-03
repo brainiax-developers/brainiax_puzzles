@@ -7,6 +7,7 @@ import '../models/puzzle_type.dart' as app;
 import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import 'engine_provider.dart';
+import '../services/generation_isolate.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
 const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
@@ -19,7 +20,6 @@ final puzzleGenerationControllerProvider =
 
 /// Handles puzzle generation lifecycle including cancellation and state transitions.
 class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dynamic>?> {
-  Future<void>? _activeOperation;
   int _generationToken = 0;
 
   @override
@@ -62,12 +62,16 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
         final attemptSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
         try {
-          final generated = engine.generate(
+          // Move heavy generation to a background isolate to avoid UI jank/ANRs.
+          final Duration attemptTimeout =
+              puzzleType == app.PuzzleType.kakuroClassic ? const Duration(seconds: 3) : const Duration(seconds: 2);
+          final generated = await generatePuzzleIsolated(
+            engineId: puzzleType.key,
             seedStr: attemptSeed,
             seed64: attemptSeed.hashCode,
             size: resolvedSize,
             difficulty: difficultyScore,
-          );
+          ).timeout(attemptTimeout);
           if (token == _generationToken) {
             state = AsyncValue.data(generated);
           }
@@ -97,7 +101,6 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
   /// Cancel the currently running generation (if any) and reset state.
   Future<void> cancelGeneration() async {
     _generationToken++;
-    _activeOperation = null;
     state = const AsyncValue.data(null);
   }
 
