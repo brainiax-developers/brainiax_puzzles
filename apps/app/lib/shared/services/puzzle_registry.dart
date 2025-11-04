@@ -141,7 +141,7 @@ class PuzzleRegistry {
           icon: Icons.add_box,
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
           supportedSizes: ['5x5', '7x7', '9x9'],
-          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );

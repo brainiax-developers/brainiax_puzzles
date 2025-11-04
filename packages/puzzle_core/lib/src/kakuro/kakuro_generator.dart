@@ -27,6 +27,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
   final int maxTemplateAttempts;
 
+  // Exposed for tests: map numeric and alias difficulties to normalized labels.
+  static String normalizeDifficultyForTest(String raw) => _normalizeDifficulty(raw.trim().toLowerCase());
+
   static final DifficultyBucketConfig _difficultyConfig =
       const DifficultyConfigLoader().loadSync('assets/kakuro_difficulty_thresholds.json');
 
@@ -36,13 +39,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
     final Stopwatch stopwatch = Stopwatch()..start();
     final String requestedLevelRaw = context.difficulty.level.trim().toLowerCase();
-    final String requestedLevel = requestedLevelRaw == 'auto' ? 'easy' : requestedLevelRaw;
+    final String requestedLevel = _normalizeDifficulty(requestedLevelRaw);
   // Use a strict solver (no node cap) for correctness; gating uses telemetry.
     final KakuroSolver strictSolver = const KakuroSolver(maxSearchDepth: 26);
 
-    // Decide grid size. Prefer 10-14 for production; respect provided size when present (incl. 9x9 for tests).
-    final int targetWidth = _chooseWidth(context);
-    final int targetHeight = _chooseHeight(context);
+    // Decide grid size based on difficulty. Respect provided size when present (incl. 9x9 for tests).
+    final int targetWidth = _chooseWidth(context, requestedLevel);
+    final int targetHeight = _chooseHeight(context, requestedLevel);
     final _KakuroTemplate template = _KakuroTemplate.buildNewspaper(
       rng: context.rng,
       width: targetWidth,
@@ -56,8 +59,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
     final int multiplier = template.attemptMultiplier;
     final int attemptLimit = maxTemplateAttempts * multiplier;
+    final int hardTimeBudgetMs = _timeBudgetMillis(requestedLevel);
 
     while (attempts < attemptLimit) {
+      if (stopwatch.elapsedMilliseconds > hardTimeBudgetMs) {
+        break; // time budget exceeded for this difficulty
+      }
       attempts++;
       int solverStage = 0;
       SeededRng nextSolverRng() {
@@ -91,6 +98,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Gate by backtrack/logic thresholds per difficulty.
       if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
+        continue;
+      }
+
+      // Additional gating: ensure a minimum ratio of entries whose (length,sum)
+      // has a single-digit-set combination. This biases toward simpler logic for easy puzzles.
+      if (!_meetsSingleComboThreshold(template, candidateBoard, requestedLevel)) {
         continue;
       }
 
@@ -683,18 +696,76 @@ _TemplateSolution? _constructSolution(_KakuroTemplate template, SeededRng rng) {
   return _TemplateSolution(values: values, entrySums: entrySums);
 }
 
-// Helper: choose width/height based on provided size or difficulty defaults.
-int _chooseWidth(GeneratorContext context) {
-  final int provided = context.size.width;
-  if (provided > 0) return provided;
-  // Default range 10..14.
-  return 10 + (context.rng.nextIntInRange(5));
+// Helper: difficulty normalization and grid sizing
+String _normalizeDifficulty(String raw) {
+  // Accept numeric shortcuts (0..3) and aliases; default to easy for 'auto'.
+  switch (raw) {
+    case 'auto':
+      return 'easy';
+    case '0':
+    case 'easy':
+      return 'easy';
+    case '1':
+    case 'medium':
+      return 'medium';
+    case '2':
+    case 'hard':
+      return 'hard';
+    case '3':
+    case 'expert':
+      return 'expert';
+    default:
+      return raw; // assume known textual difficulty
+  }
 }
 
-int _chooseHeight(GeneratorContext context) {
+int _chooseWidth(GeneratorContext context, String level) {
+  final int provided = context.size.width;
+  if (provided > 0) return provided;
+  switch (level) {
+    case 'easy':
+      return 9 + context.rng.nextIntInRange(3); // 9..11
+    case 'medium':
+      return 10 + context.rng.nextIntInRange(3); // 10..12
+    case 'hard':
+      return 12 + context.rng.nextIntInRange(3); // 12..14
+    case 'expert':
+      return 13 + context.rng.nextIntInRange(2); // 13..14
+    default:
+      return 10 + context.rng.nextIntInRange(5); // 10..14
+  }
+}
+
+int _chooseHeight(GeneratorContext context, String level) {
   final int provided = context.size.height;
   if (provided > 0) return provided;
-  return 10 + (context.rng.nextIntInRange(5));
+  switch (level) {
+    case 'easy':
+      return 9 + context.rng.nextIntInRange(3);
+    case 'medium':
+      return 10 + context.rng.nextIntInRange(3);
+    case 'hard':
+      return 12 + context.rng.nextIntInRange(3);
+    case 'expert':
+      return 13 + context.rng.nextIntInRange(2);
+    default:
+      return 10 + context.rng.nextIntInRange(5);
+  }
+}
+
+int _timeBudgetMillis(String level) {
+  switch (level) {
+    case 'easy':
+      return 900; // ~<1s target
+    case 'medium':
+      return 1400;
+    case 'hard':
+      return 2000;
+    case 'expert':
+      return 3000;
+    default:
+      return 1600;
+  }
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {
@@ -707,8 +778,39 @@ bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {
       return backtrackNodes <= 8 && propagationRounds <= 80;
     case 'hard':
       return backtrackNodes <= 40 && propagationRounds <= 160;
+    case 'expert':
+      return backtrackNodes <= 120 && propagationRounds <= 360;
     default:
       return backtrackNodes <= 80;
+  }
+}
+
+bool _meetsSingleComboThreshold(
+  _KakuroTemplate template,
+  KakuroBoard board,
+  String level,
+) {
+  // Count entries whose (length,sum) combination set has exactly 1 mask.
+  int singles = 0;
+  for (final KakuroEntry e in board.entries) {
+    final Set<int>? combos = KakuroDictionary.getCombinations(e.cells.length, e.sum);
+    if (combos != null && combos.length == 1) {
+      singles++;
+    }
+  }
+  final int total = template.entries.length == 0 ? 1 : template.entries.length;
+  final double ratio = singles / total;
+  switch (level) {
+    case 'easy':
+      return ratio >= 0.12; // bias toward more forced entries
+    case 'medium':
+      return ratio >= 0.06;
+    case 'hard':
+      return ratio >= 0.02;
+    case 'expert':
+      return ratio >= 0.0; // no requirement; allow toughest
+    default:
+      return true;
   }
 }
 
