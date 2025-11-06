@@ -25,6 +25,12 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
   }
 
   @override
+  void didUpdateWidget(covariant KakuroRendererWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateBoard();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _setupPaints();
@@ -90,6 +96,9 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
   }
 
   @override
+  Offset? hitTest(Offset position) => _hitTest(position);
+
+  @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
     // Metrics are initialized in buildGridBackground; compute here too to stay in sync if needed
     _gridMetrics = PainterUtils.calculateGridMetrics(
@@ -107,6 +116,7 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
         blockPaint: _blockPaint,
         cellBgPaint: _cellBgPaint,
         theme: Theme.of(context),
+        notes: widget.notes,
       ),
       size: size,
     );
@@ -221,7 +231,10 @@ class KakuroRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.notes = const <int, Set<int>>{},
   });
+
+  final Map<int, Set<int>> notes;
 
   @override
   State<KakuroRendererWidget> createState() => KakuroRenderer();
@@ -234,6 +247,7 @@ class _KakuroContentPainter extends CustomPainter {
     required this.blockPaint,
     required this.cellBgPaint,
     required this.theme,
+    this.notes = const <int, Set<int>>{},
   });
 
   final KakuroBoard board;
@@ -241,6 +255,7 @@ class _KakuroContentPainter extends CustomPainter {
   final Paint blockPaint;
   final Paint cellBgPaint;
   final ThemeData theme;
+  final Map<int, Set<int>> notes;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -303,6 +318,31 @@ class _KakuroContentPainter extends CustomPainter {
               text: v.toString(),
               textStyle: textStyle.copyWith(fontWeight: FontWeight.w600),
             );
+          } else {
+            // Render notes if present
+            final cellNotes = notes[board.indexOf(row, col)] ?? const <int>{};
+            if (cellNotes.isNotEmpty) {
+              final List<int> sortedNotes = cellNotes.toList()..sort();
+              final noteStyle = theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 8,
+              );
+              if (noteStyle != null) {
+                // Position notes in a 3x3 grid
+                for (int i = 0; i < sortedNotes.length; i++) {
+                  final int note = sortedNotes[i];
+                  final int gridX = i % 3;
+                  final int gridY = i ~/ 3;
+                  final double x = rect.left + gridX * (rect.width / 3) + 2;
+                  final double y = rect.top + gridY * (rect.height / 3) + 2;
+                  final TextPainter tp = TextPainter(
+                    text: TextSpan(text: note.toString(), style: noteStyle),
+                    textDirection: TextDirection.ltr,
+                  )..layout(maxWidth: rect.width / 3 - 4);
+                  tp.paint(canvas, Offset(x, y));
+                }
+              }
+            }
           }
         }
       }
@@ -311,7 +351,26 @@ class _KakuroContentPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _KakuroContentPainter oldDelegate) {
-    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme;
+    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme || !_notesEqual(notes, oldDelegate.notes);
+  }
+
+  bool _notesEqual(Map<int, Set<int>> a, Map<int, Set<int>> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final MapEntry<int, Set<int>> entry in a.entries) {
+      final Set<int>? otherSet = b[entry.key];
+      if (otherSet == null || !_setEquals(entry.value, otherSet)) return false;
+    }
+    return true;
+  }
+
+  bool _setEquals(Set<int> a, Set<int> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final int value in a) {
+      if (!b.contains(value)) return false;
+    }
+    return true;
   }
 }
 

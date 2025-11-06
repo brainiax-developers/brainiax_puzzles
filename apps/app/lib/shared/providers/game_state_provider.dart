@@ -10,8 +10,8 @@ final gameStateProvider = NotifierProvider<GameStateNotifier, GameState?>(() {
 
 /// Game state notifier that handles puzzle state, moves, and undo/redo.
 class GameStateNotifier extends Notifier<GameState?> {
-  final List<GameMove> _moveHistory = [];
-  int _currentMoveIndex = -1;
+  final List<GameAction> _actionHistory = [];
+  int _currentActionIndex = -1;
   GeneratedPuzzle? _initialPuzzle;
 
   @override
@@ -56,9 +56,9 @@ class GameStateNotifier extends Notifier<GameState?> {
       startTime: DateTime.now(),
     );
 
-    // Reset move history
-    _moveHistory.clear();
-    _currentMoveIndex = -1;
+    // Reset action history
+    _actionHistory.clear();
+    _currentActionIndex = -1;
     _initialPuzzle = puzzle;
 
     state = gameState;
@@ -75,9 +75,9 @@ class GameStateNotifier extends Notifier<GameState?> {
     required String size,
     required GeneratedPuzzle puzzle,
   }) async {
-    // Reset move history
-    _moveHistory.clear();
-    _currentMoveIndex = -1;
+    // Reset action history
+    _actionHistory.clear();
+    _currentActionIndex = -1;
     _initialPuzzle = puzzle;
 
     final gameState = GameState(
@@ -111,18 +111,18 @@ class GameStateNotifier extends Notifier<GameState?> {
     }
 
     // Create move record
-    final gameMove = GameMove(
+    final gameMoveAction = GameMoveAction(
       move: move,
       timestamp: DateTime.now(),
-      moveIndex: _currentMoveIndex + 1,
+      actionIndex: _currentActionIndex + 1,
     );
 
-    // Add to history (remove any moves after current index)
-    if (_currentMoveIndex < _moveHistory.length - 1) {
-      _moveHistory.removeRange(_currentMoveIndex + 1, _moveHistory.length);
+    // Add to history (remove any actions after current index)
+    if (_currentActionIndex < _actionHistory.length - 1) {
+      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
     }
-    _moveHistory.add(gameMove);
-    _currentMoveIndex = _moveHistory.length - 1;
+    _actionHistory.add(gameMoveAction);
+    _currentActionIndex = _actionHistory.length - 1;
 
     // Update state
     final newPuzzle = GeneratedPuzzle(
@@ -140,35 +140,102 @@ class GameStateNotifier extends Notifier<GameState?> {
     );
   }
 
-  /// Undo the last move.
+  /// Undo the last action.
   void undo() {
-    if (state == null || _currentMoveIndex < 0) return;
+    if (state == null || _currentActionIndex < 0) return;
 
-    _currentMoveIndex--;
+    _currentActionIndex--;
     _reconstructState();
   }
 
-  /// Redo the next move.
+  /// Redo the next action.
   void redo() {
-    if (state == null || _currentMoveIndex >= _moveHistory.length - 1) return;
+    if (state == null || _currentActionIndex >= _actionHistory.length - 1) return;
 
-    _currentMoveIndex++;
+    _currentActionIndex++;
     _reconstructState();
   }
 
   /// Check if undo is possible.
-  bool get canUndo => state != null && _currentMoveIndex >= 0;
+  bool get canUndo => state != null && _currentActionIndex >= 0;
 
   /// Check if redo is possible.
-  bool get canRedo => state != null && _currentMoveIndex < _moveHistory.length - 1;
+  bool get canRedo => state != null && _currentActionIndex < _actionHistory.length - 1;
 
-  /// Get move history.
-  List<GameMove> get moveHistory => List.unmodifiable(_moveHistory);
+  /// Get current action index.
+  int get currentActionIndex => _currentActionIndex;
 
-  /// Get current move index.
-  int get currentMoveIndex => _currentMoveIndex;
+  /// Get action history.
+  List<GameAction> get actionHistory => List.unmodifiable(_actionHistory);
 
-  /// Reconstruct state from move history.
+  /// Record a note action (adding/removing a note from a cell).
+  void recordNoteAction(int cellIndex, int digit, bool isAdding) {
+    if (state == null) return;
+
+    final noteAction = NoteAction(
+      timestamp: DateTime.now(),
+      actionIndex: _currentActionIndex + 1,
+      cellIndex: cellIndex,
+      digit: digit,
+      isAdding: isAdding,
+    );
+
+    // Add to history (remove any actions after current index)
+    if (_currentActionIndex < _actionHistory.length - 1) {
+      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+    }
+    _actionHistory.add(noteAction);
+    _currentActionIndex = _actionHistory.length - 1;
+
+    // Update game state with new notes
+    final newNotes = Map<int, Set<int>>.from(state!.notes);
+    final Set<int> notes = Set<int>.from(newNotes[cellIndex] ?? const <int>{});
+    if (isAdding) {
+      notes.add(digit);
+    } else {
+      notes.remove(digit);
+    }
+    if (notes.isEmpty) {
+      newNotes.remove(cellIndex);
+    } else {
+      newNotes[cellIndex] = notes;
+    }
+
+    state = state!.copyWith(notes: newNotes);
+  }
+
+  /// Clear all notes for a cell.
+  void clearNotesForCell(int cellIndex) {
+    if (state == null) return;
+
+    final currentNotes = state!.notes[cellIndex];
+    if (currentNotes == null || currentNotes.isEmpty) return;
+
+    // Create note actions for removing each note
+    for (final digit in currentNotes) {
+      final noteAction = NoteAction(
+        timestamp: DateTime.now(),
+        actionIndex: _currentActionIndex + 1,
+        cellIndex: cellIndex,
+        digit: digit,
+        isAdding: false,
+      );
+
+      // Add to history (remove any actions after current index)
+      if (_currentActionIndex < _actionHistory.length - 1) {
+        _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+      }
+      _actionHistory.add(noteAction);
+      _currentActionIndex = _actionHistory.length - 1;
+    }
+
+    // Update game state
+    final newNotes = Map<int, Set<int>>.from(state!.notes);
+    newNotes.remove(cellIndex);
+    state = state!.copyWith(notes: newNotes);
+  }
+
+  /// Reconstruct state from action history.
   void _reconstructState() {
     if (state == null) return;
 
@@ -177,30 +244,72 @@ class GameStateNotifier extends Notifier<GameState?> {
     final basePuzzle = _initialPuzzle ?? state!.puzzle;
 
     var currentPuzzle = basePuzzle;
+    var currentNotes = <int, Set<int>>{};
     var isSolved = engine.isSolved(currentPuzzle.state);
 
-    // Apply moves up to current index
-    for (int i = 0; i <= _currentMoveIndex; i++) {
-      final move = _moveHistory[i];
-      final result = engine.validateMove(
-        currentState: currentPuzzle.state,
-        move: move.move,
-      );
-
-      if (result.isValid && result.newState != null) {
-        currentPuzzle = GeneratedPuzzle(
-          state: result.newState!,
-          meta: currentPuzzle.meta,
-          telemetry: currentPuzzle.telemetry,
+    // Apply actions up to current index
+    for (int i = 0; i <= _currentActionIndex; i++) {
+      final action = _actionHistory[i];
+      
+      if (action is GameMoveAction) {
+        final result = engine.validateMove(
+          currentState: currentPuzzle.state,
+          move: action.move,
         );
-        isSolved = engine.isSolved(result.newState!);
+
+        if (result.isValid && result.newState != null) {
+          currentPuzzle = GeneratedPuzzle(
+            state: result.newState!,
+            meta: currentPuzzle.meta,
+            telemetry: currentPuzzle.telemetry,
+          );
+          isSolved = engine.isSolved(result.newState!);
+          
+          // Clear notes for the cell that was filled
+          if (action.move is Map<String, dynamic>) {
+            final moveMap = action.move as Map<String, dynamic>;
+            if (moveMap.containsKey('row') && moveMap.containsKey('col')) {
+              final row = moveMap['row'] as int;
+              final col = moveMap['col'] as int;
+              // Calculate cell index based on puzzle type
+              final cellIndex = _calculateCellIndex(currentPuzzle.state, row, col);
+              if (cellIndex != null) {
+                currentNotes.remove(cellIndex);
+              }
+            }
+          }
+        }
+      } else if (action is NoteAction) {
+        // Apply note change
+        final notes = Set<int>.from(currentNotes[action.cellIndex] ?? const <int>{});
+        if (action.isAdding) {
+          notes.add(action.digit);
+        } else {
+          notes.remove(action.digit);
+        }
+        if (notes.isEmpty) {
+          currentNotes.remove(action.cellIndex);
+        } else {
+          currentNotes[action.cellIndex] = notes;
+        }
       }
     }
 
     state = state!.copyWith(
       puzzle: currentPuzzle,
+      notes: currentNotes,
       isSolved: isSolved,
     );
+  }
+
+  /// Calculate cell index for a given row/col based on puzzle type.
+  int? _calculateCellIndex(dynamic puzzleState, int row, int col) {
+    if (puzzleState is SudokuBoard) {
+      return (row * SudokuBoard.side + col).toInt();
+    } else if (puzzleState is KakuroBoard) {
+      return (row * puzzleState.width + col).toInt();
+    }
+    return null;
   }
 
   /// Reset the game to the initial generated puzzle, clearing all moves.
@@ -211,13 +320,14 @@ class GameStateNotifier extends Notifier<GameState?> {
     if (engine == null) return;
 
     // Clear history and restore initial puzzle
-    _moveHistory.clear();
-    _currentMoveIndex = -1;
+    _actionHistory.clear();
+    _currentActionIndex = -1;
 
     final bool isSolved = engine.isSolved(_initialPuzzle!.state);
 
     state = state!.copyWith(
       puzzle: _initialPuzzle!,
+      notes: const <int, Set<int>>{},
       isSolved: isSolved,
       startTime: DateTime.now(),
       lastMoveTime: null,
@@ -230,8 +340,8 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     return {
       'gameState': state!.toJson(),
-      'moveHistory': _moveHistory.map((move) => move.toJson()).toList(),
-      'currentMoveIndex': _currentMoveIndex,
+      'actionHistory': _actionHistory.map((action) => action.toJson()).toList(),
+      'currentActionIndex': _currentActionIndex,
     };
   }
 
@@ -240,14 +350,14 @@ class GameStateNotifier extends Notifier<GameState?> {
     if (!json.containsKey('gameState')) return;
 
     final gameState = GameState.fromJson(json['gameState']);
-    final moveHistory = (json['moveHistory'] as List?)
-        ?.map((moveJson) => GameMove.fromJson(moveJson))
+    final actionHistory = (json['actionHistory'] as List?)
+        ?.map((actionJson) => GameAction.fromJson(actionJson))
         .toList() ?? [];
-    final currentMoveIndex = json['currentMoveIndex'] as int? ?? -1;
+    final currentActionIndex = json['currentActionIndex'] as int? ?? -1;
 
-    _moveHistory.clear();
-    _moveHistory.addAll(moveHistory);
-    _currentMoveIndex = currentMoveIndex;
+    _actionHistory.clear();
+    _actionHistory.addAll(actionHistory);
+    _currentActionIndex = currentActionIndex;
     _initialPuzzle = gameState.puzzle;
 
     state = gameState;
@@ -323,6 +433,7 @@ class GameState {
   final bool isSolved;
   final DateTime startTime;
   final DateTime? lastMoveTime;
+  final Map<int, Set<int>> notes;
 
   const GameState({
     required this.engineId,
@@ -333,6 +444,7 @@ class GameState {
     required this.isSolved,
     required this.startTime,
     this.lastMoveTime,
+    this.notes = const <int, Set<int>>{},
   });
 
   GameState copyWith({
@@ -344,6 +456,7 @@ class GameState {
     bool? isSolved,
     DateTime? startTime,
     DateTime? lastMoveTime,
+    Map<int, Set<int>>? notes,
   }) {
     return GameState(
       engineId: engineId ?? this.engineId,
@@ -354,6 +467,7 @@ class GameState {
       isSolved: isSolved ?? this.isSolved,
       startTime: startTime ?? this.startTime,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
+      notes: notes ?? this.notes,
     );
   }
 
@@ -366,6 +480,7 @@ class GameState {
     'isSolved': isSolved,
     'startTime': startTime.toIso8601String(),
     'lastMoveTime': lastMoveTime?.toIso8601String(),
+    'notes': notes.map((key, value) => MapEntry(key.toString(), value.toList())),
   };
 
   factory GameState.fromJson(Map<String, dynamic> json) {
@@ -375,28 +490,54 @@ class GameState {
   }
 }
 
-/// Record of a move made in the game.
-class GameMove {
-  final dynamic move;
+/// Abstract base class for all game actions (moves and note changes).
+abstract class GameAction {
   final DateTime timestamp;
-  final int moveIndex;
+  final int actionIndex;
 
-  const GameMove({
-    required this.move,
+  const GameAction({
     required this.timestamp,
-    required this.moveIndex,
+    required this.actionIndex,
   });
 
+  Map<String, dynamic> toJson();
+  factory GameAction.fromJson(Map<String, dynamic> json) {
+    final type = json['type'] as String;
+    switch (type) {
+      case 'move':
+        return GameMoveAction.fromJson(json);
+      case 'note':
+        return NoteAction.fromJson(json);
+      default:
+        throw UnsupportedError('Unknown action type: $type');
+    }
+  }
+}
+
+/// Action representing a move (filling a cell).
+class GameMoveAction extends GameAction {
+  final dynamic move;
+
+  const GameMoveAction({
+    required super.timestamp,
+    required super.actionIndex,
+    required this.move,
+  });
+
+  @override
   Map<String, dynamic> toJson() => {
-    'move': _moveToJson(move),
+    'type': 'move',
     'timestamp': timestamp.toIso8601String(),
-    'moveIndex': moveIndex,
+    'actionIndex': actionIndex,
+    'move': _moveToJson(move),
   };
 
-  factory GameMove.fromJson(Map<String, dynamic> json) {
-    // Note: This is a simplified version. In practice, you'd need
-    // to properly deserialize the move based on the engine type
-    throw UnimplementedError('GameMove.fromJson needs proper implementation');
+  factory GameMoveAction.fromJson(Map<String, dynamic> json) {
+    return GameMoveAction(
+      timestamp: DateTime.parse(json['timestamp']),
+      actionIndex: json['actionIndex'] as int,
+      move: json['move'], // Simplified - would need proper deserialization
+    );
   }
 
   /// Convert move to JSON (simplified).
@@ -410,5 +551,40 @@ class GameMove {
     } catch (e) {
       return {'type': move.runtimeType.toString()};
     }
+  }
+}
+
+/// Action representing a note change (adding/removing a note from a cell).
+class NoteAction extends GameAction {
+  final int cellIndex;
+  final int digit;
+  final bool isAdding; // true for adding note, false for removing
+
+  const NoteAction({
+    required super.timestamp,
+    required super.actionIndex,
+    required this.cellIndex,
+    required this.digit,
+    required this.isAdding,
+  });
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': 'note',
+    'timestamp': timestamp.toIso8601String(),
+    'actionIndex': actionIndex,
+    'cellIndex': cellIndex,
+    'digit': digit,
+    'isAdding': isAdding,
+  };
+
+  factory NoteAction.fromJson(Map<String, dynamic> json) {
+    return NoteAction(
+      timestamp: DateTime.parse(json['timestamp']),
+      actionIndex: json['actionIndex'] as int,
+      cellIndex: json['cellIndex'] as int,
+      digit: json['digit'] as int,
+      isAdding: json['isAdding'] as bool,
+    );
   }
 }

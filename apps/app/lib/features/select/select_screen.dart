@@ -5,6 +5,7 @@ import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/services/kakuro_new_game_cache_service.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
@@ -53,26 +54,72 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   }
 
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
-    // Generate on-demand with a modal progress dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Prevent dismissing by tapping outside
-      builder: (context) => PuzzleGenerationModal(
-        puzzleType: puzzleType,
-        difficulty: difficulty,
-        onPuzzleGenerated: (puzzleInstance) {
-          // Close the modal
-          Navigator.of(context).pop();
+    if (puzzleType == PuzzleType.kakuroClassic) {
+      // Serve from Kakuro cache for smooth, non-blocking UX
+      () async {
+        try {
+          final service = await ref.read(kakuroCacheInitProvider.future);
+          final d = difficulty.toLowerCase();
+          if (service.hasCached(d)) {
+            // Fast path: no banner; immediate navigation
+            final generated = await service.takeOrGenerateUrgent(difficulty: d);
+            if (!mounted) return;
+            context.push('/play/${puzzleType.key}/random', extra: generated);
+          } else {
+            // Cache empty: show a small non-modal banner and auto-navigate on completion
+            final messenger = ScaffoldMessenger.of(context);
+            final controller = messenger.showSnackBar(
+              SnackBar(
+                content: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Preparing puzzle…'),
+                  ],
+                ),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(days: 1), // effectively indefinite until closed
+              ),
+            );
 
-          // Navigate to play screen with the generated puzzle
-          context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
-        },
-        onCancel: () {
-          // Close the modal
-          Navigator.of(context).pop();
-        },
-      ),
-    );
+            final generated = await service.takeOrGenerateUrgent(difficulty: d);
+            if (!mounted) return;
+            controller.close();
+            context.push('/play/${puzzleType.key}/random', extra: generated);
+          }
+        } catch (_) {
+          // Fallback to legacy modal generation on failure
+          if (!mounted) return;
+          _showLegacyModal(puzzleType, difficulty);
+        }
+      }();
+      return;
+    }
+
+    // Non-Kakuro: keep existing modal generation UX
+    _showLegacyModal(puzzleType, difficulty);
+  }
+
+  void _showLegacyModal(PuzzleType puzzleType, String difficulty) {
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PuzzleGenerationModal(
+              puzzleType: puzzleType,
+              difficulty: difficulty,
+              onPuzzleGenerated: (puzzleInstance) {
+                Navigator.of(context).pop();
+                context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
+              },
+              onCancel: () {
+                Navigator.of(context).pop();
+              },
+            ));
   }
 
   @override

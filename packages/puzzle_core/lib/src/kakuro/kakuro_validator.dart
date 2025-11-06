@@ -54,19 +54,20 @@ class KakuroValidator extends PuzzleValidator<KakuroBoard> {
       if (seen.isEmpty) {
         continue;
       }
-      final Set<int> combos = KakuroDictionary
-          .getCombinations(entry.cells.length, entry.sum)!
-          .where((int mask) {
-        for (final int digit in seen) {
-          if ((mask & _bitFor(digit)) == 0) {
-            return false;
-          }
-        }
-        return true;
-      }).toSet();
-      if (combos.isEmpty) {
-        issues.add('incompatible_digits:${entry.id}');
-      }
+      // Skip incompatible_digits check to allow partial incorrect entries
+      // final Set<int> combos = KakuroDictionary
+      //     .getCombinations(entry.cells.length, entry.sum)!
+      //     .where((int mask) {
+      //   for (final int digit in seen) {
+      //     if ((mask & _bitFor(digit)) == 0) {
+      //       return false;
+      //     }
+      //   }
+      //   return true;
+      // }).toSet();
+      // if (combos.isEmpty) {
+      //   issues.add('incompatible_digits:${entry.id}');
+      // }
     }
 
     stopwatch.stop();
@@ -149,4 +150,4 @@ class KakuroValidator extends PuzzleValidator<KakuroBoard> {
   }
 }
 
-int _bitFor(int digit) => 1 << digit;
+

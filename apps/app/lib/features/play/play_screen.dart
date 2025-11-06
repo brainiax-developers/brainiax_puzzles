@@ -60,7 +60,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   Offset? _selectedSudokuCell;
   bool _isNoteMode = false;
   bool _isCrossMode = false;
-  final Map<int, Set<int>> _sudokuNotes = <int, Set<int>>{};
   final Set<int> _sudokuHintFilled = <int>{};
   bool _shownSolvedDialog = false;
 
@@ -475,8 +474,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (notifier.canUndo) {
       notifier.undo();
       // Reflect current move count based on history index
+      final actions = notifier.actionHistory;
+      final currentIndex = notifier.currentActionIndex;
+      final moveCount = actions.sublist(0, currentIndex + 1).where((action) => action is GameMoveAction).length;
       setState(() {
-        _movesCount = notifier.currentMoveIndex + 1;
+        _movesCount = moveCount;
       });
     } else {
       _showSnackBar('Nothing to undo');
@@ -525,7 +527,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         _isPaused = false;
         _hasRecordedCompletion = false;
         _completionStatus = null;
-        _sudokuNotes.clear();
         _selectedSudokuCell = null;
       });
       _timerController.reset();
@@ -614,19 +615,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   void _toggleNote(core.SudokuBoard board, {required int row, required int col, required int digit}) {
     final int index = row * core.SudokuBoard.side + col;
-    setState(() {
-      final Set<int> notes = Set<int>.from(_sudokuNotes[index] ?? const <int>{});
-      if (notes.contains(digit)) {
-        notes.remove(digit);
-      } else {
-        notes.add(digit);
-      }
-      if (notes.isEmpty) {
-        _sudokuNotes.remove(index);
-      } else {
-        _sudokuNotes[index] = notes;
-      }
-    });
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null) return;
+
+    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
+    final bool isAdding = !currentNotes.contains(digit);
+
+    final notifier = ref.read(gameStateProvider.notifier);
+    notifier.recordNoteAction(index, digit, isAdding);
   }
 
   // Sudoku interaction handlers
@@ -658,9 +654,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       }
       setState(() {
         _movesCount++;
-        if (move is core.SudokuMove && move.digit != 0) {
-          _sudokuNotes.remove(move.row * core.SudokuBoard.side + move.col);
-        }
       });
 
       // Persist in-progress after each successful move
@@ -777,9 +770,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       return;
     }
     if (_isNoteMode) {
-      setState(() {
-        _sudokuNotes.remove(row * core.SudokuBoard.side + col);
-      });
+      final notifier = ref.read(gameStateProvider.notifier);
+      notifier.clearNotesForCell(row * core.SudokuBoard.side + col);
       return;
     }
 
@@ -792,6 +784,138 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     setState(() {
       _isNoteMode = !_isNoteMode;
     });
+  }
+
+  // Kakuro: place digits in selected playable cell. If Note mode is on, toggle a local notes map.
+  void _onKakuroDigitPressed(int digit) {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell; // reuse selection storage
+    if (selection == null) {
+      _showSnackBar('Select a cell to place $digit');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
+    if (!board.isPlayable(row, col)) {
+      _onError('Select a playable cell');
+      return;
+    }
+
+    if (_isNoteMode) {
+      _toggleKakuroNote(board, row: row, col: col, digit: digit);
+      return;
+    }
+
+    // Validate the move: no repeats in sum groups, sum not exceeded
+    // Check across entry
+    final acrossIdx = board.acrossEntryForCell[row * board.width + col];
+    if (acrossIdx != -1) {
+      final entry = board.entries[acrossIdx];
+      final cells = entry.cells;
+      // Check for repeats (excluding current cell)
+      for (final cellIndex in cells) {
+        final cellRow = cellIndex ~/ board.width;
+        final cellCol = cellIndex % board.width;
+        if (cellRow == row && cellCol == col) continue;
+        if (board.valueAt(cellRow, cellCol) == digit) {
+          _onError('Digit $digit already used in this across sum');
+          return;
+        }
+      }
+      // Check sum
+      int currentSum = 0;
+      for (final cellIndex in cells) {
+        final cellRow = cellIndex ~/ board.width;
+        final cellCol = cellIndex % board.width;
+        final val = board.valueAt(cellRow, cellCol);
+        if (val != 0) {
+          currentSum += val;
+        }
+      }
+      final oldVal = board.valueAt(row, col);
+      if (oldVal != 0) {
+        currentSum -= oldVal; // subtract old value if overwriting
+      }
+      if (currentSum + digit > entry.sum) {
+        _onError('Sum would exceed ${entry.sum}');
+        return;
+      }
+    }
+
+    // Check down entry
+    final downIdx = board.downEntryForCell[row * board.width + col];
+    if (downIdx != -1) {
+      final entry = board.entries[downIdx];
+      final cells = entry.cells;
+      // Check for repeats (excluding current cell)
+      for (final cellIndex in cells) {
+        final cellRow = cellIndex ~/ board.width;
+        final cellCol = cellIndex % board.width;
+        if (cellRow == row && cellCol == col) continue;
+        if (board.valueAt(cellRow, cellCol) == digit) {
+          _onError('Digit $digit already used in this down sum');
+          return;
+        }
+      }
+      // Check sum
+      int currentSum = 0;
+      for (final cellIndex in cells) {
+        final cellRow = cellIndex ~/ board.width;
+        final cellCol = cellIndex % board.width;
+        final val = board.valueAt(cellRow, cellCol);
+        if (val != 0) {
+          currentSum += val;
+        }
+      }
+      final oldVal = board.valueAt(row, col);
+      if (oldVal != 0) {
+        currentSum -= oldVal; // subtract old value if overwriting
+      }
+      if (currentSum + digit > entry.sum) {
+        _onError('Sum would exceed ${entry.sum}');
+        return;
+      }
+    }
+
+    final core.KakuroMove move = core.KakuroMove(row: row, col: col, digit: digit);
+    _onMove(move);
+  }
+
+  void _onKakuroClearPressed() {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell;
+    if (selection == null) {
+      _showSnackBar('Select a cell to clear');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
+    if (!board.isPlayable(row, col)) {
+      _onError('Select a playable cell');
+      return;
+    }
+    final core.KakuroMove move = core.KakuroMove(row: row, col: col, digit: 0);
+    _onMove(move);
+  }
+
+  void _toggleKakuroNote(core.KakuroBoard board, {required int row, required int col, required int digit}) {
+    final int index = row * board.width + col;
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null) return;
+
+    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
+    final bool isAdding = !currentNotes.contains(digit);
+
+    final notifier = ref.read(gameStateProvider.notifier);
+    notifier.recordNoteAction(index, digit, isAdding);
   }
 
   String _formatTime(Duration duration) {
@@ -832,7 +956,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           final String currentSeed = next.puzzle.meta.seedStr;
           if (previousSeed != currentSeed && mounted) {
             setState(() {
-              _sudokuNotes.clear();
               _selectedSudokuCell = null;
             });
           }
@@ -1135,17 +1258,36 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     // Kakuro
     if (puzzle.state is core.KakuroBoard) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: KakuroRendererWidget(
-          puzzle: puzzle,
-          gameState: gameState,
-          onCellSelected: _onCellSelected,
-          onMove: _onMove,
-          onError: _onError,
-          hintCells: _hintPositions,
-          hintAnimationValue: _hintAnimationValue,
-        ),
+      return Column(
+        children: [
+          // Puzzle renderer
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: KakuroRendererWidget(
+                puzzle: puzzle,
+                gameState: gameState,
+                onCellSelected: _onCellSelected,
+                onMove: _onMove,
+                onError: _onError,
+                hintCells: _hintPositions,
+                hintAnimationValue: _hintAnimationValue,
+                notes: Map.unmodifiable(gameState?.notes ?? const <int, Set<int>>{}),
+              ),
+            ),
+          ),
+
+          // Number pad (single row with 1..9), with note toggle and clear
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SudokuNumberPad(
+              onDigitPressed: _onKakuroDigitPressed,
+              onClearPressed: _onKakuroClearPressed,
+              onNotePressed: _onNotePressed,
+              isNoteMode: _isNoteMode,
+            ),
+          ),
+        ],
       );
     }
 
@@ -1251,12 +1393,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   Widget _buildSudokuGrid(core.GeneratedPuzzle puzzle) {
-    final Map<int, Set<int>> noteSnapshot = _sudokuNotes.map(
-      (int key, Set<int> value) => MapEntry(key, Set<int>.unmodifiable(value)),
-    );
+    final gameState = ref.watch(gameStateProvider);
+    final Map<int, Set<int>> noteSnapshot = gameState?.notes ?? const <int, Set<int>>{};
     return SudokuRendererWidget(
       puzzle: puzzle,
-      gameState: ref.watch(gameStateProvider),
+      gameState: gameState,
       onCellSelected: _onCellSelected,
       onMove: _onMove,
       onError: _onError,
