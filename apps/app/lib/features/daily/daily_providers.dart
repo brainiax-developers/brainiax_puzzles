@@ -40,7 +40,7 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
     'slitherlink_loop': SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7),
   // Updated default to 9x9 per Phase-3 requirement.
   'mathdoku_classic': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
-    'futoshiki_classic': SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6),
+    'killer_queens': SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8),
     'takuzu_binary': SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8),
   };
   return defaults[puzzleTypeKey] ??
@@ -54,7 +54,7 @@ DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
     'kakuro_classic': DifficultyScore(value: 0.6, level: 'medium'),
     'slitherlink_loop': DifficultyScore(value: 0.6, level: 'medium'),
     'mathdoku_classic': DifficultyScore(value: 0.6, level: 'medium'),
-    'futoshiki_classic': DifficultyScore(value: 0.6, level: 'medium'),
+    'killer_queens': DifficultyScore(value: 0.6, level: 'medium'),
     'takuzu_binary': DifficultyScore(value: 0.6, level: 'medium'),
   };
   return defaults[puzzleTypeKey] ??

@@ -105,8 +105,8 @@ class PuzzlePreloadService {
         return const core.SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7);
       case PuzzleType.mathdokuClassic:
         return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
-      case PuzzleType.futoshikiClassic:
-        return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+      case PuzzleType.killerQueens:
+        return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
       case PuzzleType.takuzuBinary:
         return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
     }

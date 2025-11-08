@@ -138,7 +138,7 @@ void main() {
       expect(PuzzleType.isValidKey('kakuro_classic'), isTrue);
       expect(PuzzleType.isValidKey('slitherlink_loop'), isTrue);
       expect(PuzzleType.isValidKey('mathdoku_classic'), isTrue);
-      expect(PuzzleType.isValidKey('futoshiki_classic'), isTrue);
+      expect(PuzzleType.isValidKey('killer_queens'), isTrue);
       expect(PuzzleType.isValidKey('takuzu_binary'), isTrue);
       
       expect(PuzzleType.isValidKey('invalid_type'), isFalse);

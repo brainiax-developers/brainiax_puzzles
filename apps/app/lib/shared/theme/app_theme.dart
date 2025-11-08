@@ -336,8 +336,8 @@ class AppThemeData {
       case PuzzleType.mathdokuClassic:
         seedColor = Colors.green;
         break;
-      case PuzzleType.futoshikiClassic:
-        seedColor = Colors.amber;
+      case PuzzleType.killerQueens:
+        seedColor = Colors.cyan;
         break;
       case PuzzleType.takuzuBinary:
         seedColor = Colors.blueGrey;

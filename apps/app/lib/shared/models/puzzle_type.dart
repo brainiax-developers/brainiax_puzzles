@@ -5,7 +5,7 @@ enum PuzzleType {
   kakuroClassic('kakuro_classic', 'Classic Kakuro'),
   slitherlinkLoop('slitherlink_loop', 'Slitherlink Loop'),
   mathdokuClassic('mathdoku_classic', 'Classic Mathdoku'),
-  futoshikiClassic('futoshiki_classic', 'Classic Futoshiki'),
+  killerQueens('killer_queens', 'Killer Queens'),
   takuzuBinary('takuzu_binary', 'Binary Takuzu');
 
   const PuzzleType(this.key, this.displayName);

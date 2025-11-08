@@ -59,10 +59,10 @@ export 'src/mathdoku/mathdoku_board.dart';
 export 'src/mathdoku/mathdoku_move.dart';
 export 'src/mathdoku/mathdoku_engine.dart';
 
-// Futoshiki engine implementation
-export 'src/futoshiki/futoshiki_board.dart';
-export 'src/futoshiki/futoshiki_move.dart';
-export 'src/futoshiki/futoshiki_engine.dart';
+// Killer Queens engine implementation
+export 'src/killer_queens/killer_queens_board.dart';
+export 'src/killer_queens/killer_queens_move.dart';
+export 'src/killer_queens/killer_queens_engine.dart';
 
 // Takuzu engine implementation
 export 'src/takuzu/takuzu_board.dart';

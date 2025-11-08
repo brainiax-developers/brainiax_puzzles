@@ -35,8 +35,8 @@ core.PipelinePuzzleEngine<dynamic, dynamic> _createEngine(String engineId) {
       return core.SlitherlinkEngine();
     case 'mathdoku_classic':
       return core.MathdokuEngine();
-    case 'futoshiki_classic':
-      return core.FutoshikiEngine();
+    case 'killer_queens':
+      return core.KillerQueensEngine();
     case 'takuzu_binary':
       return core.TakuzuEngine();
     default:

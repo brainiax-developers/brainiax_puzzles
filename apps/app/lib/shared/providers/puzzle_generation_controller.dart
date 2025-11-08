@@ -132,8 +132,8 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
       case app.PuzzleType.mathdokuClassic:
         // Updated default size to 9x9.
         return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
-      case app.PuzzleType.futoshikiClassic:
-        return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+      case app.PuzzleType.killerQueens:
+        return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
       case app.PuzzleType.takuzuBinary:
         return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
     }

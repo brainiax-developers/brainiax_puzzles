@@ -268,18 +268,44 @@ core.GeneratedPuzzle<core.MathdokuBoard> buildMathdokuPuzzle() {
   );
 }
 
-core.GeneratedPuzzle<core.FutoshikiBoard> buildFutoshikiPuzzle() {
-  const size = 4;
-  final cells = List<int>.generate(size * size, (index) => (index % size) + 1);
-  final board = core.FutoshikiBoard(
+core.GeneratedPuzzle<core.KillerQueensBoard> buildKillerQueensPuzzle() {
+  const size = 6;
+  final List<bool> blocked = List<bool>.filled(size * size, false);
+  final List<core.KillerQueensCage> cages = <core.KillerQueensCage>[];
+  for (int row = 0; row < size; row++) {
+    for (int col = 0; col < size; col += 2) {
+      final int index = row * size + col;
+      final List<int> cageCells = <int>[index];
+      if (col + 1 < size) {
+        cageCells.add(index + 1);
+      }
+      cages.add(core.KillerQueensCage(cells: cageCells));
+    }
+  }
+
+  final List<int> cells = List<int>.filled(size * size, 0);
+  final List<bool> fixed = List<bool>.filled(size * size, false);
+  final List<int> queenPositions = <int>[1, 9, 17, 18, 26, 34];
+  final Set<int> givens = <int>{1, 26};
+
+  for (final int index in queenPositions) {
+    cells[index] = 1;
+  }
+  for (final int index in givens) {
+    fixed[index] = true;
+  }
+
+  final board = core.KillerQueensBoard(
     size: size,
     cells: cells,
-    fixed: List<bool>.filled(size * size, false),
-    inequalities: const <core.FutoshikiInequality>[],
+    fixed: fixed,
+    blocked: blocked,
+    cages: cages,
   );
-  return core.GeneratedPuzzle<core.FutoshikiBoard>(
+
+  return core.GeneratedPuzzle<core.KillerQueensBoard>(
     state: board,
-    meta: _metadataFor(size: '4x4', difficulty: 'easy'),
+    meta: _metadataFor(size: '6x6', difficulty: 'easy'),
   );
 }
 

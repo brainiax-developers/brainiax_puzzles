@@ -2,7 +2,7 @@ enum PuzzleType {
   sudoku,
   nonogram,
   mathdoku,
-  futoshiki,
+  killerQueens,
   slitherlink,
   kakuro,
   takuzu,
