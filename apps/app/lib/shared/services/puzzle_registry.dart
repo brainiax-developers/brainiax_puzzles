@@ -164,8 +164,9 @@ class PuzzleRegistry {
           displayName: type.displayName,
           icon: Icons.calculate,
           accentColors: const [Color(0xFFE91E63), Color(0xFFC2185B)],
-          supportedSizes: ['4x4', '6x6', '8x8'],
-          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          // Updated sizes: add 9x9, remove unsupported 8x8, order largest first for default selection.
+          supportedSizes: ['9x9', '6x6', '4x4'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );

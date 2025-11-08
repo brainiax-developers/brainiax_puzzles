@@ -56,7 +56,8 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
     if (widget.puzzle?.state is MathdokuBoard) {
       _board = widget.puzzle!.state as MathdokuBoard;
     } else {
-      _board = MathdokuBoard.empty(size: 4, cages: const []);
+      // Fallback empty board now defaults to 9x9 to match new target size.
+      _board = MathdokuBoard.empty(size: 9, cages: const []);
     }
   }
 
@@ -199,33 +200,62 @@ class _MathdokuContentPainter extends CustomPainter {
       fontWeight: FontWeight.w600,
     );
     final cageStyle = theme.textTheme.labelSmall?.copyWith(
-      color: theme.colorScheme.secondary,
+      color: theme.colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w700,
+      fontSize: (board.size >= 9) ? 10 : null,
     );
 
-    // Determine cage top-left cell for label placement
-    final Map<int, Offset> cageTopLeft = {};
-    for (final cage in board.cages) {
-      int topIndex = cage.cells.reduce((a, b) => a < b ? a : b);
-      final r = topIndex ~/ board.size;
-      final c = topIndex % board.size;
+    // Precompute cage mapping & top-left for label placement
+    final Map<int, Offset> cageTopLeft = <int, Offset>{};
+    for (final MathdokuCage cage in board.cages) {
+      int topIndex = cage.cells.reduce((int a, int b) => a < b ? a : b);
+      final int r = topIndex ~/ board.size;
+      final int c = topIndex % board.size;
       cageTopLeft[cage.id] = Offset(c.toDouble(), r.toDouble());
     }
 
+    // Generate stable pastel colors per cage using HSL seeded by cage id.
+    Color cageColorFor(int cageId) {
+      final double hue = (cageId * 37) % 360; // pseudo-random but deterministic
+      final bool isDark = theme.brightness == Brightness.dark;
+      final double lightness = isDark ? 0.25 : 0.88;
+      final double saturation = 0.45;
+      return HSLColor.fromAHSL(1.0, hue, saturation, lightness).toColor();
+    }
+
+    final Paint borderPaint = Paint()
+      ..color = theme.colorScheme.outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+
+    // Build quick lookup of cage id per cell for border decisions.
+    final List<int> cageIdByCell = List<int>.filled(board.cellCount, -1);
+    for (final MathdokuCage cage in board.cages) {
+      for (final int idx in cage.cells) {
+        cageIdByCell[idx] = cage.id;
+      }
+    }
+
+    // First pass: paint tinted backgrounds & values & labels.
     for (int row = 0; row < board.size; row++) {
       for (int col = 0; col < board.size; col++) {
-        final rect = PainterUtils.getCellRect(
+        final Rect rect = PainterUtils.getCellRect(
           gridPosition: Offset(col.toDouble(), row.toDouble()),
           metrics: metrics,
         );
+        final MathdokuCage cage = board.cageAt(row, col);
+        final Color bgColor = cageColorFor(cage.id);
+        final Paint tinted = Paint()
+          ..color = bgColor.withOpacity(0.92)
+          ..style = PaintingStyle.fill;
         PainterUtils.paintCellBackground(
           canvas: canvas,
           cellRect: rect,
-          backgroundPaint: cellBgPaint,
-          borderRadius: 3,
+          backgroundPaint: tinted,
+          borderRadius: 4,
         );
 
-        final v = board.cellAt(row, col);
+        final int v = board.cellAt(row, col);
         if (v != 0 && valueStyle != null) {
           PainterUtils.paintCellText(
             canvas: canvas,
@@ -235,16 +265,49 @@ class _MathdokuContentPainter extends CustomPainter {
           );
         }
 
-        // Cage label
-        final cage = board.cageAt(row, col);
-        final isTopLeft = cageTopLeft[cage.id] == Offset(col.toDouble(), row.toDouble());
+        // Cage label top-left
+        final bool isTopLeft = cageTopLeft[cage.id] == Offset(col.toDouble(), row.toDouble());
         if (isTopLeft && cageStyle != null) {
-          final label = '${cage.target}${cage.operation.symbol}';
-          final tp = TextPainter(
+          final String label = '${cage.target}${cage.operation.symbol}';
+          final TextPainter tp = TextPainter(
             text: TextSpan(text: label, style: cageStyle),
             textDirection: TextDirection.ltr,
-          )..layout(maxWidth: rect.width - 4);
-          tp.paint(canvas, Offset(rect.left + 4, rect.top + 2));
+            textAlign: TextAlign.left,
+          )..layout(maxWidth: rect.width - 2);
+          tp.paint(canvas, Offset(rect.left + 3, rect.top + 1));
+        }
+      }
+    }
+
+    // Second pass: draw cage borders where adjacent cells have different cage ids.
+    for (int row = 0; row < board.size; row++) {
+      for (int col = 0; col < board.size; col++) {
+        final int index = row * board.size + col;
+        final int cageId = cageIdByCell[index];
+        final Rect rect = PainterUtils.getCellRect(
+          gridPosition: Offset(col.toDouble(), row.toDouble()),
+          metrics: metrics,
+        );
+
+        void drawEdge(Offset a, Offset b) {
+          canvas.drawLine(a, b, borderPaint);
+        }
+
+        // Up
+        if (row == 0 || cageIdByCell[index - board.size] != cageId) {
+          drawEdge(rect.topLeft, rect.topRight);
+        }
+        // Left
+        if (col == 0 || cageIdByCell[index - 1] != cageId) {
+          drawEdge(rect.topLeft, rect.bottomLeft);
+        }
+        // Right
+        if (col == board.size - 1 || cageIdByCell[index + 1] != cageId) {
+          drawEdge(rect.topRight, rect.bottomRight);
+        }
+        // Down
+        if (row == board.size - 1 || cageIdByCell[index + board.size] != cageId) {
+          drawEdge(rect.bottomLeft, rect.bottomRight);
         }
       }
     }

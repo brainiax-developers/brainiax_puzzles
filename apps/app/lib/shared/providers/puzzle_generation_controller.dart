@@ -63,8 +63,11 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
         final attemptSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          final Duration attemptTimeout =
-              puzzleType == app.PuzzleType.kakuroClassic ? const Duration(seconds: 3) : const Duration(seconds: 2);
+          final Duration attemptTimeout = () {
+            if (puzzleType == app.PuzzleType.kakuroClassic) return const Duration(seconds: 3);
+            if (puzzleType == app.PuzzleType.slitherlinkLoop) return const Duration(seconds: 3);
+            return const Duration(seconds: 2);
+          }();
           final generated = await generatePuzzleIsolated(
             engineId: puzzleType.key,
             seedStr: attemptSeed,
@@ -125,9 +128,10 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
       case app.PuzzleType.kakuroClassic:
         return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
       case app.PuzzleType.slitherlinkLoop:
-        return const core.SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7);
+        return const core.SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5);
       case app.PuzzleType.mathdokuClassic:
-        return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+        // Updated default size to 9x9.
+        return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
       case app.PuzzleType.futoshikiClassic:
         return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
       case app.PuzzleType.takuzuBinary:

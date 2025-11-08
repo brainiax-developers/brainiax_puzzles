@@ -4,10 +4,17 @@ import '../util/seeded_rng.dart';
 class SolverContext {
   final SeededRng rng;
   final int maxSolutions;
+  // Optional: preferred edge values (for grid/edge-based puzzles) to bias search.
+  // Interpreted as per-puzzle board semantics; solvers may ignore this.
+  final List<int>? preferredEdgeValues;
+  // Optional: cap on speculative steps (branching decisions) to bound runtime.
+  final int? speculativeStepBudget;
 
   const SolverContext({
     required this.rng,
     this.maxSolutions = 1,
+    this.preferredEdgeValues,
+    this.speculativeStepBudget,
   });
 }
 

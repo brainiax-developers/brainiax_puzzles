@@ -49,7 +49,8 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
           vertexOn[a]++;
           vertexOn[b]++;
           if (!tracker.addEdge(edge)) {
-            issues.add('multi_cycle_detected');
+            // Prefer a consistent issue token expected by tests.
+            issues.add('not_single_loop');
             break;
           }
         } else if (value == SlitherlinkBoard.edgeUnknown) {
@@ -135,7 +136,8 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
         vertexOn[a]++;
         vertexOn[b]++;
         if (!tracker.addEdge(edge)) {
-          issues.add('multi_cycle_detected');
+          // Prefer a consistent issue token expected by tests.
+          issues.add('not_single_loop');
           break;
         }
       }

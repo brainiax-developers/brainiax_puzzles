@@ -9,7 +9,8 @@ import 'mathdoku_logic.dart';
 class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
   const MathdokuGenerator();
 
-  static const List<int> _supportedSizes = <int>[4, 6];
+  // Expanded to include 9x9 per Phase-3 UX requirements.
+  static const List<int> _supportedSizes = <int>[4, 6, 9];
 
   @override
   PuzzleGenerationResult<MathdokuBoard> generate(GeneratorContext context) {
@@ -25,7 +26,12 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
     final Stopwatch stopwatch = Stopwatch()..start();
 
     final List<int> solution = _buildLatinSolution(context.rng, width);
-    final List<MathdokuCage> cages = _carveCages(context.rng, width, solution);
+    final List<MathdokuCage> cages = _carveCages(
+      context.rng,
+      width,
+      solution,
+      context.difficulty,
+    );
 
     final MathdokuBoard puzzle = MathdokuBoard.empty(size: width, cages: cages);
 
@@ -68,7 +74,12 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
     return cells;
   }
 
-  List<MathdokuCage> _carveCages(SeededRng rng, int size, List<int> solution) {
+  List<MathdokuCage> _carveCages(
+    SeededRng rng,
+    int size,
+    List<int> solution,
+    DifficultyRequest difficulty,
+  ) {
     final int cellCount = size * size;
     final Set<int> remaining = <int>{for (int i = 0; i < cellCount; i++) i};
     final List<MathdokuCage> cages = <MathdokuCage>[];
@@ -78,11 +89,12 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
       final int startIndex = _popRandom(rng, remaining);
       final List<int> cageCells = <int>[startIndex];
 
-      final int maxAdditional = min(3, remaining.length);
-      final List<int> sizeOptions =
-          List<int>.generate(1 + maxAdditional, (int index) => index + 1);
-      final List<int> weights = sizeOptions.map(_sizeWeight).toList();
-      final int targetSize = rng.pickWeighted(sizeOptions, weights);
+    final int maxAdditional = min(3, remaining.length);
+    final List<int> sizeOptions =
+      List<int>.generate(1 + maxAdditional, (int index) => index + 1);
+    final List<int> weights =
+      sizeOptions.map((int s) => _sizeWeightForDifficulty(s, difficulty.level.toLowerCase())).toList();
+    final int targetSize = rng.pickWeighted(sizeOptions, weights);
 
       while (cageCells.length < targetSize) {
         final List<int> neighbours =
@@ -98,7 +110,11 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
       cageCells.sort();
       final List<int> cageValues =
           cageCells.map((int index) => solution[index]).toList(growable: false);
-      final _OperationChoice choice = _selectOperation(rng, cageValues);
+      final _OperationChoice choice = _selectOperation(
+        rng,
+        cageValues,
+        difficulty.level.toLowerCase(),
+      );
       cages.add(MathdokuCage(
         id: cageId++,
         cells: cageCells,
@@ -150,7 +166,11 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
     return neighbours.toList(growable: false);
   }
 
-  _OperationChoice _selectOperation(SeededRng rng, List<int> values) {
+  _OperationChoice _selectOperation(
+    SeededRng rng,
+    List<int> values,
+    String difficultyLevel,
+  ) {
     if (values.length == 1) {
       return _OperationChoice(MathdokuOperation.equality, values.first);
     }
@@ -158,22 +178,40 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
     final List<_OperationChoice> options = <_OperationChoice>[];
     final int sum = values.reduce((int a, int b) => a + b);
     final int product = values.reduce((int a, int b) => a * b);
-    options.add(_OperationChoice(MathdokuOperation.addition, sum));
-    options.add(_OperationChoice(MathdokuOperation.multiplication, product));
 
-    final Set<int> subtractionTargets = mathdokuSubtractionTargets(values);
-    for (final int target in subtractionTargets) {
-      options.add(_OperationChoice(MathdokuOperation.subtraction, target));
+    // Difficulty-based operation filtering
+    bool allowAddition = true; // always allowed
+    bool allowSubtraction = difficultyLevel != 'easy';
+    bool allowMultiplication = difficultyLevel == 'hard' || difficultyLevel == 'expert';
+    bool allowDivision = difficultyLevel == 'expert';
+
+    if (allowAddition) {
+      options.add(_OperationChoice(MathdokuOperation.addition, sum));
     }
-    final Set<int> divisionTargets = mathdokuDivisionTargets(values);
-    for (final int target in divisionTargets) {
-      options.add(_OperationChoice(MathdokuOperation.division, target));
+    if (allowMultiplication) {
+      options.add(_OperationChoice(MathdokuOperation.multiplication, product));
+    }
+    if (allowSubtraction) {
+      final Set<int> subtractionTargets = mathdokuSubtractionTargets(values);
+      for (final int target in subtractionTargets) {
+        options.add(_OperationChoice(MathdokuOperation.subtraction, target));
+      }
+    }
+    if (allowDivision) {
+      final Set<int> divisionTargets = mathdokuDivisionTargets(values);
+      for (final int target in divisionTargets) {
+        options.add(_OperationChoice(MathdokuOperation.division, target));
+      }
+    }
+
+    // Safety fallback: if filtering removed all multi-cell ops, use addition.
+    if (options.isEmpty) {
+      options.add(_OperationChoice(MathdokuOperation.addition, sum));
     }
 
     final List<int> weights =
         options.map((choice) => _operationWeight(choice.operation)).toList();
-    final _OperationChoice choice = rng.pickWeighted(options, weights);
-    return choice;
+    return rng.pickWeighted(options, weights);
   }
 
   Map<String, Object?> _buildTelemetry({
@@ -219,19 +257,49 @@ class _OperationChoice {
   const _OperationChoice(this.operation, this.target);
 }
 
-int _sizeWeight(int size) {
+int _sizeWeightForDifficulty(int size, String difficultyLevel) {
+  // Base weights favor smaller cages for clarity; scale with difficulty.
+  int base;
   switch (size) {
     case 1:
-      return 3;
+      base = 4; // singles (givens/equality) slightly more common early
+      break;
     case 2:
-      return 4;
+      base = 5;
+      break;
     case 3:
-      return 3;
+      base = 3;
+      break;
     case 4:
-      return 2;
+      base = 2;
+      break;
     default:
-      return 1;
+      base = 1;
   }
+  switch (difficultyLevel) {
+    case 'easy':
+      // Strongly bias toward small cages.
+      if (size >= 3) base = 1; // rare larger cages
+      break;
+    case 'medium':
+      // Slightly reduce singles; encourage pairs/triples.
+      if (size == 1) base -= 1;
+      break;
+    case 'hard':
+      // Allow more larger cages for complexity.
+      if (size == 3) base += 1;
+      if (size == 4) base += 2;
+      break;
+    case 'expert':
+      // Strongly encourage variety including largest cages.
+      if (size == 4) base += 3;
+      if (size == 3) base += 1;
+      if (size == 1) base -= 2; // fewer trivial singles
+      break;
+    default:
+      break;
+  }
+  return base < 1 ? 1 : base;
 }
 
 int _operationWeight(MathdokuOperation op) {

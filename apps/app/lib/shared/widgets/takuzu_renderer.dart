@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -15,11 +16,35 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   late Paint _cellBgPaint;
   late Paint _selectionPaint;
   late Paint _errorPaint;
+  
+  // Error tracking for delayed visual feedback
+  final Set<Offset> _violatingCells = {};
+  Timer? _errorDisplayTimer;
+  bool _showErrors = false;
+  static const Duration _errorDisplayDelay = Duration(seconds: 3);
+
+  @override
+  void dispose() {
+    _errorDisplayTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _updateBoard();
+  }
+
+  @override
+  void didUpdateWidget(covariant TakuzuRendererWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // GeneratedPuzzle equality ignores the state field; compare state explicitly
+    // so the renderer refreshes when moves update the board.
+    final Object? newState = widget.puzzle?.state;
+    final Object? oldState = oldWidget.puzzle?.state;
+    if (widget.puzzle != oldWidget.puzzle || newState != oldState) {
+      _updateBoard();
+    }
   }
 
   @override
@@ -55,9 +80,127 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   void _updateBoard() {
     if (widget.puzzle?.state is TakuzuBoard) {
       _board = widget.puzzle!.state as TakuzuBoard;
+      _scheduleValidation();
     } else {
       _board = TakuzuBoard.empty(6);
     }
+  }
+  
+  /// Schedule delayed validation to detect rule violations
+  void _scheduleValidation() {
+    // Cancel any pending timer
+    _errorDisplayTimer?.cancel();
+    
+    // Immediately check if board is now valid
+    final violations = _detectViolations();
+    if (violations.isEmpty && _showErrors) {
+      // Board is valid now, clear errors immediately
+      setState(() {
+        _showErrors = false;
+        _violatingCells.clear();
+      });
+      return;
+    }
+    
+    // If there are violations, schedule delayed display
+    if (violations.isNotEmpty) {
+      _errorDisplayTimer = Timer(_errorDisplayDelay, () {
+        if (mounted) {
+          setState(() {
+            _violatingCells.clear();
+            _violatingCells.addAll(violations);
+            _showErrors = true;
+          });
+        }
+      });
+    }
+  }
+  
+  /// Detect all cells that violate Takuzu rules
+  Set<Offset> _detectViolations() {
+    final violations = <Offset>{};
+    final size = _board.size;
+    final limit = size ~/ 2;
+    
+    // Check rows for violations
+    for (int row = 0; row < size; row++) {
+      // Count 0s and 1s
+      int zeros = 0, ones = 0;
+      for (int col = 0; col < size; col++) {
+        final value = _board.cellAt(row, col);
+        if (value == 0) zeros++;
+        if (value == 1) ones++;
+      }
+      
+      // Mark cells if count violations
+      if (zeros > limit) {
+        for (int col = 0; col < size; col++) {
+          if (_board.cellAt(row, col) == 0) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+      if (ones > limit) {
+        for (int col = 0; col < size; col++) {
+          if (_board.cellAt(row, col) == 1) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+      
+      // Check for three consecutive identical values
+      for (int col = 0; col <= size - 3; col++) {
+        final a = _board.cellAt(row, col);
+        final b = _board.cellAt(row, col + 1);
+        final c = _board.cellAt(row, col + 2);
+        if (a != TakuzuBoard.emptyValue && a == b && b == c) {
+          violations.add(Offset(col.toDouble(), row.toDouble()));
+          violations.add(Offset((col + 1).toDouble(), row.toDouble()));
+          violations.add(Offset((col + 2).toDouble(), row.toDouble()));
+        }
+      }
+    }
+    
+    // Check columns for violations
+    for (int col = 0; col < size; col++) {
+      // Count 0s and 1s
+      int zeros = 0, ones = 0;
+      for (int row = 0; row < size; row++) {
+        final value = _board.cellAt(row, col);
+        if (value == 0) zeros++;
+        if (value == 1) ones++;
+      }
+      
+      // Mark cells if count violations
+      if (zeros > limit) {
+        for (int row = 0; row < size; row++) {
+          if (_board.cellAt(row, col) == 0) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+      if (ones > limit) {
+        for (int row = 0; row < size; row++) {
+          if (_board.cellAt(row, col) == 1) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+      
+      // Check for three consecutive identical values
+      for (int row = 0; row <= size - 3; row++) {
+        final a = _board.cellAt(row, col);
+        final b = _board.cellAt(row + 1, col);
+        final c = _board.cellAt(row + 2, col);
+        if (a != TakuzuBoard.emptyValue && a == b && b == c) {
+          violations.add(Offset(col.toDouble(), row.toDouble()));
+          violations.add(Offset(col.toDouble(), (row + 1).toDouble()));
+          violations.add(Offset(col.toDouble(), (row + 2).toDouble()));
+        }
+      }
+    }
+    
+    return violations;
   }
 
   Offset? _hitTest(Offset position) =>
@@ -78,6 +221,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         metrics: _gridMetrics,
         cellBgPaint: _cellBgPaint,
         theme: Theme.of(context),
+        violatingCells: _showErrors ? _violatingCells : {},
       ),
       size: size,
     );
@@ -139,21 +283,30 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   void onTap(Offset position) {
     final gp = _hitTest(position);
     if (gp == null) return;
+    
+    // Call parent to handle selection state
+    super.onTap(position);
+    
     final row = gp.dy.toInt();
     final col = gp.dx.toInt();
+    
+    // Check if cell is fixed (a given clue)
+    if (_board.isFixed(row, col)) {
+      return;
+    }
+    
     final current = _board.cellAt(row, col);
     int next;
+    // Cycle: empty → 0 → 1 → empty
     if (current == TakuzuBoard.emptyValue) {
-      next = 1;
-    } else if (current == 1) {
       next = 0;
+    } else if (current == 0) {
+      next = 1;
     } else {
       next = TakuzuBoard.emptyValue;
     }
+    
     widget.onMove?.call(TakuzuMove(row: row, col: col, value: next));
-    setState(() {
-      super.onTap(position);
-    });
   }
 
   @override
@@ -197,12 +350,14 @@ class _TakuzuContentPainter extends CustomPainter {
     required this.metrics,
     required this.cellBgPaint,
     required this.theme,
+    this.violatingCells = const {},
   });
 
   final TakuzuBoard board;
   final GridMetrics metrics;
   final Paint cellBgPaint;
   final ThemeData theme;
+  final Set<Offset> violatingCells;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -210,6 +365,12 @@ class _TakuzuContentPainter extends CustomPainter {
       color: theme.colorScheme.onSurface,
       fontWeight: FontWeight.w700,
     );
+    
+    final errorPaint = Paint()
+      ..color = theme.colorScheme.error
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+    
     for (int row = 0; row < board.size; row++) {
       for (int col = 0; col < board.size; col++) {
         final rect = PainterUtils.getCellRect(
@@ -231,13 +392,30 @@ class _TakuzuContentPainter extends CustomPainter {
             textStyle: valueStyle,
           );
         }
+        
+        // Draw red X on violating cells
+        final cellPos = Offset(col.toDouble(), row.toDouble());
+        if (violatingCells.contains(cellPos)) {
+          final padding = rect.width * 0.2;
+          final x1 = rect.left + padding;
+          final y1 = rect.top + padding;
+          final x2 = rect.right - padding;
+          final y2 = rect.bottom - padding;
+          
+          // Draw X
+          canvas.drawLine(Offset(x1, y1), Offset(x2, y2), errorPaint);
+          canvas.drawLine(Offset(x2, y1), Offset(x1, y2), errorPaint);
+        }
       }
     }
   }
 
   @override
   bool shouldRepaint(covariant _TakuzuContentPainter oldDelegate) {
-    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme;
+    return oldDelegate.board != board || 
+           oldDelegate.metrics != metrics || 
+           oldDelegate.theme != theme ||
+           oldDelegate.violatingCells != violatingCells;
   }
 }
 

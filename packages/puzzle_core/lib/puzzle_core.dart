@@ -48,6 +48,11 @@ export 'src/kakuro/kakuro_format.dart';
 export 'src/slitherlink/slitherlink_board.dart';
 export 'src/slitherlink/slitherlink_move.dart';
 export 'src/slitherlink/slitherlink_engine.dart';
+// Expose solver/generator/validator for tests and advanced usage
+export 'src/slitherlink/slitherlink_generator.dart';
+export 'src/slitherlink/slitherlink_solver.dart';
+export 'src/slitherlink/slitherlink_validator.dart';
+export 'src/slitherlink/slitherlink_topology.dart';
 
 // Mathdoku engine implementation
 export 'src/mathdoku/mathdoku_board.dart';

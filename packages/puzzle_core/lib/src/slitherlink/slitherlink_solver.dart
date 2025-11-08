@@ -64,6 +64,10 @@ class _SlitherlinkSearch {
     if (solutions.length >= context.maxSolutions) {
       return;
     }
+    if (context.speculativeStepBudget != null &&
+        metrics.speculativeSteps >= context.speculativeStepBudget!) {
+      return;
+    }
 
     if (!state.propagate()) {
       return;
@@ -85,7 +89,24 @@ class _SlitherlinkSearch {
       metrics.maxDepth = depth + 1;
     }
 
-    for (final int guess in <int>[SlitherlinkBoard.edgeOn, SlitherlinkBoard.edgeOff]) {
+    // If we have a preferred edge assignment ordering, use it for this edge.
+    final List<int> guessOrder;
+    final List<int>? prefs = context.preferredEdgeValues;
+    if (prefs != null && edge < prefs.length) {
+      final int preferred = prefs[edge];
+      if (preferred == SlitherlinkBoard.edgeOn || preferred == SlitherlinkBoard.edgeOff) {
+        final int other = preferred == SlitherlinkBoard.edgeOn
+            ? SlitherlinkBoard.edgeOff
+            : SlitherlinkBoard.edgeOn;
+        guessOrder = <int>[preferred, other];
+      } else {
+        guessOrder = <int>[SlitherlinkBoard.edgeOn, SlitherlinkBoard.edgeOff];
+      }
+    } else {
+      guessOrder = <int>[SlitherlinkBoard.edgeOn, SlitherlinkBoard.edgeOff];
+    }
+
+    for (final int guess in guessOrder) {
       if (solutions.length >= context.maxSolutions) {
         break;
       }

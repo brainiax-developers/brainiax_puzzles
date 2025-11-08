@@ -12,13 +12,16 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
   late GridMetrics _gridMetrics;
   // No direct dependency on internal topology; use simple index math.
 
-  late Paint _linePaint;
+  late Paint _gridDotPaint;
   late Paint _edgeOnPaint;
   late Paint _edgeOffPaint;
   // Selection/error paints not used for edge highlighting in this minimal renderer.
 
   static const double _edgeThickness = 3.0;
-  static const double _hitTolerance = 10.0; // px tolerance to select an edge
+  static const double _hitTolerance = 14.0; // px tolerance to select an edge (slightly larger for dots)
+  int? _lastDragEdge; // track last edge index during drag to avoid repeats
+
+  bool _isHorizontalEncoded(Offset encoded) => encoded.dy == -1;
 
   @override
   void initState() {
@@ -35,9 +38,9 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
 
   void _setupPaints() {
     final cs = Theme.of(context).colorScheme;
-    _linePaint = PerformanceOptimizations.getCachedPaint(
-      key: 'sl_line',
-      color: cs.outline.withOpacity(0.3),
+    _gridDotPaint = PerformanceOptimizations.getCachedPaint(
+      key: 'sl_grid_dot',
+      color: cs.outline.withOpacity(0.55),
       strokeWidth: 1,
     );
     _edgeOnPaint = PerformanceOptimizations.getCachedPaint(
@@ -63,7 +66,7 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
   @override
   void didUpdateWidget(covariant SlitherlinkRendererWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.puzzle != oldWidget.puzzle) {
+    if (widget.puzzle?.state != oldWidget.puzzle?.state) {
       _updateBoard();
     }
   }
@@ -100,6 +103,79 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
     return null;
   }
 
+  // Override base hitTest to integrate edge picking for drag / selection.
+  @override
+  Offset? hitTest(Offset position) => _hitTest(position);
+
+  void _applyEdgeCycle(int edgeIndex, bool isHorizontal) {
+    final current = _board.edges[edgeIndex];
+    int next;
+    if (current == SlitherlinkBoard.edgeUnknown) {
+      next = SlitherlinkBoard.edgeOn;
+    } else if (current == SlitherlinkBoard.edgeOn) {
+      next = SlitherlinkBoard.edgeOff;
+    } else {
+      next = SlitherlinkBoard.edgeUnknown;
+    }
+    _emitMove(edgeIndex, isHorizontal, next);
+  }
+
+  void _emitMove(int edgeIndex, bool isHorizontal, int value) {
+    if (widget.onMove == null) return;
+    if (isHorizontal) {
+      final row = edgeIndex ~/ _board.width;
+      final col = edgeIndex % _board.width;
+      widget.onMove!.call(
+        SlitherlinkMove(horizontal: true, row: row, col: col, value: value),
+      );
+    } else {
+      final base = _horizontalEdgeCount;
+      final idx = edgeIndex - base;
+      final row = idx ~/ (_board.width + 1);
+      final col = idx % (_board.width + 1);
+      widget.onMove!.call(
+        SlitherlinkMove(horizontal: false, row: row, col: col, value: value),
+      );
+    }
+  }
+
+  @override
+  void onTap(Offset position) {
+    final hit = _hitTest(position);
+    if (hit == null) return;
+    final edgeIndex = hit.dx.toInt();
+    _applyEdgeCycle(edgeIndex, _isHorizontalEncoded(hit));
+  }
+
+  @override
+  void onPanStart(DragStartDetails details) {
+    final hit = _hitTest(details.localPosition);
+    if (hit == null) return;
+    _lastDragEdge = hit.dx.toInt();
+    final idx = _lastDragEdge!;
+    // Start drag by turning unknown edge ON (don't cycle existing ON).
+    if (_board.edges[idx] == SlitherlinkBoard.edgeUnknown) {
+      _emitMove(idx, _isHorizontalEncoded(hit), SlitherlinkBoard.edgeOn);
+    }
+  }
+
+  @override
+  void onPanUpdate(DragUpdateDetails details) {
+    final hit = _hitTest(details.localPosition);
+    if (hit == null) return;
+    final edgeIndex = hit.dx.toInt();
+    if (_lastDragEdge == edgeIndex) return; // already processed
+    _lastDragEdge = edgeIndex;
+    if (_board.edges[edgeIndex] == SlitherlinkBoard.edgeUnknown) {
+      _emitMove(edgeIndex, _isHorizontalEncoded(hit), SlitherlinkBoard.edgeOn);
+    }
+  }
+
+  @override
+  void onPanEnd(DragEndDetails details) {
+    _lastDragEdge = null;
+  }
+
   @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
     _gridMetrics = PainterUtils.calculateGridMetrics(
@@ -113,7 +189,7 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
       painter: _SlitherlinkContentPainter(
         board: _board,
         metrics: _gridMetrics,
-        linePaint: _linePaint,
+        gridDotPaint: _gridDotPaint,
         edgeOnPaint: _edgeOnPaint,
         edgeOffPaint: _edgeOffPaint,
         theme: Theme.of(context),
@@ -124,7 +200,7 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
 
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
-    // Initialize metrics first for background painter
+    // Initialize metrics for dot grid painter
     _gridMetrics = PainterUtils.calculateGridMetrics(
       availableSize: size,
       rows: _board.height,
@@ -133,7 +209,12 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
       cellSpacing: 1,
     );
     return CustomPaint(
-      painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
+      painter: _SlitherlinkDotGridPainter(
+        metrics: _gridMetrics,
+        dotPaint: _gridDotPaint,
+        rows: _board.height,
+        cols: _board.width,
+      ),
       size: size,
     );
   }
@@ -154,39 +235,7 @@ class SlitherlinkRenderer extends PuzzleRenderer<SlitherlinkRendererWidget>
     return const SizedBox.shrink();
   }
 
-  @override
-  void onTap(Offset position) {
-    final hit = _hitTest(position);
-    if (hit == null) return;
-    final edgeIndex = hit.dx.toInt();
-    final isHorizontal = hit.dy == -1;
-
-    // Cycle Unknown -> On -> Off -> Unknown
-    final current = _board.edges[edgeIndex];
-    int next;
-    if (current == SlitherlinkBoard.edgeUnknown) {
-      next = SlitherlinkBoard.edgeOn;
-    } else if (current == SlitherlinkBoard.edgeOn) {
-      next = SlitherlinkBoard.edgeOff;
-    } else {
-      next = SlitherlinkBoard.edgeUnknown;
-    }
-
-    // Map edge index back to row/col for move API
-    if (isHorizontal) {
-      // derive row/col by scanning; more efficient mapping could be added if needed
-      // horizontal index formula: row * width + col
-      final row = (edgeIndex ~/ _board.width);
-      final col = edgeIndex % _board.width;
-      widget.onMove?.call(SlitherlinkMove(horizontal: true, row: row, col: col, value: next));
-    } else {
-      final base = _horizontalEdgeCount;
-      final idx = edgeIndex - base;
-      final row = idx ~/ (_board.width + 1);
-      final col = idx % (_board.width + 1);
-      widget.onMove?.call(SlitherlinkMove(horizontal: false, row: row, col: col, value: next));
-    }
-  }
+  // Removed older onTap implementation to avoid duplicate; replaced below with drag-aware version.
 
   int get _horizontalEdgeCount => (_board.height + 1) * _board.width;
   int _horizontalEdgeIndex(int row, int col) => row * _board.width + col;
@@ -213,7 +262,7 @@ class _SlitherlinkContentPainter extends CustomPainter {
   const _SlitherlinkContentPainter({
     required this.board,
     required this.metrics,
-    required this.linePaint,
+    required this.gridDotPaint,
     required this.edgeOnPaint,
     required this.edgeOffPaint,
     required this.theme,
@@ -221,7 +270,7 @@ class _SlitherlinkContentPainter extends CustomPainter {
 
   final SlitherlinkBoard board;
   final GridMetrics metrics;
-  final Paint linePaint;
+  final Paint gridDotPaint;
   final Paint edgeOnPaint;
   final Paint edgeOffPaint;
   final ThemeData theme;
@@ -251,10 +300,20 @@ class _SlitherlinkContentPainter extends CustomPainter {
       }
     }
 
-    // Draw edges
+    // Draw vertex dots (always) first so edges overlay them.
     final cell = metrics.cellSize.width + metrics.cellSpacing;
     final ox = metrics.gridOffset.dx;
     final oy = metrics.gridOffset.dy;
+    final double dotRadius = 3.0;
+    for (int r = 0; r <= board.height; r++) {
+      for (int c = 0; c <= board.width; c++) {
+        final double x = ox + c * cell;
+        final double y = oy + r * cell;
+        canvas.drawCircle(Offset(x, y), dotRadius, gridDotPaint);
+      }
+    }
+
+    // Draw edges
 
     // horizontal edges
     for (int r = 0; r <= board.height; r++) {
@@ -267,10 +326,20 @@ class _SlitherlinkContentPainter extends CustomPainter {
           final x2 = x1 + metrics.cellSize.width;
           canvas.drawLine(Offset(x1, y), Offset(x2, y), edgeOnPaint);
         } else if (v == SlitherlinkBoard.edgeOff) {
+          // Draw a cross at the midpoint between the two dots.
           final y = oy + r * cell;
-          final x = ox + c * cell + metrics.cellSize.width / 2;
-          // small dot to indicate off (optional aesthetic)
-          canvas.drawCircle(Offset(x, y), 1.5, edgeOffPaint);
+          final midX = ox + c * cell + metrics.cellSize.width / 2;
+          final double arm = metrics.cellSize.width * 0.20;
+          canvas.drawLine(
+            Offset(midX - arm, y - arm),
+            Offset(midX + arm, y + arm),
+            edgeOffPaint,
+          );
+          canvas.drawLine(
+            Offset(midX - arm, y + arm),
+            Offset(midX + arm, y - arm),
+            edgeOffPaint,
+          );
         }
       }
     }
@@ -287,8 +356,18 @@ class _SlitherlinkContentPainter extends CustomPainter {
           canvas.drawLine(Offset(x, y1), Offset(x, y2), edgeOnPaint);
         } else if (v == SlitherlinkBoard.edgeOff) {
           final x = ox + c * cell;
-          final y = oy + r * cell + metrics.cellSize.height / 2;
-          canvas.drawCircle(Offset(x, y), 1.5, edgeOffPaint);
+          final midY = oy + r * cell + metrics.cellSize.height / 2;
+          final double arm = metrics.cellSize.height * 0.20;
+          canvas.drawLine(
+            Offset(x - arm, midY - arm),
+            Offset(x + arm, midY + arm),
+            edgeOffPaint,
+          );
+            canvas.drawLine(
+            Offset(x - arm, midY + arm),
+            Offset(x + arm, midY - arm),
+            edgeOffPaint,
+          );
         }
       }
     }
@@ -299,4 +378,36 @@ class _SlitherlinkContentPainter extends CustomPainter {
     return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme;
   }
   int _horizontalEdgeCount(int h, int w) => (h + 1) * w;
+}
+
+class _SlitherlinkDotGridPainter extends CustomPainter {
+  const _SlitherlinkDotGridPainter({
+    required this.metrics,
+    required this.dotPaint,
+    required this.rows,
+    required this.cols,
+  });
+
+  final GridMetrics metrics;
+  final Paint dotPaint;
+  final int rows;
+  final int cols;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cell = metrics.cellSize.width + metrics.cellSpacing;
+    final ox = metrics.gridOffset.dx;
+    final oy = metrics.gridOffset.dy;
+    final double radius = 3.0;
+    for (int r = 0; r <= rows; r++) {
+      for (int c = 0; c <= cols; c++) {
+        canvas.drawCircle(Offset(ox + c * cell, oy + r * cell), radius, dotPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SlitherlinkDotGridPainter oldDelegate) {
+    return oldDelegate.metrics != metrics || oldDelegate.rows != rows || oldDelegate.cols != cols;
+  }
 }

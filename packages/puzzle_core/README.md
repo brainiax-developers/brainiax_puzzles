@@ -10,6 +10,7 @@ A Dart package providing on-device deterministic puzzle generation with a stable
 - **Engine registry system**: Pluggable puzzle engines with stable API
 - **Deterministic reproducibility**: Same parameters always produce identical puzzles
 - **Daily and random seed formats**: Support for both daily puzzles and random play
+ - **Difficulty-aware Takuzu generation**: Binary puzzle generator targets size + given density bands per difficulty (Easy 6x6 ~50–60%, Medium 8x8 ~40–50%, Hard 10x10 ~30–40%, Expert ≥12x12 ≤30%) while preserving uniqueness and enforcing all Takuzu rules.
 
 ## Key Design Principles
 
@@ -69,15 +70,15 @@ final engine = registry.getEngine('stub_sudoku') as StubSudokuEngine;
 ```dart
 // Define puzzle parameters
 final size = SizeOpt(
-  id: '9x9',
-  description: 'Standard 9x9',
-  width: 9,
-  height: 9,
+  id: '6x6',
+  description: 'Takuzu Easy 6x6',
+  width: 6,
+  height: 6,
 );
 
 final difficulty = DifficultyScore(
-  value: 0.5,
-  level: 'Medium',
+  value: 0.0, // Pre-score hint (optional)
+  level: 'easy',
 );
 
 // Generate puzzle
@@ -89,7 +90,7 @@ final puzzle = engine.generate(
 );
 
 // Access puzzle state and metadata
-print('Puzzle ID: ${puzzle.state.id}');
+print('Takuzu size: ${puzzle.state.size}');
 print('Engine Version: ${puzzle.meta.engineVersion}');
 print('Seed: ${puzzle.meta.seedStr}');
 ```

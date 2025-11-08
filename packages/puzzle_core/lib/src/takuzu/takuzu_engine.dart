@@ -2,7 +2,6 @@ import '../api_types.dart';
 import '../difficulty/difficulty_config.dart';
 import '../engine/pipeline_engine.dart';
 import '../util/determinism.dart';
-import '../validation/validator.dart';
 import 'takuzu_board.dart';
 import 'takuzu_difficulty.dart';
 import 'takuzu_generator.dart';
@@ -56,11 +55,8 @@ class TakuzuEngine extends PipelinePuzzleEngine<TakuzuBoard, TakuzuMove> {
       fixed: currentState.fixed,
     );
 
-    final ValidationSummary summary = validator.validatePuzzle(updated);
-    if (!summary.isValid) {
-      return MoveResult.failure(summary.issues.join(','));
-    }
-
+    // For Takuzu, always allow the move to support uninterrupted input.
+    // UI will handle visual feedback for rule violations.
     DeterminismGuard.assertNoFloatsOrDateTimes(updated.toJson());
 
     return MoveResult.success(updated);

@@ -21,6 +21,22 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
       if (analysis.hasTriple) {
         issues.add('Row $row contains three consecutive identical values');
       }
+      // Detect impossible sandwich pattern: a a ? b b with a != b (central cell unsatisfiable).
+      for (int col = 0; col <= board.size - 5; col++) {
+        final int a1 = board.cellAt(row, col);
+        final int a2 = board.cellAt(row, col + 1);
+        final int mid = board.cellAt(row, col + 2);
+        final int b1 = board.cellAt(row, col + 3);
+        final int b2 = board.cellAt(row, col + 4);
+        if (mid == TakuzuBoard.emptyValue &&
+            a1 != TakuzuBoard.emptyValue &&
+            a2 == a1 &&
+            b1 != TakuzuBoard.emptyValue &&
+            b2 == b1 &&
+            a1 != b1) {
+          issues.add('Row $row has impossible cell at col ${col + 2} (sandwiched by $a1$a1 and $b1$b1)');
+        }
+      }
     }
 
     for (int col = 0; col < board.size; col++) {
@@ -33,6 +49,22 @@ class TakuzuValidator extends PuzzleValidator<TakuzuBoard> {
       }
       if (analysis.hasTriple) {
         issues.add('Column $col contains three consecutive identical values');
+      }
+      // Vertical impossible sandwich pattern detection.
+      for (int row = 0; row <= board.size - 5; row++) {
+        final int a1 = board.cellAt(row, col);
+        final int a2 = board.cellAt(row + 1, col);
+        final int mid = board.cellAt(row + 2, col);
+        final int b1 = board.cellAt(row + 3, col);
+        final int b2 = board.cellAt(row + 4, col);
+        if (mid == TakuzuBoard.emptyValue &&
+            a1 != TakuzuBoard.emptyValue &&
+            a2 == a1 &&
+            b1 != TakuzuBoard.emptyValue &&
+            b2 == b1 &&
+            a1 != b1) {
+          issues.add('Column $col has impossible cell at row ${row + 2} (sandwiched by $a1$a1 and $b1$b1)');
+        }
       }
     }
 
