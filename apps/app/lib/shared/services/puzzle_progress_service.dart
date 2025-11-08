@@ -66,8 +66,8 @@ class PuzzleProgressService {
         return (json) => core.SlitherlinkBoard.fromJson(json);
       case 'mathdoku_classic':
         return (json) => core.MathdokuBoard.fromJson(json);
-      case 'futoshiki_classic':
-        return (json) => core.FutoshikiBoard.fromJson(json);
+      case 'killer_queens':
+        return (json) => core.KillerQueensBoard.fromJson(json);
       case 'takuzu_binary':
         return (json) => core.TakuzuBoard.fromJson(json);
       default:

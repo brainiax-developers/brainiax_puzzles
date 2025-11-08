@@ -75,9 +75,9 @@ class EngineRegistryService {
     );
 
     await _registerWithPerEngineFallback(
-      realEngineFactory: () => FutoshikiEngine(),
-      fallbackEngineId: 'futoshiki_classic',
-      fallbackEngineName: 'Classic Futoshiki',
+      realEngineFactory: () => KillerQueensEngine(),
+      fallbackEngineId: 'killer_queens',
+      fallbackEngineName: 'Killer Queens',
     );
 
     await _registerWithPerEngineFallback(

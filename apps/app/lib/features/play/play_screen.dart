@@ -188,8 +188,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return '7x7';
       case PuzzleType.mathdokuClassic:
         return '6x6';
-      case PuzzleType.futoshikiClassic:
-        return '6x6';
+      case PuzzleType.killerQueens:
+        return '8x8';
       case PuzzleType.takuzuBinary:
         return '8x8';
     }
@@ -1322,11 +1322,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       );
     }
 
-    // Futoshiki
-    if (puzzle.state is core.FutoshikiBoard) {
+    // Killer Queens
+    if (puzzle.state is core.KillerQueensBoard) {
       return Padding(
         padding: const EdgeInsets.all(16),
-        child: FutoshikiRendererWidget(
+        child: KillerQueensRendererWidget(
           puzzle: puzzle,
           gameState: gameState,
           onCellSelected: _onCellSelected,

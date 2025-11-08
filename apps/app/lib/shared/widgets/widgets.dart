@@ -20,5 +20,5 @@ export 'nonogram_renderer.dart';
 export 'kakuro_renderer.dart';
 export 'slitherlink_renderer.dart';
 export 'mathdoku_renderer.dart';
-export 'futoshiki_renderer.dart';
+export 'killer_queens_renderer.dart';
 export 'takuzu_renderer.dart';

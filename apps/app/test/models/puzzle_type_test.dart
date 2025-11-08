@@ -28,9 +28,9 @@ void main() {
       expect(PuzzleType.mathdokuClassic.displayName, equals('Classic Mathdoku'));
     });
 
-    test('should have correct key and display name for futoshiki_classic', () {
-      expect(PuzzleType.futoshikiClassic.key, equals('futoshiki_classic'));
-      expect(PuzzleType.futoshikiClassic.displayName, equals('Classic Futoshiki'));
+    test('should have correct key and display name for killer_queens', () {
+      expect(PuzzleType.killerQueens.key, equals('killer_queens'));
+      expect(PuzzleType.killerQueens.displayName, equals('Killer Queens'));
     });
 
     test('should have correct key and display name for takuzu_binary', () {
@@ -45,7 +45,7 @@ void main() {
         expect(PuzzleType.fromKey('kakuro_classic'), equals(PuzzleType.kakuroClassic));
         expect(PuzzleType.fromKey('slitherlink_loop'), equals(PuzzleType.slitherlinkLoop));
         expect(PuzzleType.fromKey('mathdoku_classic'), equals(PuzzleType.mathdokuClassic));
-        expect(PuzzleType.fromKey('futoshiki_classic'), equals(PuzzleType.futoshikiClassic));
+        expect(PuzzleType.fromKey('killer_queens'), equals(PuzzleType.killerQueens));
         expect(PuzzleType.fromKey('takuzu_binary'), equals(PuzzleType.takuzuBinary));
       });
 
@@ -63,7 +63,7 @@ void main() {
         expect(PuzzleType.isValidKey('kakuro_classic'), isTrue);
         expect(PuzzleType.isValidKey('slitherlink_loop'), isTrue);
         expect(PuzzleType.isValidKey('mathdoku_classic'), isTrue);
-        expect(PuzzleType.isValidKey('futoshiki_classic'), isTrue);
+        expect(PuzzleType.isValidKey('killer_queens'), isTrue);
         expect(PuzzleType.isValidKey('takuzu_binary'), isTrue);
       });
 

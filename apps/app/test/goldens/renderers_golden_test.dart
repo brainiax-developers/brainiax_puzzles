@@ -7,7 +7,7 @@ import 'package:app/shared/widgets/nonogram_renderer.dart';
 import 'package:app/shared/widgets/kakuro_renderer.dart';
 import 'package:app/shared/widgets/slitherlink_renderer.dart';
 import 'package:app/shared/widgets/mathdoku_renderer.dart';
-import 'package:app/shared/widgets/futoshiki_renderer.dart';
+import 'package:app/shared/widgets/killer_queens_renderer.dart';
 import 'package:app/shared/widgets/takuzu_renderer.dart';
 
 import '../helpers/test_puzzle_data.dart';
@@ -132,7 +132,7 @@ void main() {
         await screenMatchesGolden(tester, 'mathdoku_$themeName');
       });
 
-      testGoldens('futoshiki_$themeName', (tester) async {
+      testGoldens('killer_queens_$themeName', (tester) async {
         await tester.pumpWidgetBuilder(
           MaterialApp(
             theme: theme,
@@ -141,8 +141,8 @@ void main() {
                 child: SizedBox(
                   width: 360,
                   height: 360,
-                  child: FutoshikiRendererWidget(
-                    puzzle: buildFutoshikiPuzzle(),
+                  child: KillerQueensRendererWidget(
+                    puzzle: buildKillerQueensPuzzle(),
                   ),
                 ),
               ),
@@ -150,7 +150,7 @@ void main() {
           ),
           surfaceSize: const Size(420, 420),
         );
-        await screenMatchesGolden(tester, 'futoshiki_$themeName');
+        await screenMatchesGolden(tester, 'killer_queens_$themeName');
       });
 
       testGoldens('takuzu_$themeName', (tester) async {

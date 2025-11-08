@@ -171,14 +171,14 @@ class PuzzleRegistry {
           category: PuzzleCategory.logic,
         );
 
-      case app.PuzzleType.futoshikiClassic:
+      case app.PuzzleType.killerQueens:
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
-          icon: Icons.compare_arrows,
-          accentColors: const [Color(0xFF00BCD4), Color(0xFF0097A7)],
-          supportedSizes: ['5x5', '6x6', '7x7'],
-          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          icon: Icons.catching_pokemon,
+          accentColors: const [Color(0xFF26C6DA), Color(0xFF00838F)],
+          supportedSizes: ['6x6', '8x8', '10x10', '12x12'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
