@@ -39,13 +39,11 @@ class KillerQueensBoard {
     required this.size,
     required List<int> cells,
     required List<bool> fixed,
-    required List<bool> blocked,
     required List<KillerQueensCage> cages,
-  })  : cells = List<int>.unmodifiable(cells),
-        fixed = List<bool>.unmodifiable(fixed),
-        blocked = List<bool>.unmodifiable(blocked),
-        cages = List<KillerQueensCage>.unmodifiable(cages),
-        _cageByCell = buildCageByCell(size, blocked, cages) {
+  }) : cells = List<int>.unmodifiable(cells),
+       fixed = List<bool>.unmodifiable(fixed),
+       cages = List<KillerQueensCage>.unmodifiable(cages),
+       _cageByCell = buildCageByCell(size, cages) {
     if (size <= 0) {
       throw ArgumentError('Killer Queens board must have positive size');
     }
@@ -59,17 +57,11 @@ class KillerQueensBoard {
     if (this.fixed.length != cellCount) {
       throw ArgumentError('Fixed flags must match cell count');
     }
-    if (this.blocked.length != cellCount) {
-      throw ArgumentError('Blocked flags must match cell count');
-    }
 
     for (int i = 0; i < cellCount; i++) {
       final int value = this.cells[i];
-      if (value != 0 && value != 1) {
-        throw ArgumentError('Cell values must be 0 or 1; found $value');
-      }
-      if (this.blocked[i] && value != 0) {
-        throw ArgumentError('Blocked cells must remain empty');
+      if (value != 0 && value != 1 && value != 2) {
+        throw ArgumentError('Cell values must be 0, 1, or 2; found $value');
       }
       if (this.fixed[i] && value != 1) {
         throw ArgumentError('Fixed cells must contain a queen');
@@ -81,7 +73,6 @@ class KillerQueensBoard {
 
   factory KillerQueensBoard.empty({
     required int size,
-    List<bool>? blocked,
     List<KillerQueensCage> cages = const <KillerQueensCage>[],
   }) {
     final int cellCount = size * size;
@@ -89,7 +80,6 @@ class KillerQueensBoard {
       size: size,
       cells: List<int>.filled(cellCount, 0, growable: false),
       fixed: List<bool>.filled(cellCount, false, growable: false),
-      blocked: blocked ?? List<bool>.filled(cellCount, false, growable: false),
       cages: cages,
     );
   }
@@ -98,19 +88,19 @@ class KillerQueensBoard {
     final int size = (json['size'] as num).toInt();
     final List<dynamic> rawCells = json['cells'] as List<dynamic>;
     final List<dynamic> rawFixed = json['fixed'] as List<dynamic>;
-    final List<dynamic> rawBlocked = json['blocked'] as List<dynamic>;
-    final List<dynamic> rawCages = json['cages'] as List<dynamic>? ??
-        const <dynamic>[];
+    final List<dynamic> rawCages =
+        json['cages'] as List<dynamic>? ?? const <dynamic>[];
 
     return KillerQueensBoard(
       size: size,
       cells: rawCells.map((dynamic value) => (value as num).toInt()).toList(),
       fixed: rawFixed.map((dynamic value) => value as bool).toList(),
-      blocked: rawBlocked.map((dynamic value) => value as bool).toList(),
       cages: rawCages
-          .map((dynamic entry) => KillerQueensCage.fromJson(
-                Map<String, dynamic>.from(entry as Map),
-              ))
+          .map(
+            (dynamic entry) => KillerQueensCage.fromJson(
+              Map<String, dynamic>.from(entry as Map),
+            ),
+          )
           .toList(),
     );
   }
@@ -118,7 +108,6 @@ class KillerQueensBoard {
   final int size;
   final List<int> cells;
   final List<bool> fixed;
-  final List<bool> blocked;
   final List<KillerQueensCage> cages;
   final List<int> _cageByCell;
   late final int _queenCount;
@@ -128,10 +117,6 @@ class KillerQueensBoard {
 
   List<int> get cageByCell => _cageByCell;
 
-  bool isBlocked(int index) => blocked[index];
-
-  bool isBlockedAt(int row, int col) => blocked[indexFor(row, col)];
-
   int indexFor(int row, int col) => row * size + col;
 
   int valueAt(int row, int col) => cells[indexFor(row, col)];
@@ -140,13 +125,10 @@ class KillerQueensBoard {
     if (row < 0 || row >= size || col < 0 || col >= size) {
       throw RangeError('Cell out of range');
     }
-    if (value != 0 && value != 1) {
-      throw ArgumentError('Value must be 0 or 1');
+    if (value != 0 && value != 1 && value != 2) {
+      throw ArgumentError('Value must be 0, 1, or 2');
     }
     final int index = indexFor(row, col);
-    if (blocked[index]) {
-      throw StateError('Cannot modify blocked cell');
-    }
     final List<int> updatedCells = List<int>.from(cells);
     final List<bool> updatedFixed = List<bool>.from(fixed);
     updatedCells[index] = value;
@@ -157,18 +139,16 @@ class KillerQueensBoard {
       size: size,
       cells: updatedCells,
       fixed: updatedFixed,
-      blocked: blocked,
       cages: cages,
     );
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'size': size,
-        'cells': cells,
-        'fixed': fixed,
-        'blocked': blocked,
-        'cages': cages.map((KillerQueensCage cage) => cage.toJson()).toList(),
-      };
+    'size': size,
+    'cells': cells,
+    'fixed': fixed,
+    'cages': cages.map((KillerQueensCage cage) => cage.toJson()).toList(),
+  };
 
   List<int> queenPositions() {
     final List<int> indices = <int>[];
@@ -180,11 +160,7 @@ class KillerQueensBoard {
     return indices;
   }
 
-  static List<int> buildCageByCell(
-    int size,
-    List<bool> blocked,
-    List<KillerQueensCage> cages,
-  ) {
+  static List<int> buildCageByCell(int size, List<KillerQueensCage> cages) {
     final int cellCount = size * size;
     final List<int> cageByCell = List<int>.filled(cellCount, -1);
     for (int cageIndex = 0; cageIndex < cages.length; cageIndex++) {
@@ -192,9 +168,6 @@ class KillerQueensBoard {
       for (final int cell in cage.cells) {
         if (cell < 0 || cell >= cellCount) {
           throw ArgumentError('Cage cell out of range: $cell');
-        }
-        if (blocked[cell]) {
-          throw ArgumentError('Blocked cell $cell cannot belong to a cage');
         }
         if (cageByCell[cell] != -1) {
           throw ArgumentError('Cell $cell assigned to multiple cages');
@@ -204,8 +177,8 @@ class KillerQueensBoard {
     }
 
     for (int i = 0; i < cellCount; i++) {
-      if (!blocked[i] && cageByCell[i] == -1) {
-        throw ArgumentError('Unblocked cell $i missing cage assignment');
+      if (cageByCell[i] == -1) {
+        throw ArgumentError('Cell $i missing cage assignment');
       }
     }
     return List<int>.unmodifiable(cageByCell);
@@ -217,18 +190,16 @@ class KillerQueensBoard {
         size == other.size &&
         _listEquals(cells, other.cells) &&
         _listEqualsBool(fixed, other.fixed) &&
-        _listEqualsBool(blocked, other.blocked) &&
         _listEqualsInt(cageByCell, other.cageByCell);
   }
 
   @override
   int get hashCode => Object.hash(
-        size,
-        Object.hashAll(cells),
-        Object.hashAll(fixed),
-        Object.hashAll(blocked),
-        Object.hashAll(cageByCell),
-      );
+    size,
+    Object.hashAll(cells),
+    Object.hashAll(fixed),
+    Object.hashAll(cageByCell),
+  );
 
   static bool _listEquals(List<int> a, List<int> b) {
     if (a.length != b.length) {
@@ -260,32 +231,30 @@ class KillerQueensBoard {
     final List<int> updatedCells = List<int>.from(cells);
     for (int i = 0; i < updatedCells.length; i++) {
       if (!fixed[i]) {
-        updatedCells[i] = blocked[i] ? 0 : 0;
+        updatedCells[i] = 0;
       }
     }
     return KillerQueensBoard(
       size: size,
       cells: updatedCells,
       fixed: fixed,
-      blocked: blocked,
       cages: cages,
     );
   }
 
-  KillerQueensBoard copyWith({
-    List<int>? cells,
-    List<bool>? fixed,
-  }) {
+  KillerQueensBoard copyWith({List<int>? cells, List<bool>? fixed}) {
     return KillerQueensBoard(
       size: size,
       cells: cells ?? this.cells,
       fixed: fixed ?? this.fixed,
-      blocked: blocked,
       cages: cages,
     );
   }
 
-  KillerQueensBoard placeQueens(List<int> queenIndices, {bool markFixed = false}) {
+  KillerQueensBoard placeQueens(
+    List<int> queenIndices, {
+    bool markFixed = false,
+  }) {
     final List<int> updatedCells = List<int>.from(cells);
     final List<bool> updatedFixed = List<bool>.from(fixed);
     for (int i = 0; i < updatedCells.length; i++) {
@@ -299,7 +268,6 @@ class KillerQueensBoard {
       size: size,
       cells: updatedCells,
       fixed: updatedFixed,
-      blocked: blocked,
       cages: cages,
     );
   }
@@ -321,5 +289,10 @@ class KillerQueensBoard {
       }
     }
     return neighbors;
+  }
+
+  @override
+  String toString() {
+    return 'KillerQueensBoard(size: $size, cells: $cells, fixed: $fixed, cages: $cages)';
   }
 }

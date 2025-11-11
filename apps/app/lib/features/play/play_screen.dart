@@ -1334,6 +1334,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           onError: _onError,
           hintCells: _hintPositions,
           hintAnimationValue: _hintAnimationValue,
+          conflictingCells: gameState?.conflictingCells,
+          isShowingConflicts: gameState?.isShowingConflicts ?? false,
         ),
       );
     }

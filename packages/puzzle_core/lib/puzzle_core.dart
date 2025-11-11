@@ -63,6 +63,10 @@ export 'src/mathdoku/mathdoku_engine.dart';
 export 'src/killer_queens/killer_queens_board.dart';
 export 'src/killer_queens/killer_queens_move.dart';
 export 'src/killer_queens/killer_queens_engine.dart';
+// Expose solver/generator/validator for tests and advanced usage
+export 'src/killer_queens/killer_queens_generator.dart';
+export 'src/killer_queens/killer_queens_solver.dart';
+export 'src/killer_queens/killer_queens_validator.dart';
 
 // Takuzu engine implementation
 export 'src/takuzu/takuzu_board.dart';
@@ -72,6 +76,9 @@ export 'src/takuzu/takuzu_engine.dart';
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';
+
+// Utilities needed for testing
+export 'src/util/seeded_rng.dart' show Seed, SeededRng;
 
 // Note: Utility classes are intentionally not exported to maintain API stability.
 // Engines should import utilities directly from their internal implementations.

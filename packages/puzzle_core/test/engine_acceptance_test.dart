@@ -529,7 +529,6 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       size: size,
       cells: cells,
       fixed: fixed,
-      blocked: blockedFlags,
       cages: cages,
     );
   }
@@ -561,7 +560,6 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       size: size,
       cells: cells,
       fixed: fixed,
-      blocked: blockedFlags,
       cages: cages,
     );
   }

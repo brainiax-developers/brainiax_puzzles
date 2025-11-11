@@ -270,7 +270,6 @@ core.GeneratedPuzzle<core.MathdokuBoard> buildMathdokuPuzzle() {
 
 core.GeneratedPuzzle<core.KillerQueensBoard> buildKillerQueensPuzzle() {
   const size = 6;
-  final List<bool> blocked = List<bool>.filled(size * size, false);
   final List<core.KillerQueensCage> cages = <core.KillerQueensCage>[];
   for (int row = 0; row < size; row++) {
     for (int col = 0; col < size; col += 2) {
@@ -299,7 +298,6 @@ core.GeneratedPuzzle<core.KillerQueensBoard> buildKillerQueensPuzzle() {
     size: size,
     cells: cells,
     fixed: fixed,
-    blocked: blocked,
     cages: cages,
   );
 

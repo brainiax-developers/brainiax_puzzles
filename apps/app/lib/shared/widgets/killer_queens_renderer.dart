@@ -1,3 +1,5 @@
+import 'dart:math' show sin, pi;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
@@ -13,15 +15,32 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
 
   late Paint _gridPaint;
   late Paint _cellPaint;
-  late Paint _blockedPaint;
   late Paint _fixedPaint;
   late Paint _selectionPaint;
   late Paint _hintPaint;
+
+  Offset? _lastDragPosition;
+  
+  late AnimationController _vibrationController;
 
   @override
   void initState() {
     super.initState();
     _updateBoard();
+    
+    // Initialize vibration animation
+    _vibrationController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    )..addListener(() {
+      setState(() {}); // Rebuild during animation
+    });
+  }
+  
+  @override
+  void dispose() {
+    _vibrationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -29,6 +48,11 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     super.didUpdateWidget(oldWidget);
     if (widget.puzzle?.state != oldWidget.puzzle?.state) {
       _updateBoard();
+    }
+    
+    // Start vibration animation when conflicts appear
+    if (widget.isShowingConflicts && !oldWidget.isShowingConflicts) {
+      _vibrationController.forward(from: 0.0);
     }
   }
 
@@ -48,11 +72,6 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     _cellPaint = PerformanceOptimizations.getCachedPaint(
       key: 'kq_cell',
       color: colors.surface,
-      style: PaintingStyle.fill,
-    );
-    _blockedPaint = PerformanceOptimizations.getCachedPaint(
-      key: 'kq_blocked',
-      color: colors.surfaceVariant.withOpacity(0.8),
       style: PaintingStyle.fill,
     );
     _fixedPaint = PerformanceOptimizations.getCachedPaint(
@@ -94,17 +113,28 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
       cellSpacing: 1,
     );
 
+    // Calculate vibration offset (oscillates horizontally)
+    final vibrationOffset = _vibrationController.isAnimating 
+      ? Tween<double>(begin: 0.0, end: 1.0)
+          .chain(CurveTween(curve: Curves.easeInOut))
+          .animate(_vibrationController)
+          .value * 8.0 * // Max offset
+          sin(_vibrationController.value * 8 * pi) // Oscillate
+      : 0.0;
+
     return CustomPaint(
       painter: _KillerQueensContentPainter(
         board: _board,
         metrics: _metrics,
         cellPaint: _cellPaint,
-        blockedPaint: _blockedPaint,
         fixedPaint: _fixedPaint,
         hintPaint: _hintPaint,
         theme: Theme.of(context),
         hintCells: widget.hintCells,
         hintProgress: widget.hintAnimationValue,
+        conflictingCells: widget.conflictingCells,
+        isShowingConflicts: widget.isShowingConflicts,
+        vibrationOffset: vibrationOffset,
       ),
       size: size,
     );
@@ -137,7 +167,7 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
       builder: (BuildContext context, _) => CustomPaint(
         painter: _CellHighlightPainter(
           rect: rect,
-          paint: _selectionPaint,
+          highlightPaint: _selectionPaint,
           progress: selectionAnimation.value,
         ),
       ),
@@ -152,19 +182,25 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
   ) => const SizedBox.shrink();
 
   @override
+  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) {
+    return const SizedBox.shrink();
+  }
+
+  @override
   void onTap(Offset position) {
     final Offset? gridPos = _hitTest(position);
     if (gridPos == null) return;
     final int row = gridPos.dy.toInt();
     final int col = gridPos.dx.toInt();
     final int index = row * _board.size + col;
-    if (_board.blocked[index] || _board.fixed[index]) {
+    if (_board.fixed[index]) {
       super.onTap(position);
       return;
     }
     final int currentValue = _board.cells[index];
+    final int nextValue = currentValue == 0 ? 2 : currentValue == 2 ? 1 : 0;
     widget.onMove?.call(
-      core.KillerQueensMove(row: row, col: col, value: currentValue == 1 ? 0 : 1),
+      core.KillerQueensMove(row: row, col: col, value: nextValue),
     );
     super.onTap(position);
   }
@@ -176,14 +212,15 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     final int row = selectedPosition!.dy.toInt();
     final int col = selectedPosition!.dx.toInt();
     final int index = row * _board.size + col;
-    if (_board.blocked[index] || _board.fixed[index]) {
+    if (_board.fixed[index]) {
       return;
     }
     if (event.logicalKey == LogicalKeyboardKey.space ||
         event.logicalKey == LogicalKeyboardKey.enter) {
       final int currentValue = _board.cells[index];
+      final int nextValue = currentValue == 0 ? 2 : currentValue == 2 ? 1 : 0;
       widget.onMove?.call(
-        core.KillerQueensMove(row: row, col: col, value: currentValue == 1 ? 0 : 1),
+        core.KillerQueensMove(row: row, col: col, value: nextValue),
       );
       return;
     }
@@ -193,6 +230,42 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
         widget.onMove?.call(core.KillerQueensMove(row: row, col: col, value: 0));
       }
     }
+  }
+
+  @override
+  void onPanStart(DragStartDetails details) {
+    final Offset? gridPos = _hitTest(details.localPosition);
+    if (gridPos == null) return;
+    _lastDragPosition = gridPos;
+    _placeCrossAt(gridPos);
+    super.onPanStart(details);
+  }
+
+  @override
+  void onPanUpdate(DragUpdateDetails details) {
+    final Offset? gridPos = _hitTest(details.localPosition);
+    if (gridPos == null || gridPos == _lastDragPosition) return;
+    _lastDragPosition = gridPos;
+    _placeCrossAt(gridPos);
+    super.onPanUpdate(details);
+  }
+
+  @override
+  void onPanEnd(DragEndDetails details) {
+    _lastDragPosition = null;
+    super.onPanEnd(details);
+  }
+
+  void _placeCrossAt(Offset gridPos) {
+    final int row = gridPos.dy.toInt();
+    final int col = gridPos.dx.toInt();
+    final int index = row * _board.size + col;
+    if (_board.fixed[index] || _board.cells[index] == 1) {
+      return; // Skip fixed or queen cells
+    }
+    widget.onMove?.call(
+      core.KillerQueensMove(row: row, col: col, value: 2),
+    );
   }
 }
 
@@ -206,7 +279,12 @@ class KillerQueensRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.conflictingCells,
+    this.isShowingConflicts = false,
   });
+  
+  final Set<int>? conflictingCells;
+  final bool isShowingConflicts;
 
   @override
   State<KillerQueensRendererWidget> createState() => KillerQueensRenderer();
@@ -217,23 +295,27 @@ class _KillerQueensContentPainter extends CustomPainter {
     required this.board,
     required this.metrics,
     required this.cellPaint,
-    required this.blockedPaint,
     required this.fixedPaint,
     required this.hintPaint,
     required this.theme,
     required this.hintCells,
     required this.hintProgress,
+    this.conflictingCells,
+    this.isShowingConflicts = false,
+    this.vibrationOffset = 0.0,
   });
 
   final core.KillerQueensBoard board;
   final GridMetrics metrics;
   final Paint cellPaint;
-  final Paint blockedPaint;
   final Paint fixedPaint;
   final Paint hintPaint;
   final ThemeData theme;
   final List<Offset>? hintCells;
   final double hintProgress;
+  final Set<int>? conflictingCells;
+  final bool isShowingConflicts;
+  final double vibrationOffset;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -249,9 +331,18 @@ class _KillerQueensContentPainter extends CustomPainter {
     );
 
     final Paint cagePaint = Paint()
-      ..color = theme.colorScheme.outline.withOpacity(0.6)
-      ..strokeWidth = 2.0
+      ..color = theme.colorScheme.outline
+      ..strokeWidth = 2.2
       ..style = PaintingStyle.stroke;
+
+    // Generate stable pastel colors per cage using HSL seeded by cage id
+    Color cageColorFor(int cageId) {
+      final double hue = (cageId * 37) % 360; // pseudo-random but deterministic
+      final bool isDark = theme.brightness == Brightness.dark;
+      final double lightness = isDark ? 0.25 : 0.88;
+      final double saturation = 0.45;
+      return HSLColor.fromAHSL(1.0, hue, saturation, lightness).toColor();
+    }
 
     final Set<int> hintIndices = <int>{};
     if (hintCells != null) {
@@ -264,78 +355,116 @@ class _KillerQueensContentPainter extends CustomPainter {
       }
     }
 
+    // First pass: paint cage backgrounds and cell content
     for (int row = 0; row < board.size; row++) {
       for (int col = 0; col < board.size; col++) {
         final Rect rect = PainterUtils.getCellRect(
           gridPosition: Offset(col.toDouble(), row.toDouble()),
           metrics: metrics,
         );
-        canvas.drawRect(rect, cellPaint);
-
+        
         final int index = row * board.size + col;
-        if (board.blocked[index]) {
-          canvas.drawRect(rect, blockedPaint);
-        } else if (board.fixed[index]) {
+        final int cageId = board.cageByCell[index];
+        final Color bgColor = cageColorFor(cageId);
+        
+        // Draw cage background
+        final Paint cageBgPaint = Paint()
+          ..color = bgColor.withOpacity(0.92)
+          ..style = PaintingStyle.fill;
+        PainterUtils.paintCellBackground(
+          canvas: canvas,
+          cellRect: rect,
+          backgroundPaint: cageBgPaint,
+          borderRadius: 4,
+        );
+
+        // Overlay fixed cell highlight
+        if (board.fixed[index]) {
           canvas.drawRect(rect, fixedPaint);
         }
 
+        // Overlay hint highlight
         if (hintIndices.contains(index) && hintProgress > 0) {
           canvas.drawRect(rect, hintPaint);
         }
 
+        // Draw queen
         if (board.cells[index] == 1) {
-          textPainter.text = TextSpan(text: 'Q', style: textStyle);
+          // Check if this queen is in conflict
+          final bool isConflicting = isShowingConflicts && 
+                                     conflictingCells != null && 
+                                     conflictingCells!.contains(index);
+          
+          // Apply vibration offset if conflicting
+          final double offsetX = isConflicting ? vibrationOffset : 0.0;
+          
+          // Use red color for conflicting queens
+          final TextStyle queenStyle = isConflicting
+              ? textStyle.copyWith(color: Colors.red)
+              : textStyle;
+          
+          textPainter.text = TextSpan(text: 'Q', style: queenStyle);
           textPainter.layout(minWidth: 0, maxWidth: rect.width);
           final Offset textOffset = Offset(
-            rect.left + (rect.width - textPainter.width) / 2,
+            rect.left + (rect.width - textPainter.width) / 2 + offsetX,
             rect.top + (rect.height - textPainter.height) / 2,
           );
           textPainter.paint(canvas, textOffset);
         }
+
+        // Draw cross
+        if (board.cells[index] == 2) {
+          final Paint crossPaint = Paint()
+            ..color = theme.colorScheme.onSurface
+            ..strokeWidth = 2.0
+            ..strokeCap = StrokeCap.round;
+          final double padding = rect.width * 0.2;
+          canvas.drawLine(
+            rect.topLeft + Offset(padding, padding),
+            rect.bottomRight - Offset(padding, padding),
+            crossPaint,
+          );
+          canvas.drawLine(
+            rect.topRight + Offset(-padding, padding),
+            rect.bottomLeft - Offset(-padding, padding),
+            crossPaint,
+          );
+        }
       }
     }
 
-    // Draw cage boundaries
+    // Second pass: draw cage boundaries
     for (int row = 0; row < board.size; row++) {
       for (int col = 0; col < board.size; col++) {
         final int index = row * board.size + col;
-        if (board.blocked[index]) continue;
         final int cage = board.cageByCell[index];
         final Rect rect = PainterUtils.getCellRect(
           gridPosition: Offset(col.toDouble(), row.toDouble()),
           metrics: metrics,
         );
 
+        void drawEdge(Offset a, Offset b) {
+          canvas.drawLine(a, b, cagePaint);
+        }
+
         // Top boundary
-        final bool drawTop = row == 0 ||
-            board.blocked[index - board.size] ||
-            board.cageByCell[index - board.size] != cage;
-        if (drawTop) {
-          canvas.drawLine(rect.topLeft, rect.topRight, cagePaint);
+        if (row == 0 || board.cageByCell[index - board.size] != cage) {
+          drawEdge(rect.topLeft, rect.topRight);
         }
 
         // Left boundary
-        final bool drawLeft = col == 0 ||
-            board.blocked[index - 1] ||
-            board.cageByCell[index - 1] != cage;
-        if (drawLeft) {
-          canvas.drawLine(rect.topLeft, rect.bottomLeft, cagePaint);
+        if (col == 0 || board.cageByCell[index - 1] != cage) {
+          drawEdge(rect.topLeft, rect.bottomLeft);
         }
 
         // Bottom boundary
-        final bool drawBottom = row == board.size - 1 ||
-            board.blocked[index + board.size] ||
-            board.cageByCell[index + board.size] != cage;
-        if (drawBottom) {
-          canvas.drawLine(rect.bottomLeft, rect.bottomRight, cagePaint);
+        if (row == board.size - 1 || board.cageByCell[index + board.size] != cage) {
+          drawEdge(rect.bottomLeft, rect.bottomRight);
         }
 
         // Right boundary
-        final bool drawRight = col == board.size - 1 ||
-            board.blocked[index + 1] ||
-            board.cageByCell[index + 1] != cage;
-        if (drawRight) {
-          canvas.drawLine(rect.topRight, rect.bottomRight, cagePaint);
+        if (col == board.size - 1 || board.cageByCell[index + 1] != cage) {
+          drawEdge(rect.topRight, rect.bottomRight);
         }
       }
     }
@@ -352,25 +481,25 @@ class _KillerQueensContentPainter extends CustomPainter {
 class _CellHighlightPainter extends CustomPainter {
   _CellHighlightPainter({
     required this.rect,
-    required this.paint,
+    required this.highlightPaint,
     required this.progress,
   });
 
   final Rect rect;
-  final Paint paint;
+  final Paint highlightPaint;
   final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (progress <= 0) return;
     final RRect rRect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
-    canvas.drawRRect(rRect, paint);
+    canvas.drawRRect(rRect, highlightPaint);
   }
 
   @override
   bool shouldRepaint(covariant _CellHighlightPainter oldDelegate) {
     return oldDelegate.rect != rect ||
-        oldDelegate.paint != paint ||
+        oldDelegate.highlightPaint != highlightPaint ||
         oldDelegate.progress != progress;
   }
 }

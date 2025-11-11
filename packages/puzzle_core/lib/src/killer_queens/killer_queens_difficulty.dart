@@ -11,7 +11,6 @@ class KillerQueensDifficultyScorer extends DifficultyScorer<KillerQueensBoard> {
     required DifficultyContext context,
   }) {
     final int size = puzzle.size;
-    final int blocked = puzzle.blocked.where((bool value) => value).length;
     final int cages = puzzle.cages.length;
     final int givens = puzzle.fixed.where((bool value) => value).length;
 
@@ -20,24 +19,41 @@ class KillerQueensDifficultyScorer extends DifficultyScorer<KillerQueensBoard> {
     final int attempts = (generator['attempts'] as num?)?.toInt() ?? 1;
     final int branches = (solver['branches'] as num?)?.toInt() ?? 0;
 
-    final double cageDensity = cages == 0 ? 0.0 : (size * size) / cages;
-    final double baseScore = size / 2.5 + blocked * 0.35 + cageDensity / 3.5;
-    final double givensAdjustment = givens == 0 ? 1.6 : (givens / size).clamp(0.3, 1.2);
-    final double branchAdjustment = branches / (size * 2.0);
-    final double attemptAdjustment = attempts * 0.12;
+    // Enhanced difficulty calculation considering grid size and cage complexity
+    final double avgCageSize = cages == 0 ? 1.0 : (size * size) / cages;
+
+    // Grid size contributes significantly to difficulty (6x6=1.0, 8x8=1.6, 10x10=2.4, 12x12=3.4)
+    final double sizeScore = (size - 4) * 0.8;
+
+    // Cage complexity: larger average cage size increases difficulty
+    final double cageComplexity = (avgCageSize - 2.0) * 1.2;
+
+    // Givens ratio: fewer givens = harder (inverted scale)
+    final double givensRatio = givens == 0 ? 0.0 : givens / size;
+    final double givensAdjustment = (1.0 - givensRatio.clamp(0.0, 1.0)) * 4.0;
+
+    // Solver complexity indicators
+    final double branchAdjustment = branches / (size * 1.5);
+    final double attemptAdjustment = attempts * 0.1;
 
     final double rawScore =
-        baseScore + givensAdjustment + branchAdjustment + attemptAdjustment;
+        sizeScore +
+        cageComplexity +
+        givensAdjustment +
+        branchAdjustment +
+        attemptAdjustment;
 
     final Map<String, num> metrics = <String, num>{
       'size': size,
-      'blocked': blocked,
       'cages': cages,
+      'avgCageSize': avgCageSize,
       'givens': givens,
+      'givensRatio': givensRatio,
       'attempts': attempts,
       'branches': branches,
-      'cageDensity': cageDensity,
-      'baseScore': baseScore,
+      'sizeScore': sizeScore,
+      'cageComplexity': cageComplexity,
+      'givensAdjustment': givensAdjustment,
       'rawScore': rawScore,
     };
 

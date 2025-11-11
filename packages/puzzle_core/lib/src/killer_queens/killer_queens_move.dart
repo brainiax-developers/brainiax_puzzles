@@ -5,7 +5,8 @@ class KillerQueensMove {
     required this.value,
   });
 
-  factory KillerQueensMove.fromJson(Map<String, dynamic> json) => KillerQueensMove(
+  factory KillerQueensMove.fromJson(Map<String, dynamic> json) =>
+      KillerQueensMove(
         row: (json['row'] as num).toInt(),
         col: (json['col'] as num).toInt(),
         value: (json['value'] as num).toInt(),
@@ -13,13 +14,13 @@ class KillerQueensMove {
 
   final int row;
   final int col;
-  final int value; // 0 for empty, 1 for queen
+  final int value; // 0 for empty, 1 for queen, 2 for cross
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'row': row,
-        'col': col,
-        'value': value,
-      };
+    'row': row,
+    'col': col,
+    'value': value,
+  };
 
   @override
   bool operator ==(Object other) {

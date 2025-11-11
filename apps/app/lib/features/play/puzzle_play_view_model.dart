@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
@@ -32,6 +33,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   bool _solvedEmitted = false;
   Timer? _hintClearTimer;
   int _hintRequestCount = 0;
+  Timer? _conflictCheckTimer;
 
   void init(PuzzlePlaySession session) {
     _session = session;
@@ -54,18 +56,18 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     _solvedEmitted = initiallySolved;
 
     state = PuzzlePlayState(
-  puzzle: _session.puzzle,
+      puzzle: _session.puzzle,
       board: initialBoard,
       elapsed: Duration.zero,
       isSolved: initiallySolved,
       isTimerRunning: false,
       moveHistory: const <PuzzleMoveRecord>[],
       moveCount: 0,
-  supportsHints: _session.engine.capabilities.supportsHints,
+      supportsHints: _session.engine.capabilities.supportsHints,
       hintHighlight: null,
-    );
-
-    if (!initiallySolved) {
+      conflictingCells: null,
+      isShowingConflicts: false,
+    );    if (!initiallySolved) {
       _startTimer();
     }
 
@@ -75,14 +77,24 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     return state;
   }
 
-  /// Apply a move to the puzzle. Throws [StateError] if the move is invalid or
-  /// if the puzzle has already been solved.
+  /// Apply a move to the puzzle. For Killer Queens, allows invalid moves and shows
+  /// conflict feedback after 2 seconds. For other puzzles, throws [StateError] if invalid.
   void applyMove(dynamic move) {
     if (state.isSolved) {
       throw StateError('Cannot apply moves when the puzzle is solved.');
     }
 
     final Object? currentBoard = state.board;
+    final bool isKillerQueens = _session.engine.id == 'killer_queens';
+    
+    // For Killer Queens, we allow the move regardless of validity
+    // and check for conflicts after a delay
+    if (isKillerQueens) {
+      _applyKillerQueensMove(move, currentBoard);
+      return;
+    }
+    
+    // For other puzzle types, validate normally
     final core.MoveResult<dynamic> result = _session.engine.validateMove(
       currentState: currentBoard,
       move: move,
@@ -128,6 +140,145 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       unawaited(_dispatchSolved());
     }
   }
+  
+  /// Apply a move for Killer Queens puzzle, allowing invalid placements
+  /// and detecting conflicts after 2 seconds
+  void _applyKillerQueensMove(dynamic move, Object? currentBoard) {
+    // Cancel any pending conflict check
+    _conflictCheckTimer?.cancel();
+    
+    // Apply the move directly to the board without validation
+    final core.KillerQueensBoard board = currentBoard as core.KillerQueensBoard;
+    final core.KillerQueensMove kqMove = move as core.KillerQueensMove;
+    
+    final int index = board.indexFor(kqMove.row, kqMove.col);
+    final List<int> updatedCells = List<int>.from(board.cells);
+    updatedCells[index] = kqMove.value;
+    
+    final core.KillerQueensBoard newBoard = core.KillerQueensBoard(
+      size: board.size,
+      cells: updatedCells,
+      fixed: board.fixed,
+      cages: board.cages,
+    );
+    
+    final _HistoryEntry entry = _HistoryEntry(
+      move: move,
+      previousState: currentBoard,
+      resultingState: newBoard,
+      timestamp: DateTime.now(),
+    );
+    _history.add(entry);
+    
+    // Update state immediately (without showing conflicts yet)
+    state = state.copyWith(
+      board: newBoard,
+      moveHistory: _createMoveRecords(),
+      moveCount: _history.length,
+      elapsed: _stopwatch.elapsed,
+      isTimerRunning: _stopwatch.isRunning,
+      clearConflicts: true, // Clear any existing conflicts
+    );
+    
+    _ensureTimerRunning();
+    
+    // Schedule conflict detection after 2 seconds
+    _conflictCheckTimer = Timer(const Duration(seconds: 2), () {
+      _checkAndShowConflicts(newBoard);
+    });
+  }
+  
+  /// Check for conflicts in the Killer Queens board and update state
+  void _checkAndShowConflicts(core.KillerQueensBoard board) {
+    final Set<int> conflicts = _findKillerQueensConflicts(board);
+    
+    if (conflicts.isNotEmpty) {
+      // Trigger haptic feedback
+      unawaited(_triggerHapticFeedback());
+      
+      // Update state to show conflicts
+      state = state.copyWith(
+        conflictingCells: conflicts,
+        isShowingConflicts: true,
+      );
+      
+      // Clear conflicts after animation (brief duration for vibration effect)
+      Timer(const Duration(milliseconds: 600), () {
+        if (state.isShowingConflicts) {
+          state = state.copyWith(isShowingConflicts: false);
+        }
+      });
+    }
+  }
+  
+  /// Find all cells that have conflicting queens
+  Set<int> _findKillerQueensConflicts(core.KillerQueensBoard board) {
+    final Set<int> conflicts = <int>{};
+    final int size = board.size;
+    
+    // Find all queen positions
+    final List<int> queenIndices = <int>[];
+    for (int i = 0; i < board.cells.length; i++) {
+      if (board.cells[i] == 1) {
+        queenIndices.add(i);
+      }
+    }
+    
+    // Check for conflicts between queens
+    for (int i = 0; i < queenIndices.length; i++) {
+      final int idx1 = queenIndices[i];
+      final int row1 = idx1 ~/ size;
+      final int col1 = idx1 % size;
+      final int cage1 = board.cageByCell[idx1];
+      
+      for (int j = i + 1; j < queenIndices.length; j++) {
+        final int idx2 = queenIndices[j];
+        final int row2 = idx2 ~/ size;
+        final int col2 = idx2 % size;
+        final int cage2 = board.cageByCell[idx2];
+        
+        bool hasConflict = false;
+        
+        // Check same row
+        if (row1 == row2) {
+          hasConflict = true;
+        }
+        
+        // Check same column
+        if (col1 == col2) {
+          hasConflict = true;
+        }
+        
+        // Check same cage
+        if (cage1 == cage2) {
+          hasConflict = true;
+        }
+        
+        // Check diagonally adjacent (including diagonals)
+        final int rowDiff = (row1 - row2).abs();
+        final int colDiff = (col1 - col2).abs();
+        if (rowDiff <= 1 && colDiff <= 1 && (rowDiff > 0 || colDiff > 0)) {
+          hasConflict = true;
+        }
+        
+        if (hasConflict) {
+          conflicts.add(idx1);
+          conflicts.add(idx2);
+        }
+      }
+    }
+    
+    return conflicts;
+  }
+  
+  /// Trigger haptic feedback for conflict detection
+  Future<void> _triggerHapticFeedback() async {
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (e) {
+      // Haptic feedback not supported on this device
+    }
+  }
 
   /// Undo the most recent move if available.
   void undo() {
@@ -144,6 +295,10 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     if (hadHintHighlight) {
       _cancelHintTimer();
     }
+    
+    // Cancel any pending conflict checks
+    _conflictCheckTimer?.cancel();
+    
     if (solved) {
       _stopTimer();
     } else {
@@ -161,6 +316,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
       clearHintHighlight: hadHintHighlight,
+      clearConflicts: true,
     );
   }
 
@@ -277,6 +433,8 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   void _disposeTimer() {
     _ticker?.cancel();
     _ticker = null;
+    _conflictCheckTimer?.cancel();
+    _conflictCheckTimer = null;
     if (_stopwatch.isRunning) {
       _stopwatch.stop();
     }
@@ -385,7 +543,9 @@ class PuzzlePlayState {
     required this.moveHistory,
     required this.moveCount,
     required this.supportsHints,
+    required this.isShowingConflicts,
     this.hintHighlight,
+    this.conflictingCells,
   });
 
   factory PuzzlePlayState({
@@ -398,6 +558,8 @@ class PuzzlePlayState {
     required int moveCount,
     required bool supportsHints,
     core.PuzzleHint? hintHighlight,
+    Set<int>? conflictingCells,
+    bool? isShowingConflicts,
   }) {
     return PuzzlePlayState._(
       puzzle: puzzle,
@@ -409,6 +571,8 @@ class PuzzlePlayState {
       moveCount: moveCount,
       supportsHints: supportsHints,
       hintHighlight: hintHighlight,
+      conflictingCells: conflictingCells,
+      isShowingConflicts: isShowingConflicts ?? false,
     );
   }
 
@@ -421,6 +585,8 @@ class PuzzlePlayState {
   final int moveCount;
   final bool supportsHints;
   final core.PuzzleHint? hintHighlight;
+  final Set<int>? conflictingCells;
+  final bool isShowingConflicts;
 
   bool get canUndo => moveHistory.isNotEmpty;
   bool get hasHintHighlight => hintHighlight != null;
@@ -436,6 +602,9 @@ class PuzzlePlayState {
     bool? supportsHints,
     core.PuzzleHint? hintHighlight,
     bool clearHintHighlight = false,
+    Set<int>? conflictingCells,
+    bool? isShowingConflicts,
+    bool clearConflicts = false,
   }) {
     return PuzzlePlayState(
       puzzle: puzzle ?? this.puzzle,
@@ -449,6 +618,8 @@ class PuzzlePlayState {
       hintHighlight: clearHintHighlight
           ? null
           : hintHighlight ?? this.hintHighlight,
+      conflictingCells: clearConflicts ? null : conflictingCells ?? this.conflictingCells,
+      isShowingConflicts: clearConflicts ? false : isShowingConflicts ?? this.isShowingConflicts,
     );
   }
 
@@ -465,6 +636,8 @@ class PuzzlePlayState {
           moveCount == other.moveCount &&
           supportsHints == other.supportsHints &&
           hintHighlight == other.hintHighlight &&
+          isShowingConflicts == other.isShowingConflicts &&
+          const SetEquality<int>().equals(conflictingCells, other.conflictingCells) &&
           _historyEquality.equals(moveHistory, other.moveHistory);
 
   @override

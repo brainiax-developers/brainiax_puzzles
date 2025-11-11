@@ -27,18 +27,11 @@ class KillerQueensValidator extends PuzzleValidator<KillerQueensBoard> {
     if (puzzle.size != solution.size) {
       issues.add('size_mismatch');
     }
-    if (!_listEquals(puzzle.blocked, solution.blocked)) {
-      issues.add('blocked_mismatch');
-    }
     if (!_listEquals(puzzle.cageByCell, solution.cageByCell)) {
       issues.add('cages_mismatch');
     }
 
     for (int i = 0; i < puzzle.cellCount; i++) {
-      if (puzzle.blocked[i] && solution.cells[i] != 0) {
-        issues.add('blocked_cell_nonzero');
-        break;
-      }
       if (puzzle.fixed[i] && solution.cells[i] != 1) {
         issues.add('given_not_preserved');
         break;
@@ -71,15 +64,8 @@ class KillerQueensValidator extends PuzzleValidator<KillerQueensBoard> {
     final List<int> queenIndices = <int>[];
 
     for (int index = 0; index < board.cellCount; index++) {
-      if (board.blocked[index]) {
-        if (board.cells[index] != 0) {
-          issues.add('blocked_cell_with_value');
-          return;
-        }
-        continue;
-      }
       final int value = board.cells[index];
-      if (value != 0 && value != 1) {
+      if (value != 0 && value != 1 && value != 2) {
         issues.add('invalid_value');
         return;
       }

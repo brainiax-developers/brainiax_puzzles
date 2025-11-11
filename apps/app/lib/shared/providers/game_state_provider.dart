@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:flutter/services.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../services/generation_isolate.dart';
@@ -100,6 +103,12 @@ class GameStateNotifier extends Notifier<GameState?> {
     final engine = ref.read(engineProvider(state!.engineId));
     if (engine == null) return;
 
+    // Special handling for Killer Queens: allow invalid moves, check conflicts later
+    if (state!.engineId == 'killer_queens') {
+      await _makeKillerQueensMove(move, engine);
+      return;
+    }
+
     // Validate move
     final result = engine.validateMove(
       currentState: state!.puzzle.state,
@@ -140,12 +149,156 @@ class GameStateNotifier extends Notifier<GameState?> {
     );
   }
 
+  Timer? _conflictCheckTimer;
+
+  /// Handle Killer Queens moves (allow invalid moves, check conflicts after delay)
+  Future<void> _makeKillerQueensMove(dynamic move, PuzzleEngine engine) async {
+    if (state == null) return;
+
+    // Apply move directly without validation (create new board state)
+    final currentBoard = state!.puzzle.state as KillerQueensBoard;
+    final int index = currentBoard.indexFor(move.row, move.col);
+    
+    final List<int> updatedCells = List<int>.from(currentBoard.cells);
+    final List<bool> updatedFixed = List<bool>.from(currentBoard.fixed);
+    updatedCells[index] = move.value;
+    
+    final KillerQueensBoard updatedBoard = KillerQueensBoard(
+      size: currentBoard.size,
+      cells: updatedCells,
+      fixed: updatedFixed,
+      cages: currentBoard.cages,
+    );
+
+    // Create move record
+    final gameMoveAction = GameMoveAction(
+      move: move,
+      timestamp: DateTime.now(),
+      actionIndex: _currentActionIndex + 1,
+    );
+
+    // Add to history
+    if (_currentActionIndex < _actionHistory.length - 1) {
+      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+    }
+    _actionHistory.add(gameMoveAction);
+    _currentActionIndex = _actionHistory.length - 1;
+
+    // Update state (clear any previous conflicts)
+    final newPuzzle = GeneratedPuzzle(
+      state: updatedBoard,
+      meta: state!.puzzle.meta,
+      telemetry: state!.puzzle.telemetry,
+    );
+
+    final isSolved = engine.isSolved(updatedBoard);
+
+    state = state!.copyWith(
+      puzzle: newPuzzle,
+      isSolved: isSolved,
+      lastMoveTime: DateTime.now(),
+      conflictingCells: null,
+      isShowingConflicts: false,
+    );
+
+    // Cancel any existing timer
+    _conflictCheckTimer?.cancel();
+
+    // Schedule conflict check after 2 seconds
+    _conflictCheckTimer = Timer(const Duration(seconds: 2), () {
+      _checkAndShowKillerQueensConflicts();
+    });
+  }
+
+  /// Check for Killer Queens conflicts and trigger haptic feedback
+  void _checkAndShowKillerQueensConflicts() {
+    if (state == null || state!.engineId != 'killer_queens') return;
+
+    final conflicts = _findKillerQueensConflicts();
+
+    if (conflicts.isNotEmpty) {
+      // Trigger haptic feedback
+      _triggerHapticFeedback();
+
+      // Update state with conflicts
+      state = state!.copyWith(
+        conflictingCells: conflicts,
+        isShowingConflicts: true,
+      );
+    }
+  }
+
+  /// Find all conflicting queens in Killer Queens puzzle
+  Set<int> _findKillerQueensConflicts() {
+    if (state == null || state!.puzzle.state is! KillerQueensBoard) {
+      return {};
+    }
+
+    final board = state!.puzzle.state as KillerQueensBoard;
+    final conflicts = <int>{};
+
+    // Find all queen positions
+    final queens = <int>[];
+    for (int i = 0; i < board.cells.length; i++) {
+      if (board.cells[i] == 1) {
+        queens.add(i);
+      }
+    }
+
+    // Check each queen against all others
+    for (int i = 0; i < queens.length; i++) {
+      final pos1 = queens[i];
+      final row1 = pos1 ~/ board.size;
+      final col1 = pos1 % board.size;
+      final cage1 = board.cageByCell[pos1];
+
+      for (int j = i + 1; j < queens.length; j++) {
+        final pos2 = queens[j];
+        final row2 = pos2 ~/ board.size;
+        final col2 = pos2 % board.size;
+        final cage2 = board.cageByCell[pos2];
+
+        // Check if they conflict
+        if (row1 == row2 || // Same row
+            col1 == col2 || // Same column
+            cage1 == cage2 || // Same cage
+            (row2 - row1).abs() == (col2 - col1).abs() && // Diagonal
+                (row2 - row1).abs() == 1) { // Adjacent diagonal
+          conflicts.add(pos1);
+          conflicts.add(pos2);
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  /// Trigger haptic feedback
+  void _triggerHapticFeedback() {
+    try {
+      // Using medium impact for conflict feedback
+      // Note: This will be imported from Flutter services
+      HapticFeedback.mediumImpact();
+    } catch (_) {
+      // Ignore if haptic feedback is not available
+    }
+  }
+
   /// Undo the last action.
   void undo() {
     if (state == null || _currentActionIndex < 0) return;
 
     _currentActionIndex--;
     _reconstructState();
+    
+    // Cancel conflict timer and clear conflicts on undo
+    _conflictCheckTimer?.cancel();
+    if (state != null && state!.engineId == 'killer_queens') {
+      state = state!.copyWith(
+        conflictingCells: null,
+        isShowingConflicts: false,
+      );
+    }
   }
 
   /// Redo the next action.
@@ -434,6 +587,8 @@ class GameState {
   final DateTime startTime;
   final DateTime? lastMoveTime;
   final Map<int, Set<int>> notes;
+  final Set<int>? conflictingCells;
+  final bool isShowingConflicts;
 
   const GameState({
     required this.engineId,
@@ -445,6 +600,8 @@ class GameState {
     required this.startTime,
     this.lastMoveTime,
     this.notes = const <int, Set<int>>{},
+    this.conflictingCells,
+    this.isShowingConflicts = false,
   });
 
   GameState copyWith({
@@ -457,6 +614,8 @@ class GameState {
     DateTime? startTime,
     DateTime? lastMoveTime,
     Map<int, Set<int>>? notes,
+    Set<int>? conflictingCells,
+    bool? isShowingConflicts,
   }) {
     return GameState(
       engineId: engineId ?? this.engineId,
@@ -468,6 +627,8 @@ class GameState {
       startTime: startTime ?? this.startTime,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       notes: notes ?? this.notes,
+      conflictingCells: conflictingCells ?? this.conflictingCells,
+      isShowingConflicts: isShowingConflicts ?? this.isShowingConflicts,
     );
   }
 

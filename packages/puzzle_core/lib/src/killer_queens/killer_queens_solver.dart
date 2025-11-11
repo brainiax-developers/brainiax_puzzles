@@ -24,10 +24,10 @@ class KillerQueensSolver extends PuzzleSolver<KillerQueensBoard> {
 
 class _KillerQueensSearch {
   _KillerQueensSearch(this.board, this.context)
-      : size = board.size,
-        cageByCell = board.cageByCell,
-        rng = context.rng,
-        maxSolutions = context.maxSolutions;
+    : size = board.size,
+      cageByCell = board.cageByCell,
+      rng = context.rng,
+      maxSolutions = context.maxSolutions;
 
   final KillerQueensBoard board;
   final SolverContext context;
@@ -49,12 +49,12 @@ class _KillerQueensSearch {
   bool _inconsistent = false;
 
   Map<String, Object?> get telemetry => <String, Object?>{
-        'nodes': _nodes,
-        'branches': _branches,
-        'backtracks': _backtracks,
-        'solutions': _solutions.length,
-        'inconsistent': _inconsistent,
-      };
+    'nodes': _nodes,
+    'branches': _branches,
+    'backtracks': _backtracks,
+    'solutions': _solutions.length,
+    'inconsistent': _inconsistent,
+  };
 
   List<KillerQueensBoard> run() {
     _columnUsed.addAll(List<bool>.filled(size, false));
@@ -63,7 +63,7 @@ class _KillerQueensSearch {
     _rowIsGiven = List<bool>.filled(size, false);
 
     for (int index = 0; index < board.cellCount; index++) {
-      if (board.blocked[index] || board.cells[index] == 0) {
+      if (board.cells[index] != 1) {
         continue;
       }
       if (!_place(index, given: true)) {
@@ -94,7 +94,7 @@ class _KillerQueensSearch {
     final List<int> candidates = <int>[];
     for (int col = 0; col < size; col++) {
       final int index = nextRow * size + col;
-      if (board.blocked[index] || _columnUsed[col]) {
+      if (_columnUsed[col]) {
         continue;
       }
       final int cageIndex = cageByCell[index];
@@ -131,9 +131,6 @@ class _KillerQueensSearch {
   bool _place(int index, {required bool given}) {
     final int row = index ~/ size;
     final int col = index % size;
-    if (board.blocked[index]) {
-      return false;
-    }
     if (_rowAssignment[row] != -1) {
       if (_rowAssignment[row] == col) {
         if (given) {
@@ -211,7 +208,6 @@ class _KillerQueensSearch {
       size: board.size,
       cells: cells,
       fixed: board.fixed,
-      blocked: board.blocked,
       cages: board.cages,
     );
     _solutions.add(solution);
