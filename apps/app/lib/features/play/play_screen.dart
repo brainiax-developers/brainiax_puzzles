@@ -918,6 +918,67 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     notifier.recordNoteAction(index, digit, isAdding);
   }
 
+  // Mathdoku: place digits in selected cell. If Note mode is on, toggle notes.
+  void _onMathdokuDigitPressed(int digit) {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.MathdokuBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell; // reuse selection storage
+    if (selection == null) {
+      _showSnackBar('Select a cell to place $digit');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+
+    if (_isNoteMode) {
+      _toggleMathdokuNote(row: row, col: col, digit: digit);
+      return;
+    }
+
+    final core.MathdokuMove move = core.MathdokuMove(row: row, col: col, value: digit);
+    _onMove(move);
+  }
+
+  void _onMathdokuClearPressed() {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.MathdokuBoard) {
+      return;
+    }
+    final Offset? selection = _selectedSudokuCell;
+    if (selection == null) {
+      _showSnackBar('Select a cell to clear');
+      return;
+    }
+    final int row = selection.dy.toInt();
+    final int col = selection.dx.toInt();
+
+    if (_isNoteMode) {
+      final core.MathdokuBoard board = gameState.puzzle.state as core.MathdokuBoard;
+      final notifier = ref.read(gameStateProvider.notifier);
+      notifier.clearNotesForCell(row * board.size + col);
+      return;
+    }
+
+    final core.MathdokuMove move = core.MathdokuMove(row: row, col: col, value: 0);
+    _onMove(move);
+  }
+
+  void _toggleMathdokuNote({required int row, required int col, required int digit}) {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null || gameState.puzzle.state is! core.MathdokuBoard) return;
+
+    final core.MathdokuBoard board = gameState.puzzle.state as core.MathdokuBoard;
+    final int index = row * board.size + col;
+
+    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
+    final bool isAdding = !currentNotes.contains(digit);
+
+    final notifier = ref.read(gameStateProvider.notifier);
+    notifier.recordNoteAction(index, digit, isAdding);
+  }
+
   String _formatTime(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
@@ -1308,17 +1369,36 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     // Mathdoku
     if (puzzle.state is core.MathdokuBoard) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: MathdokuRendererWidget(
-          puzzle: puzzle,
-          gameState: gameState,
-          onCellSelected: _onCellSelected,
-          onMove: _onMove,
-          onError: _onError,
-          hintCells: _hintPositions,
-          hintAnimationValue: _hintAnimationValue,
-        ),
+      return Column(
+        children: [
+          // Puzzle renderer
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: MathdokuRendererWidget(
+                puzzle: puzzle,
+                gameState: gameState,
+                onCellSelected: _onCellSelected,
+                onMove: _onMove,
+                onError: _onError,
+                hintCells: _hintPositions,
+                hintAnimationValue: _hintAnimationValue,
+                notes: Map.unmodifiable(gameState?.notes ?? const <int, Set<int>>{}),
+              ),
+            ),
+          ),
+
+          // Number pad (single row with 1..9), with note toggle and clear
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SudokuNumberPad(
+              onDigitPressed: _onMathdokuDigitPressed,
+              onClearPressed: _onMathdokuClearPressed,
+              onNotePressed: _onNotePressed,
+              isNoteMode: _isNoteMode,
+            ),
+          ),
+        ],
       );
     }
 

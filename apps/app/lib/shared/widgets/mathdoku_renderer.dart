@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -26,6 +27,18 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _setupPaints();
+  }
+
+  @override
+  void didUpdateWidget(MathdokuRendererWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // GeneratedPuzzle equality ignores the state field; compare state explicitly
+    // so the renderer refreshes when moves update the board.
+    final Object? newState = widget.puzzle?.state;
+    final Object? oldState = oldWidget.puzzle?.state;
+    if (widget.puzzle != oldWidget.puzzle || newState != oldState) {
+      _updateBoard();
+    }
   }
 
   void _setupPaints() {
@@ -65,6 +78,9 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
       PainterUtils.hitTestGrid(position: position, metrics: _gridMetrics);
 
   @override
+  Offset? hitTest(Offset position) => _hitTest(position);
+
+  @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
     _gridMetrics = PainterUtils.calculateGridMetrics(
       availableSize: size,
@@ -79,6 +95,7 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
         metrics: _gridMetrics,
         cellBgPaint: _cellBgPaint,
         theme: Theme.of(context),
+        notes: widget.notes,
       ),
       size: size,
     );
@@ -137,15 +154,6 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
   }
 
   @override
-  void onTap(Offset position) {
-    final gp = _hitTest(position);
-    if (gp == null) return;
-    setState(() {
-      super.onTap(position);
-    });
-  }
-
-  @override
   void onKeyEvent(KeyEvent event) {
     super.onKeyEvent(event);
     if (event is! KeyDownEvent || selectedPosition == null) return;
@@ -174,7 +182,10 @@ class MathdokuRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.notes = const <int, Set<int>>{},
   });
+
+  final Map<int, Set<int>> notes;
 
   @override
   State<MathdokuRendererWidget> createState() => MathdokuRenderer();
@@ -186,12 +197,14 @@ class _MathdokuContentPainter extends CustomPainter {
     required this.metrics,
     required this.cellBgPaint,
     required this.theme,
+    required this.notes,
   });
 
   final MathdokuBoard board;
   final GridMetrics metrics;
   final Paint cellBgPaint;
   final ThemeData theme;
+  final Map<int, Set<int>> notes;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -263,6 +276,42 @@ class _MathdokuContentPainter extends CustomPainter {
             text: v.toString(),
             textStyle: valueStyle,
           );
+        } else {
+          final Set<int> cellNotes = notes[row * board.size + col] ?? const <int>{};
+          if (cellNotes.isNotEmpty) {
+            const int noteGridSize = 3;
+            final List<int> sortedNotes = cellNotes.toList()..sort();
+            final double noteWidth = rect.width / noteGridSize;
+            final double noteHeight = rect.height / noteGridSize;
+            final TextStyle noteStyle = theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w500,
+                ) ??
+                TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  fontSize: rect.height / 5.5,
+                );
+
+            for (final int note in sortedNotes) {
+              if (note < 1 || note > board.size) {
+                continue;
+              }
+              final int noteRow = (note - 1) ~/ noteGridSize;
+              final int noteCol = (note - 1) % noteGridSize;
+              final Rect noteRect = Rect.fromLTWH(
+                rect.left + (noteCol * noteWidth),
+                rect.top + (noteRow * noteHeight),
+                noteWidth,
+                noteHeight,
+              );
+              PainterUtils.paintCellText(
+                canvas: canvas,
+                cellRect: noteRect,
+                text: note.toString(),
+                textStyle: noteStyle,
+              );
+            }
+          }
         }
 
         // Cage label top-left
@@ -315,7 +364,25 @@ class _MathdokuContentPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MathdokuContentPainter oldDelegate) {
-    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme;
+    return oldDelegate.board != board || 
+        oldDelegate.metrics != metrics || 
+        oldDelegate.theme != theme ||
+        !_notesEqual(notes, oldDelegate.notes);
+  }
+
+  bool _notesEqual(Map<int, Set<int>> a, Map<int, Set<int>> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final MapEntry<int, Set<int>> entry in a.entries) {
+      final Set<int>? other = b[entry.key];
+      if (other == null || entry.value.length != other.length) {
+        return false;
+      }
+      if (!setEquals(entry.value, other)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 
