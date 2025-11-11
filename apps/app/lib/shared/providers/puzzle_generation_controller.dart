@@ -49,7 +49,7 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSize = size != null ? _parseSize(size) : _defaultSizeFor(puzzleType);
+    final resolvedSize = size != null ? _parseSize(size) : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
 
     final token = ++_generationToken;
@@ -109,6 +109,26 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
 
   /// Whether the controller currently has an in-flight generation request.
   bool get isGenerating => state.isLoading;
+
+  core.SizeOpt _getSizeFor(app.PuzzleType puzzleType, String difficulty) {
+    switch (puzzleType) {
+      case app.PuzzleType.takuzuBinary:
+        switch (difficulty.toLowerCase()) {
+          case 'easy':
+            return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+          case 'medium':
+            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+          case 'hard':
+            return const core.SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10);
+          case 'expert':
+            return const core.SizeOpt(id: '12x12', description: '12x12', width: 12, height: 12);
+          default:
+            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        }
+      default:
+        return _defaultSizeFor(puzzleType);
+    }
+  }
 
   core.SizeOpt _defaultSizeFor(app.PuzzleType puzzleType) {
     final metadata = PuzzleRegistry().getMetadata(puzzleType);

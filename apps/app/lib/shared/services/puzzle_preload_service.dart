@@ -56,8 +56,7 @@ class PuzzlePreloadService {
             }
 
             final seed = SeedService().generateRandomSeed(metadata.type.key);
-            final sizeStr = metadata.supportedSizes.isNotEmpty ? metadata.supportedSizes.first : null;
-            final sizeOpt = sizeStr != null ? _parseSize(sizeStr) : _defaultSizeFor(metadata.type);
+            final sizeOpt = _getSizeFor(metadata.type, difficulty, metadata);
             final diffScore = _parseDifficulty(difficulty);
 
             // Generate on a background isolate to avoid jank.
@@ -93,6 +92,27 @@ class PuzzlePreloadService {
   bool get hasPreloaded => _cache.isNotEmpty;
 
   // --- Helpers copied from controller logic (kept local to avoid coupling) ---
+  core.SizeOpt _getSizeFor(PuzzleType puzzleType, String difficulty, PuzzleMetadata metadata) {
+    switch (puzzleType) {
+      case PuzzleType.takuzuBinary:
+        switch (difficulty.toLowerCase()) {
+          case 'easy':
+            return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+          case 'medium':
+            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+          case 'hard':
+            return const core.SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10);
+          case 'expert':
+            return const core.SizeOpt(id: '12x12', description: '12x12', width: 12, height: 12);
+          default:
+            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        }
+      default:
+        final sizeStr = metadata.supportedSizes.isNotEmpty ? metadata.supportedSizes.first : null;
+        return sizeStr != null ? _parseSize(sizeStr) : _defaultSizeFor(puzzleType);
+    }
+  }
+
   core.SizeOpt _defaultSizeFor(PuzzleType puzzleType) {
     switch (puzzleType) {
       case PuzzleType.sudokuClassic:

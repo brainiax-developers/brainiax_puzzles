@@ -525,6 +525,8 @@ class GameStateNotifier extends Notifier<GameState?> {
         return const DifficultyScore(value: 0.6, level: 'medium');
       case 'hard':
         return const DifficultyScore(value: 0.9, level: 'hard');
+      case 'expert':
+        return const DifficultyScore(value: 1.2, level: 'expert');
       default:
         return const DifficultyScore(value: 0.6, level: 'medium');
     }

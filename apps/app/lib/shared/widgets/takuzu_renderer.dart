@@ -200,6 +200,62 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
       }
     }
     
+    // Check for duplicate rows (when fully filled)
+    final Map<String, List<int>> rowSignatures = {};
+    for (int row = 0; row < size; row++) {
+      bool isComplete = true;
+      final StringBuffer buffer = StringBuffer();
+      for (int col = 0; col < size; col++) {
+        final value = _board.cellAt(row, col);
+        if (value == TakuzuBoard.emptyValue) {
+          isComplete = false;
+          break;
+        }
+        buffer.write(value);
+      }
+      if (isComplete) {
+        final signature = buffer.toString();
+        rowSignatures.putIfAbsent(signature, () => []).add(row);
+      }
+    }
+    for (final rows in rowSignatures.values) {
+      if (rows.length > 1) {
+        for (final row in rows) {
+          for (int col = 0; col < size; col++) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+    }
+    
+    // Check for duplicate columns (when fully filled)
+    final Map<String, List<int>> colSignatures = {};
+    for (int col = 0; col < size; col++) {
+      bool isComplete = true;
+      final StringBuffer buffer = StringBuffer();
+      for (int row = 0; row < size; row++) {
+        final value = _board.cellAt(row, col);
+        if (value == TakuzuBoard.emptyValue) {
+          isComplete = false;
+          break;
+        }
+        buffer.write(value);
+      }
+      if (isComplete) {
+        final signature = buffer.toString();
+        colSignatures.putIfAbsent(signature, () => []).add(col);
+      }
+    }
+    for (final cols in colSignatures.values) {
+      if (cols.length > 1) {
+        for (final col in cols) {
+          for (int row = 0; row < size; row++) {
+            violations.add(Offset(col.toDouble(), row.toDouble()));
+          }
+        }
+      }
+    }
+    
     return violations;
   }
 

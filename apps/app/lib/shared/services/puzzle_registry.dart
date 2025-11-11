@@ -189,8 +189,8 @@ class PuzzleRegistry {
           displayName: type.displayName,
           icon: Icons.code,
           accentColors: const [Color(0xFF607D8B), Color(0xFF455A64)],
-          supportedSizes: ['6x6', '8x8', '10x10'],
-          supportedDifficulties: ['Easy', 'Medium', 'Hard'],
+          supportedSizes: ['6x6', '8x8', '10x10', '12x12'],
+          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
