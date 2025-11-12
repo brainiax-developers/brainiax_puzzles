@@ -63,18 +63,21 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
         final attemptSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          final Duration attemptTimeout = () {
-            if (puzzleType == app.PuzzleType.kakuroClassic) return const Duration(seconds: 3);
-            if (puzzleType == app.PuzzleType.slitherlinkLoop) return const Duration(seconds: 3);
-            return const Duration(seconds: 2);
-          }();
+          // NOTE: Previously we applied a short timeout (2-3s) here which caused
+          // intermittent TimeoutException when generation took longer (especially
+          // for harder Kakuro/Slitherlink seeds). Generation now runs inside a
+          // background isolate; allow it to complete without an artificial short
+          // timeout so long-running but valid generations succeed. Retries are
+          // still performed up to [maxAttempts]. If a global timeout policy is
+          // required later, make it configurable rather than hardcoding a low
+          // value here.
           final generated = await generatePuzzleIsolated(
             engineId: puzzleType.key,
             seedStr: attemptSeed,
             seed64: attemptSeed.hashCode,
             size: resolvedSize,
             difficulty: difficultyScore,
-          ).timeout(attemptTimeout);
+          );
           if (token == _generationToken) {
             state = AsyncValue.data(generated);
           }

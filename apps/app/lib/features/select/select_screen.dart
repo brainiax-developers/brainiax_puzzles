@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,21 +57,16 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
 
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
     if (puzzleType == PuzzleType.kakuroClassic) {
-      // Serve from Kakuro cache for smooth, non-blocking UX
       () async {
+        final messenger = ScaffoldMessenger.of(context);
+        ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? controller;
+        Timer? delayTimer;
         try {
-          final service = await ref.read(kakuroCacheInitProvider.future);
-          final d = difficulty.toLowerCase();
-          if (service.hasCached(d)) {
-            // Fast path: no banner; immediate navigation
-            final generated = await service.takeOrGenerateUrgent(difficulty: d);
-            if (!mounted) return;
-            context.push('/play/${puzzleType.key}/random', extra: generated);
-          } else {
-            // Cache empty: show a small non-modal banner and auto-navigate on completion
-            final messenger = ScaffoldMessenger.of(context);
-            final controller = messenger.showSnackBar(
+          delayTimer = Timer(const Duration(milliseconds: 60), () {
+            controller = messenger.showSnackBar(
               SnackBar(
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(days: 1),
                 content: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
@@ -79,21 +76,31 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     SizedBox(width: 12),
-                    Text('Preparing puzzle…'),
+                    Text('Generating Kakuro…'),
                   ],
                 ),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(days: 1), // effectively indefinite until closed
               ),
             );
-
-            final generated = await service.takeOrGenerateUrgent(difficulty: d);
-            if (!mounted) return;
-            controller.close();
-            context.push('/play/${puzzleType.key}/random', extra: generated);
-          }
+          });
+          final service = ref.read(kakuroOnDemandProvider);
+          final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
+          final sizeStr =
+              metadata?.supportedSizes.isNotEmpty == true ? metadata!.supportedSizes.first : '9x9';
+          final parts = sizeStr.split('x');
+          final width = int.tryParse(parts.first) ?? 9;
+          final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? 9;
+          final generated = await service.nextPuzzle(
+            difficulty: difficulty,
+            width: width,
+            height: height,
+          );
+          delayTimer?.cancel();
+          controller?.close();
+          if (!mounted) return;
+          context.push('/play/${puzzleType.key}/random', extra: generated);
         } catch (_) {
-          // Fallback to legacy modal generation on failure
+          delayTimer?.cancel();
+          controller?.close();
           if (!mounted) return;
           _showLegacyModal(puzzleType, difficulty);
         }

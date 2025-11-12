@@ -9,7 +9,6 @@ import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
 import 'shared/providers/simple_theme_provider.dart';
 import 'shared/services/snack_bar_service.dart';
-import 'shared/services/kakuro_new_game_cache_service.dart';
 // Preloading disabled: puzzles will be generated on demand only
 
 Future<void> main() async {
@@ -69,34 +68,6 @@ class BrainiaxApp extends ConsumerStatefulWidget {
 }
 
 class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
-  late final WidgetsBindingObserver _lifecycleObserver;
-  @override
-  void initState() {
-    super.initState();
-    // Kick off Kakuro cache initialization and warm-up (non-blocking)
-    // Using a FutureProvider to ensure SharedPreferences is available
-    // ignore: unused_result
-    ref.read(kakuroCacheInitProvider);
-
-    // Observe app lifecycle to pause/resume background refills
-    _lifecycleObserver = _AppLifecycleBridge(onChanged: (state) async {
-      final serviceAsync = ref.read(kakuroCacheInitProvider);
-      serviceAsync.whenData((service) {
-        switch (state) {
-          case AppLifecycleState.paused:
-          case AppLifecycleState.inactive:
-          case AppLifecycleState.detached:
-          case AppLifecycleState.hidden:
-            service.pause();
-            break;
-          case AppLifecycleState.resumed:
-            service.resume();
-            break;
-        }
-      });
-    });
-    WidgetsBinding.instance.addObserver(_lifecycleObserver);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,14 +109,5 @@ class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
       routeInformationParser: appRouter.routeInformationParser,
       routerDelegate: appRouter.routerDelegate,
     );
-  }
-}
-
-class _AppLifecycleBridge with WidgetsBindingObserver {
-  _AppLifecycleBridge({required this.onChanged});
-  final void Function(AppLifecycleState state) onChanged;
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    onChanged(state);
   }
 }

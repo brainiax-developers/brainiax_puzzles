@@ -43,6 +43,9 @@ export 'src/kakuro/kakuro_board.dart';
 export 'src/kakuro/kakuro_move.dart';
 export 'src/kakuro/kakuro_engine.dart';
 export 'src/kakuro/kakuro_format.dart';
+export 'src/kakuro/kakuro_solver.dart';
+export 'src/generators/kakuro/models.dart';
+export 'src/generators/kakuro/api.dart';
 
 // Slitherlink engine implementation
 export 'src/slitherlink/slitherlink_board.dart';

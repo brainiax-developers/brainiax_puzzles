@@ -1,0 +1,169 @@
+import 'dart:isolate';
+
+import '../../api_types.dart';
+import '../../difficulty/difficulty_config.dart';
+import '../../difficulty/telemetry.dart';
+import '../../generators/generator.dart';
+import '../../util/seeded_rng.dart';
+import '../../kakuro/kakuro_board.dart';
+import '../../kakuro/kakuro_difficulty.dart';
+import '../../kakuro/kakuro_generator.dart';
+import 'models.dart';
+
+class KakuroPuzzleGenerator {
+  KakuroPuzzleGenerator({
+    KakuroGenerator? generator,
+    KakuroDifficultyScorer? scorer,
+    DifficultyBucketConfig? difficultyConfig,
+  })  : _generator = generator ?? const KakuroGenerator(),
+        _difficultyScorer = scorer ?? const KakuroDifficultyScorer(),
+        _difficultyConfig = difficultyConfig ??
+            const DifficultyConfigLoader().loadSync(
+              'assets/kakuro_difficulty_thresholds.json',
+            );
+
+  final KakuroGenerator _generator;
+  final KakuroDifficultyScorer _difficultyScorer;
+  final DifficultyBucketConfig _difficultyConfig;
+  static final Map<String, KakuroPuzzle> _fallbackCache =
+      <String, KakuroPuzzle>{};
+
+  KakuroPuzzle generateSync(GenerateKakuroRequest request) {
+    final Stopwatch wall = Stopwatch()..start();
+    final int baseSeed =
+        request.seed ?? DateTime.now().microsecondsSinceEpoch;
+    Object? lastError;
+
+    for (int restart = 0; restart < request.maxRestarts; restart++) {
+      if (wall.elapsed > request.timeBudget) {
+        final KakuroPuzzle? cached =
+            _fallbackCache[request.difficulty.toLowerCase()];
+        if (cached != null) {
+          return cached;
+        }
+        break;
+      }
+
+      final int attemptSeed =
+          (baseSeed + restart * 0x9e3779b97f4a7c15) & 0xffffffffffffffff;
+      try {
+        final KakuroPuzzle puzzle = _attempt(
+          request: request,
+          attemptSeed: attemptSeed,
+          restartIndex: restart,
+          elapsedBeforeAttempt: wall.elapsed,
+        );
+        _fallbackCache[request.difficulty.toLowerCase()] = puzzle;
+        return puzzle;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (_fallbackCache.containsKey(request.difficulty.toLowerCase())) {
+      return _fallbackCache[request.difficulty.toLowerCase()]!;
+    }
+
+    if (lastError != null) {
+      throw lastError!;
+    }
+    throw StateError('Unable to generate Kakuro puzzle');
+  }
+
+  KakuroPuzzle _attempt({
+    required GenerateKakuroRequest request,
+    required int attemptSeed,
+    required int restartIndex,
+    required Duration elapsedBeforeAttempt,
+  }) {
+    final SeededRng rng = SeededRng(attemptSeed);
+    final context = GeneratorContext(
+      rng: rng,
+      seedStr: attemptSeed.toRadixString(16),
+      seed64: attemptSeed,
+      size: SizeOpt(
+        id: '${request.width}x${request.height}',
+        description: '${request.width}x${request.height}',
+        width: request.width,
+        height: request.height,
+      ),
+      difficulty: DifficultyRequest(level: request.difficulty),
+    );
+
+    final Stopwatch attemptWatch = Stopwatch()..start();
+    final generation = _generator.generate(context);
+    attemptWatch.stop();
+
+    final KakuroBoard board = generation.board;
+    final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
+      puzzle: board,
+      solution: board,
+      context: DifficultyContext(
+        generatorTelemetry: generation.snapshot.telemetry,
+        solverTelemetry:
+            Map<String, Object?>.from(generation.snapshot.telemetry['solverTelemetry'] as Map? ?? const {}),
+      ),
+    );
+    final String bucket =
+        _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
+    final Map<String, Object?> combinedTelemetry =
+        Map<String, Object?>.from(generation.snapshot.telemetry);
+    combinedTelemetry['restartIndex'] = restartIndex;
+    combinedTelemetry['elapsedBeforeAttemptMs'] =
+        elapsedBeforeAttempt.inMilliseconds;
+    combinedTelemetry['attemptDurationMs'] =
+        attemptWatch.elapsedMilliseconds;
+    combinedTelemetry['strategy'] = request.strategy.name;
+
+    return KakuroPuzzle(
+      board: board,
+      difficultyBucket: bucket,
+      telemetry: combinedTelemetry,
+      difficultyTelemetry: difficultyTelemetry,
+      seed: attemptSeed,
+      strategy: request.strategy,
+      timeToGenerate: elapsedBeforeAttempt + attemptWatch.elapsed,
+      restartCount: restartIndex,
+    );
+  }
+}
+
+Future<KakuroPuzzle> generateKakuroInIsolate(
+  GenerateKakuroRequest request,
+) {
+  return Isolate.run(() => KakuroPuzzleGenerator().generateSync(request));
+}
+
+const String _kakuroOnDemandVersion = 'kakuro_on_demand_1';
+
+GeneratedPuzzle<KakuroBoard> kakuroPuzzleAsGeneratedPuzzle(
+  KakuroPuzzle puzzle,
+) {
+  final SizeOpt size = SizeOpt(
+    id: '${puzzle.width}x${puzzle.height}',
+    description: '${puzzle.width}x${puzzle.height}',
+    width: puzzle.width,
+    height: puzzle.height,
+  );
+  final DifficultyScore difficultyScore = DifficultyScore(
+    value: puzzle.difficultyTelemetry.rawScore,
+    level: puzzle.difficultyBucket,
+  );
+  final PuzzleMetadata meta = PuzzleMetadata(
+    engineVersion: _kakuroOnDemandVersion,
+    rngId: SeededRng.rngId,
+    size: size,
+    difficulty: difficultyScore,
+    seedStr: (puzzle.seed ?? 0).toString(),
+    seed64: puzzle.seed ?? 0,
+  );
+  final GenerationTelemetry telemetry = GenerationTelemetry(
+    difficulty: puzzle.difficultyTelemetry,
+    extras: puzzle.telemetry,
+  );
+  return GeneratedPuzzle<KakuroBoard>(
+    state: puzzle.board,
+    meta: meta,
+    telemetry: telemetry,
+  );
+}
