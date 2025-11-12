@@ -83,7 +83,7 @@ ClueRemovalResult removeClues({
       }
       final int remaining = candidates.length - idx;
       int low = 1;
-      int high = remaining;
+      int high = math.min(remaining, _maxBatchSize);
       int best = 0;
       while (low <= high) {
         final int mid = (low + high) >> 1;
@@ -193,7 +193,7 @@ _BatchResult _tryRemoveBatch({
     outSolutionEdges: outSolutionEdges,
   );
   maxDepthHit = math.max(maxDepthHit, result.maxDepth);
-  final bool unique = result.solutionCount == 1;
+  final bool unique = !result.hitSpeculativeBudget && result.solutionCount == 1;
   if (!unique) {
     for (int i = 0; i < positions.length; i++) {
       working[positions[i]] = previous[i];
@@ -206,3 +206,5 @@ _BatchResult _tryRemoveBatch({
     removedCount: unique ? positions.length : 0,
   );
 }
+
+const int _maxBatchSize = 12;

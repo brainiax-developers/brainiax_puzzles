@@ -10,12 +10,14 @@ class SlitherlinkUniquenessResult {
     required this.solutionCount,
     required this.elapsed,
     required this.maxDepth,
+    required this.hitSpeculativeBudget,
     this.solution,
   });
 
   final int solutionCount;
   final Duration elapsed;
   final int maxDepth;
+  final bool hitSpeculativeBudget;
   final SlitherlinkBoard? solution;
 }
 
@@ -59,10 +61,15 @@ class SlitherlinkUniqueness {
       }
     }
     final int maxDepth = (result.telemetry['maxDepth'] as int?) ?? 0;
+    final int? speculativeSteps = result.telemetry['speculativeSteps'] as int?;
+    final int? budget = context.speculativeStepBudget;
+    final bool hitSpeculativeBudget =
+        budget != null && speculativeSteps != null && speculativeSteps >= budget;
     return SlitherlinkUniquenessResult(
       solutionCount: result.solutions.length,
       elapsed: stopwatch.elapsed,
       maxDepth: maxDepth,
+      hitSpeculativeBudget: hitSpeculativeBudget,
       solution: solution,
     );
   }
