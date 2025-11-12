@@ -24,12 +24,14 @@ class ClueRemovalStats {
     required this.maxDepthHit,
     required this.elapsed,
     required this.removedClueCount,
+    required this.hitTimeBudget,
   });
 
   final int solverCalls;
   final int maxDepthHit;
   final Duration elapsed;
   final int removedClueCount;
+  final bool hitTimeBudget;
 }
 
 class ClueRemovalResult {
@@ -40,15 +42,6 @@ class ClueRemovalResult {
 
   final List<int?> clues;
   final ClueRemovalStats stats;
-}
-
-class SlitherlinkGenerationTimeout implements Exception {
-  SlitherlinkGenerationTimeout(this.duration);
-
-  final Duration duration;
-
-  @override
-  String toString() => 'SlitherlinkGenerationTimeout exceeded $duration';
 }
 
 ClueRemovalResult removeClues({
@@ -67,6 +60,7 @@ ClueRemovalResult removeClues({
   int maxDepthHit = 0;
   int removedClueCount = 0;
   int attemptCounter = 0;
+  bool timeBudgetHit = false;
 
   bool madeProgress;
   do {
@@ -74,7 +68,8 @@ ClueRemovalResult removeClues({
     int idx = 0;
     while (idx < candidates.length) {
       if (stopwatch.elapsed > config.timeBudget) {
-        throw SlitherlinkGenerationTimeout(config.timeBudget);
+        timeBudgetHit = true;
+        break;
       }
       final int position = candidates[idx];
       if (working[position] == null) {
@@ -86,6 +81,10 @@ ClueRemovalResult removeClues({
       int high = math.min(remaining, _maxBatchSize);
       int best = 0;
       while (low <= high) {
+        if (stopwatch.elapsed > config.timeBudget) {
+          timeBudgetHit = true;
+          break;
+        }
         final int mid = (low + high) >> 1;
         attemptCounter++;
         final _BatchResult attempt = _tryRemoveBatch(
@@ -103,6 +102,10 @@ ClueRemovalResult removeClues({
         );
         solverCalls = attempt.solverCalls;
         maxDepthHit = attempt.maxDepthHit;
+        if (attempt.abort) {
+          timeBudgetHit = true;
+          break;
+        }
         if (attempt.unique) {
           best = mid;
           madeProgress = true;
@@ -111,9 +114,9 @@ ClueRemovalResult removeClues({
         } else {
           high = mid - 1;
         }
-        if (stopwatch.elapsed > config.timeBudget) {
-          throw SlitherlinkGenerationTimeout(config.timeBudget);
-        }
+      }
+      if (timeBudgetHit) {
+        break;
       }
       if (best == 0) {
         idx++;
@@ -121,7 +124,7 @@ ClueRemovalResult removeClues({
         idx += best;
       }
     }
-  } while (madeProgress);
+  } while (madeProgress && !timeBudgetHit);
 
   stopwatch.stop();
   final ClueRemovalStats stats = ClueRemovalStats(
@@ -129,6 +132,7 @@ ClueRemovalResult removeClues({
     maxDepthHit: maxDepthHit,
     elapsed: stopwatch.elapsed,
     removedClueCount: removedClueCount,
+    hitTimeBudget: timeBudgetHit,
   );
   return ClueRemovalResult(clues: working, stats: stats);
 }
@@ -139,12 +143,14 @@ class _BatchResult {
     required this.solverCalls,
     required this.maxDepthHit,
     required this.removedCount,
+    required this.abort,
   });
 
   final bool unique;
   final int solverCalls;
   final int maxDepthHit;
   final int removedCount;
+  final bool abort;
 }
 
 _BatchResult _tryRemoveBatch({
@@ -177,33 +183,47 @@ _BatchResult _tryRemoveBatch({
       solverCalls: solverCalls,
       maxDepthHit: maxDepthHit,
       removedCount: 0,
+      abort: false,
     );
   }
+  bool abort = false;
   if (stopwatch.elapsed > config.timeBudget) {
-    throw SlitherlinkGenerationTimeout(config.timeBudget);
+    abort = true;
   }
-  solverCalls++;
-  final SlitherlinkUniquenessResult result = uniqueness.evaluate(
-    clues: working,
-    width: config.width,
-    height: config.height,
-    maxSolutions: 2,
-    maxBacktrackDepth: config.maxBacktrackDepth,
-    salt: 'batch:$attemptId:$start:$count',
-    outSolutionEdges: outSolutionEdges,
-  );
-  maxDepthHit = math.max(maxDepthHit, result.maxDepth);
-  final bool unique = !result.hitSpeculativeBudget && result.solutionCount == 1;
-  if (!unique) {
+  bool unique = false;
+  if (!abort) {
+    solverCalls++;
+    final SlitherlinkUniquenessResult result = uniqueness.evaluate(
+      clues: working,
+      width: config.width,
+      height: config.height,
+      maxSolutions: 2,
+      maxBacktrackDepth: config.maxBacktrackDepth,
+      salt: 'batch:$attemptId:$start:$count',
+      outSolutionEdges: outSolutionEdges,
+    );
+    maxDepthHit = math.max(maxDepthHit, result.maxDepth);
+    unique = !result.hitSpeculativeBudget && result.solutionCount == 1;
+    if (stopwatch.elapsed > config.timeBudget) {
+      abort = true;
+    }
+    if (!unique) {
+      for (int i = 0; i < positions.length; i++) {
+        working[positions[i]] = previous[i];
+      }
+    }
+  }
+  if (abort) {
     for (int i = 0; i < positions.length; i++) {
       working[positions[i]] = previous[i];
     }
   }
   return _BatchResult(
-    unique: unique,
+    unique: unique && !abort,
     solverCalls: solverCalls,
     maxDepthHit: maxDepthHit,
-    removedCount: unique ? positions.length : 0,
+    removedCount: unique && !abort ? positions.length : 0,
+    abort: abort,
   );
 }
 
