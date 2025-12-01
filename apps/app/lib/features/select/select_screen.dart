@@ -7,7 +7,8 @@ import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/services/kakuro_new_game_cache_service.dart';
+
+import '../../shared/services/kakuro_on_demand_service.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
@@ -58,34 +59,18 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
     if (puzzleType == PuzzleType.kakuroClassic) {
       () async {
-        final messenger = ScaffoldMessenger.of(context);
-        ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? controller;
-        Timer? delayTimer;
+        bool dialogOpen = true;
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const _KakuroLoadingDialog(),
+        ).then((_) => dialogOpen = false);
         try {
-          delayTimer = Timer(const Duration(milliseconds: 60), () {
-            controller = messenger.showSnackBar(
-              SnackBar(
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(days: 1),
-                content: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: 12),
-                    Text('Generating Kakuro…'),
-                  ],
-                ),
-              ),
-            );
-          });
           final service = ref.read(kakuroOnDemandProvider);
           final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
-          final sizeStr =
-              metadata?.supportedSizes.isNotEmpty == true ? metadata!.supportedSizes.first : '9x9';
+          final sizeStr = metadata?.supportedSizes.isNotEmpty == true
+              ? metadata!.supportedSizes.first
+              : '9x9';
           final parts = sizeStr.split('x');
           final width = int.tryParse(parts.first) ?? 9;
           final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? 9;
@@ -94,13 +79,17 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
             width: width,
             height: height,
           );
-          delayTimer?.cancel();
-          controller?.close();
+          if (dialogOpen && mounted) {
+            Navigator.of(context, rootNavigator: true).pop();
+            dialogOpen = false;
+          }
           if (!mounted) return;
           context.push('/play/${puzzleType.key}/random', extra: generated);
         } catch (_) {
-          delayTimer?.cancel();
-          controller?.close();
+          if (dialogOpen && mounted) {
+            Navigator.of(context, rootNavigator: true).pop();
+            dialogOpen = false;
+          }
           if (!mounted) return;
           _showLegacyModal(puzzleType, difficulty);
         }
@@ -114,19 +103,20 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
 
   void _showLegacyModal(PuzzleType puzzleType, String difficulty) {
     showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => PuzzleGenerationModal(
-              puzzleType: puzzleType,
-              difficulty: difficulty,
-              onPuzzleGenerated: (puzzleInstance) {
-                Navigator.of(context).pop();
-                context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
-              },
-              onCancel: () {
-                Navigator.of(context).pop();
-              },
-            ));
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PuzzleGenerationModal(
+        puzzleType: puzzleType,
+        difficulty: difficulty,
+        onPuzzleGenerated: (puzzleInstance) {
+          Navigator.of(context).pop();
+          context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
+        },
+        onCancel: () {
+          Navigator.of(context).pop();
+        },
+      ),
+    );
   }
 
   @override
@@ -189,10 +179,13 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
         ),
         const SizedBox(height: 16),
         // Loading puzzle cards
-        ...List.generate(4, (index) => Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: const PuzzleCardShimmer(),
-        )),
+        ...List.generate(
+          4,
+          (index) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: const PuzzleCardShimmer(),
+          ),
+        ),
       ],
     );
   }
@@ -222,34 +215,61 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CategoryHeader(
-              category: category,
-              puzzleCount: puzzles.length,
-            ),
+            CategoryHeader(category: category, puzzleCount: puzzles.length),
             const SizedBox(height: 8),
-            ...puzzles.map((metadata) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Theme(
-                // Apply a light per-puzzle accent to the card area so colors match the puzzle
-                data: AppThemeData.forPuzzleType(metadata.type, Theme.of(context)),
-                child: PuzzleCard(
-                  metadata: metadata,
-                  onDailyChallenge: () => _navigateToPuzzle(
+            ...puzzles.map(
+              (metadata) => Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Theme(
+                  // Apply a light per-puzzle accent to the card area so colors match the puzzle
+                  data: AppThemeData.forPuzzleType(
                     metadata.type,
-                    PuzzleMode.daily,
+                    Theme.of(context),
                   ),
-                  onDifficultySelected: (difficulty) => _onDifficultySelected(
-                    metadata.type,
-                    difficulty,
+                  child: PuzzleCard(
+                    metadata: metadata,
+                    onDailyChallenge: () =>
+                        _navigateToPuzzle(metadata.type, PuzzleMode.daily),
+                    onDifficultySelected: (difficulty) =>
+                        _onDifficultySelected(metadata.type, difficulty),
+                    onRandomPlay: _onRandomPlay,
                   ),
-                  onRandomPlay: _onRandomPlay,
                 ),
               ),
-            )),
-            if (index < _puzzlesByCategory.length - 1) const SizedBox(height: 24),
+            ),
+            if (index < _puzzlesByCategory.length - 1)
+              const SizedBox(height: 24),
           ],
         );
       },
+    );
+  }
+}
+
+class _KakuroLoadingDialog extends StatelessWidget {
+  const _KakuroLoadingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 48),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(strokeWidth: 4),
+            ),
+            const SizedBox(height: 16),
+            Text('Generating Kakuro…', style: theme.textTheme.bodyMedium),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -51,11 +51,14 @@ export 'src/generators/kakuro/api.dart';
 export 'src/slitherlink/slitherlink_board.dart';
 export 'src/slitherlink/slitherlink_move.dart';
 export 'src/slitherlink/slitherlink_engine.dart';
+export 'src/models/slitherlink_models.dart';
 // Expose solver/generator/validator for tests and advanced usage
 export 'src/slitherlink/slitherlink_generator.dart';
 export 'src/slitherlink/slitherlink_solver.dart';
 export 'src/slitherlink/slitherlink_validator.dart';
 export 'src/slitherlink/slitherlink_topology.dart';
+export 'src/generators/slitherlink/api.dart';
+export 'src/generators/slitherlink/difficulty.dart';
 
 // Mathdoku engine implementation
 export 'src/mathdoku/mathdoku_board.dart';

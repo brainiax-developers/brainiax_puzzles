@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
-import '../solver/solver.dart';
-import '../util/seeded_rng.dart';
-import 'slitherlink_board.dart';
-import 'slitherlink_solver.dart';
+import '../../slitherlink/slitherlink_board.dart';
+import '../../solver/solver.dart';
+import '../../util/seeded_rng.dart';
+import 'solver.dart';
 
 class SlitherlinkUniquenessResult {
   const SlitherlinkUniquenessResult({

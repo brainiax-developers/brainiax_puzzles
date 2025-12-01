@@ -22,7 +22,7 @@ class SlitherlinkEngine
           engineId: 'slitherlink_loop',
           engineName: 'Slitherlink',
           engineVersion: '1.0.0',
-          generator: const SlitherlinkGenerator(),
+          generator: const SlitherlinkPipelineGenerator(),
           solver: const SlitherlinkSolver(),
           validator: const SlitherlinkValidator(),
           difficultyScorer: const SlitherlinkDifficultyScorer(),

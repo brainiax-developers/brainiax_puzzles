@@ -5,8 +5,8 @@ import 'package:puzzle_core/src/slitherlink/slitherlink_topology.dart';
 import 'package:puzzle_core/src/util/seeded_rng.dart';
 
 void main() {
-  group('SlitherlinkGenerator', () {
-    const SlitherlinkGenerator generator = SlitherlinkGenerator();
+  group('SlitherlinkPipelineGenerator', () {
+    const SlitherlinkPipelineGenerator generator = SlitherlinkPipelineGenerator();
     const SlitherlinkValidator validator = SlitherlinkValidator();
     const SlitherlinkSolver solver = SlitherlinkSolver();
 

@@ -6,7 +6,7 @@ import 'package:puzzle_core/src/util/seeded_rng.dart';
 void main() {
   group('SlitherlinkValidator', () {
     test('recognizes solved boards', () {
-      final SlitherlinkGenerator generator = const SlitherlinkGenerator();
+      final SlitherlinkPipelineGenerator generator = const SlitherlinkPipelineGenerator();
       final GeneratorContext context = GeneratorContext(
         rng: SeededRng(Seed.fromString('slitherlink_validator_test')),
         seedStr: 'slitherlink_validator_test',

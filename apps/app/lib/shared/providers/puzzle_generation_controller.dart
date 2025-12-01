@@ -8,18 +8,22 @@ import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import 'engine_provider.dart';
 import '../services/generation_isolate.dart';
+import '../services/kakuro_on_demand_service.dart';
+import '../services/slitherlink_on_demand_service.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
 const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
 
 /// Riverpod controller responsible for generating puzzles asynchronously.
 final puzzleGenerationControllerProvider =
-    AsyncNotifierProvider<PuzzleGenerationController, core.GeneratedPuzzle<dynamic>?>(
-  PuzzleGenerationController.new,
-);
+    AsyncNotifierProvider<
+      PuzzleGenerationController,
+      core.GeneratedPuzzle<dynamic>?
+    >(PuzzleGenerationController.new);
 
 /// Handles puzzle generation lifecycle including cancellation and state transitions.
-class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dynamic>?> {
+class PuzzleGenerationController
+    extends AsyncNotifier<core.GeneratedPuzzle<dynamic>?> {
   int _generationToken = 0;
 
   @override
@@ -41,7 +45,9 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
 
     final engine = ref.read(engineProvider(puzzleType.key));
     if (engine == null) {
-      final error = StateError('Puzzle engine not registered for ${puzzleType.key}');
+      final error = StateError(
+        'Puzzle engine not registered for ${puzzleType.key}',
+      );
       state = AsyncValue.error(error, StackTrace.current);
       throw error;
     }
@@ -49,35 +55,48 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSize = size != null ? _parseSize(size) : _getSizeFor(puzzleType, difficulty);
+    final resolvedSize = size != null
+        ? _parseSize(size)
+        : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
 
     final token = ++_generationToken;
 
     try {
+      if (puzzleType == app.PuzzleType.slitherlinkLoop) {
+        final core.GeneratedPuzzle<dynamic> generated =
+            await _generateSlitherlinkOnDemand(
+          difficulty: difficulty,
+          size: resolvedSize,
+        );
+        if (token == _generationToken) {
+          state = AsyncValue.data(generated);
+        }
+        return generated;
+      }
       // Some engines (e.g., Kakuro) may fail for specific seeds; retry with fresh seeds a few times
       const int maxAttempts = 3;
       Object? lastError;
       StackTrace? lastStack;
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        final attemptSeed = seed ?? SeedService().generateRandomSeed(puzzleType.key);
+        final attemptSeed =
+            seed ?? SeedService().generateRandomSeed(puzzleType.key);
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          // NOTE: Previously we applied a short timeout (2-3s) here which caused
-          // intermittent TimeoutException when generation took longer (especially
-          // for harder Kakuro/Slitherlink seeds). Generation now runs inside a
-          // background isolate; allow it to complete without an artificial short
-          // timeout so long-running but valid generations succeed. Retries are
-          // still performed up to [maxAttempts]. If a global timeout policy is
-          // required later, make it configurable rather than hardcoding a low
-          // value here.
+          final Duration attemptTimeout = () {
+            if (puzzleType == app.PuzzleType.kakuroClassic)
+              return const Duration(seconds: 3);
+            if (puzzleType == app.PuzzleType.slitherlinkLoop)
+              return const Duration(seconds: 3);
+            return const Duration(seconds: 2);
+          }();
           final generated = await generatePuzzleIsolated(
             engineId: puzzleType.key,
             seedStr: attemptSeed,
             seed64: attemptSeed.hashCode,
             size: resolvedSize,
             difficulty: difficultyScore,
-          );
+          ).timeout(attemptTimeout);
           if (token == _generationToken) {
             state = AsyncValue.data(generated);
           }
@@ -92,8 +111,25 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
         }
       }
       // If we get here, all attempts failed
+      if (puzzleType == app.PuzzleType.kakuroClassic) {
+        try {
+          final fallback = await _generateKakuroOnDemand(
+            difficulty: difficulty,
+            size: resolvedSize,
+          );
+          if (token == _generationToken) {
+            state = AsyncValue.data(fallback);
+          }
+          return fallback;
+        } catch (_) {
+          // Fall through to existing error handling if fallback fails.
+        }
+      }
       if (token == _generationToken) {
-        state = AsyncValue.error(lastError ?? StateError('Generation failed'), lastStack ?? StackTrace.current);
+        state = AsyncValue.error(
+          lastError ?? StateError('Generation failed'),
+          lastStack ?? StackTrace.current,
+        );
       }
       throw lastError ?? StateError('Generation failed');
     } catch (err, stackTrace) {
@@ -118,15 +154,40 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
       case app.PuzzleType.takuzuBinary:
         switch (difficulty.toLowerCase()) {
           case 'easy':
-            return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+            return const core.SizeOpt(
+              id: '6x6',
+              description: '6x6',
+              width: 6,
+              height: 6,
+            );
           case 'medium':
-            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+            return const core.SizeOpt(
+              id: '8x8',
+              description: '8x8',
+              width: 8,
+              height: 8,
+            );
           case 'hard':
-            return const core.SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10);
+            return const core.SizeOpt(
+              id: '10x10',
+              description: '10x10',
+              width: 10,
+              height: 10,
+            );
           case 'expert':
-            return const core.SizeOpt(id: '12x12', description: '12x12', width: 12, height: 12);
+            return const core.SizeOpt(
+              id: '12x12',
+              description: '12x12',
+              width: 12,
+              height: 12,
+            );
           default:
-            return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+            return const core.SizeOpt(
+              id: '8x8',
+              description: '8x8',
+              width: 8,
+              height: 8,
+            );
         }
       default:
         return _defaultSizeFor(puzzleType);
@@ -145,20 +206,55 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
 
     switch (puzzleType) {
       case app.PuzzleType.sudokuClassic:
-        return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
+        return const core.SizeOpt(
+          id: '9x9',
+          description: '9x9',
+          width: 9,
+          height: 9,
+        );
       case app.PuzzleType.nonogramMono:
-        return const core.SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10);
+        return const core.SizeOpt(
+          id: '10x10',
+          description: '10x10',
+          width: 10,
+          height: 10,
+        );
       case app.PuzzleType.kakuroClassic:
-        return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
+        return const core.SizeOpt(
+          id: '9x9',
+          description: '9x9',
+          width: 9,
+          height: 9,
+        );
       case app.PuzzleType.slitherlinkLoop:
-        return const core.SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5);
+        return const core.SizeOpt(
+          id: '5x5',
+          description: '5x5',
+          width: 5,
+          height: 5,
+        );
       case app.PuzzleType.mathdokuClassic:
         // Updated default size to 9x9.
-        return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
+        return const core.SizeOpt(
+          id: '9x9',
+          description: '9x9',
+          width: 9,
+          height: 9,
+        );
       case app.PuzzleType.killerQueens:
-        return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        return const core.SizeOpt(
+          id: '8x8',
+          description: '8x8',
+          width: 8,
+          height: 8,
+        );
       case app.PuzzleType.takuzuBinary:
-        return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        return const core.SizeOpt(
+          id: '8x8',
+          description: '8x8',
+          width: 8,
+          height: 8,
+        );
     }
   }
 
@@ -191,5 +287,29 @@ class PuzzleGenerationController extends AsyncNotifier<core.GeneratedPuzzle<dyna
       default:
         return const core.DifficultyScore(value: 0.6, level: 'medium');
     }
+  }
+
+  Future<core.GeneratedPuzzle<dynamic>> _generateKakuroOnDemand({
+    required String difficulty,
+    required core.SizeOpt size,
+  }) async {
+    final service = ref.read(kakuroOnDemandProvider);
+    return service.nextPuzzle(
+      difficulty: difficulty,
+      width: size.width,
+      height: size.height,
+    );
+  }
+
+  Future<core.GeneratedPuzzle<dynamic>> _generateSlitherlinkOnDemand({
+    required String difficulty,
+    required core.SizeOpt size,
+  }) async {
+    final service = ref.read(slitherlinkOnDemandProvider);
+    return service.nextPuzzle(
+      difficulty: difficulty,
+      width: size.width,
+      height: size.height,
+    );
   }
 }

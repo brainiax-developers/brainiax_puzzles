@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../util/seeded_rng.dart';
-import 'solver_adapter.dart';
+import '../../engine/slitherlink/solver_adapter.dart';
+import '../../util/seeded_rng.dart';
 
 class ClueRemovalConfig {
   const ClueRemovalConfig({
@@ -10,12 +10,18 @@ class ClueRemovalConfig {
     required this.height,
     required this.timeBudget,
     required this.maxBacktrackDepth,
+    required this.binarySearchFraction,
+    required this.targetClueFraction,
+    required this.maxFailedRemovals,
   });
 
   final int width;
   final int height;
   final Duration timeBudget;
   final int maxBacktrackDepth;
+  final double binarySearchFraction;
+  final double targetClueFraction;
+  final int maxFailedRemovals;
 }
 
 class ClueRemovalStats {
@@ -25,6 +31,7 @@ class ClueRemovalStats {
     required this.elapsed,
     required this.removedClueCount,
     required this.hitTimeBudget,
+    required this.failedRemovalCount,
   });
 
   final int solverCalls;
@@ -32,6 +39,7 @@ class ClueRemovalStats {
   final Duration elapsed;
   final int removedClueCount;
   final bool hitTimeBudget;
+  final int failedRemovalCount;
 }
 
 class ClueRemovalResult {
@@ -61,6 +69,14 @@ ClueRemovalResult removeClues({
   int removedClueCount = 0;
   int attemptCounter = 0;
   bool timeBudgetHit = false;
+  final int totalClueSlots = fullClues.length;
+  final int targetClueCount = math.max(
+    1,
+    (totalClueSlots * config.targetClueFraction).round(),
+  );
+  int revealedClues = totalClueSlots;
+  int failedRemovalCount = 0;
+  bool densitySatisfied = false;
 
   bool madeProgress;
   do {
@@ -71,14 +87,24 @@ ClueRemovalResult removeClues({
         timeBudgetHit = true;
         break;
       }
+      if (failedRemovalCount >= config.maxFailedRemovals || densitySatisfied) {
+        break;
+      }
       final int position = candidates[idx];
       if (working[position] == null) {
         idx++;
         continue;
       }
       final int remaining = candidates.length - idx;
+      final int dynamicCap = math.max(
+        1,
+        math.min(
+          _maxBatchSize,
+          math.max(1, (remaining * config.binarySearchFraction).round()),
+        ),
+      );
       int low = 1;
-      int high = math.min(remaining, _maxBatchSize);
+      int high = math.min(remaining, dynamicCap);
       int best = 0;
       while (low <= high) {
         if (stopwatch.elapsed > config.timeBudget) {
@@ -110,12 +136,23 @@ ClueRemovalResult removeClues({
           best = mid;
           madeProgress = true;
           removedClueCount += attempt.removedCount;
+          revealedClues -= attempt.removedCount;
+          if (revealedClues <= targetClueCount) {
+            densitySatisfied = true;
+            break;
+          }
           low = mid + 1;
         } else {
+          failedRemovalCount++;
           high = mid - 1;
+          if (failedRemovalCount >= config.maxFailedRemovals) {
+            break;
+          }
         }
       }
-      if (timeBudgetHit) {
+      if (timeBudgetHit ||
+          densitySatisfied ||
+          failedRemovalCount >= config.maxFailedRemovals) {
         break;
       }
       if (best == 0) {
@@ -124,7 +161,11 @@ ClueRemovalResult removeClues({
         idx += best;
       }
     }
-  } while (madeProgress && !timeBudgetHit);
+  } while (
+      madeProgress &&
+      !timeBudgetHit &&
+      !densitySatisfied &&
+      failedRemovalCount < config.maxFailedRemovals);
 
   stopwatch.stop();
   final ClueRemovalStats stats = ClueRemovalStats(
@@ -133,6 +174,7 @@ ClueRemovalResult removeClues({
     elapsed: stopwatch.elapsed,
     removedClueCount: removedClueCount,
     hitTimeBudget: timeBudgetHit,
+    failedRemovalCount: failedRemovalCount,
   );
   return ClueRemovalResult(clues: working, stats: stats);
 }
