@@ -95,12 +95,40 @@ class PuzzleRegistry {
       categorized.putIfAbsent(metadata.category, () => []).add(metadata);
     }
     
+    // Ensure a stable, intentional ordering within each category. In
+    // particular, keep "coming soon" puzzles like Killer Queens and
+    // Slitherlink at the bottom of the list (after Binary Takuzu) while
+    // keeping their engines registered for future use.
+    for (final entry in categorized.entries) {
+      entry.value.sort(
+        (a, b) => _sortKeyForType(a.type).compareTo(_sortKeyForType(b.type)),
+      );
+    }
+    
     return categorized;
   }
 
   /// Get puzzles for a specific category.
   List<PuzzleMetadata> getPuzzlesForCategory(PuzzleCategory category) {
     return _metadata.values.where((metadata) => metadata.category == category).toList();
+  }
+
+  /// Sort key to control display order of puzzles within a category.
+  ///
+  /// Normal playable puzzles come first, followed by Binary Takuzu, then any
+  /// temporarily disabled/"coming soon" puzzles such as Killer Queens and
+  /// Slitherlink.
+  int _sortKeyForType(app.PuzzleType type) {
+    switch (type) {
+      case app.PuzzleType.killerQueens:
+        return 100;
+      case app.PuzzleType.slitherlinkLoop:
+        return 101;
+      case app.PuzzleType.takuzuBinary:
+        return 50;
+      default:
+        return 10;
+    }
   }
 
   /// Create metadata for a specific puzzle type.

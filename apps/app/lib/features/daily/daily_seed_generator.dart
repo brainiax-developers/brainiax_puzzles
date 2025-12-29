@@ -1,10 +1,11 @@
 import 'dart:convert';
+import '../../shared/services/seed_service.dart';
 
 /// Represents a deterministic daily seed derived from the puzzle type and date.
 class DailySeed {
   const DailySeed({
     required this.puzzleTypeKey,
-    required this.localDate,
+    required this.utcDate,
     required this.formattedDate,
     required this.seedStr,
     required this.seed64,
@@ -13,10 +14,10 @@ class DailySeed {
   /// The puzzle type key this seed is generated for.
   final String puzzleTypeKey;
 
-  /// The local date (midnight) used to derive the seed.
-  final DateTime localDate;
+  /// The UTC date (midnight) used to derive the seed.
+  final DateTime utcDate;
 
-  /// Date formatted as YYYY-MM-DD in the device's timezone.
+  /// Date formatted as YYYY-MM-DD.
   final String formattedDate;
 
   /// String representation passed into the puzzle engine.
@@ -31,14 +32,14 @@ class DailySeed {
       other is DailySeed &&
           runtimeType == other.runtimeType &&
           puzzleTypeKey == other.puzzleTypeKey &&
-          localDate == other.localDate &&
+          utcDate == other.utcDate &&
           formattedDate == other.formattedDate &&
           seedStr == other.seedStr &&
           seed64 == other.seed64;
 
   @override
   int get hashCode =>
-      Object.hash(puzzleTypeKey, localDate, formattedDate, seedStr, seed64);
+      Object.hash(puzzleTypeKey, utcDate, formattedDate, seedStr, seed64);
 }
 
 typedef _Clock = DateTime Function();
@@ -58,16 +59,15 @@ class DailySeedGenerator {
 
   /// Generate the seed for today's puzzle for the given [puzzleTypeKey].
   DailySeed generate(String puzzleTypeKey, {DateTime? date}) {
-    final DateTime source = (date ?? _clock()).toLocal();
-    final DateTime normalized = DateTime(source.year, source.month, source.day);
+    final DateTime source = (date ?? _clock()).toUtc();
+    final DateTime normalized = DateTime.utc(source.year, source.month, source.day);
     final String formattedDate = _formatDate(normalized);
-    final String hashInput = '$puzzleTypeKey$formattedDate';
-    final int seed64 = _stableHash64(hashInput);
-    final String seedStr = 'daily:$puzzleTypeKey:$formattedDate';
+    final String seedStr = SeedService().generateDailySeed(puzzleTypeKey, normalized);
+    final int seed64 = _stableHash64(seedStr);
 
     return DailySeed(
       puzzleTypeKey: puzzleTypeKey,
-      localDate: normalized,
+      utcDate: normalized,
       formattedDate: formattedDate,
       seedStr: seedStr,
       seed64: seed64,

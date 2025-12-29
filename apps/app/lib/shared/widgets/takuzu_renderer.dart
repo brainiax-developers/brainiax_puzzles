@@ -417,10 +417,8 @@ class _TakuzuContentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final valueStyle = theme.textTheme.titleSmall?.copyWith(
-      color: theme.colorScheme.onSurface,
-      fontWeight: FontWeight.w700,
-    );
+    final baseStyle = theme.textTheme.titleSmall;
+    final ColorScheme colorScheme = theme.colorScheme;
     
     final errorPaint = Paint()
       ..color = theme.colorScheme.error
@@ -440,12 +438,17 @@ class _TakuzuContentPainter extends CustomPainter {
           borderRadius: 3,
         );
         final v = board.cellAt(row, col);
-        if (v != TakuzuBoard.emptyValue && valueStyle != null) {
+        if (v != TakuzuBoard.emptyValue && baseStyle != null) {
+          final bool isFixed = board.isFixed(row, col);
+          final TextStyle textStyle = baseStyle.copyWith(
+            color: isFixed ? colorScheme.onSurface : colorScheme.primary,
+            fontWeight: isFixed ? FontWeight.w800 : FontWeight.w600,
+          );
           PainterUtils.paintCellText(
             canvas: canvas,
             cellRect: rect,
             text: v.toString(),
-            textStyle: valueStyle,
+            textStyle: textStyle,
           );
         }
         

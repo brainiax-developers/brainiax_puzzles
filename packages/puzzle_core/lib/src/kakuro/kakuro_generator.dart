@@ -1,5 +1,7 @@
 library puzzle_core_kakuro_generator;
 
+import 'dart:math' as math;
+
 import '../difficulty/difficulty_config.dart';
 import '../difficulty/telemetry.dart';
 import '../generators/generator.dart';
@@ -19,37 +21,69 @@ const int _solverSalt = 0x6f95c2c1ab7342ed;
 const int _mixMultiplier = 0x9e3779b97f4a7c15;
 const int _mask64 = 0xffffffffffffffff;
 
-// Difficulty profiles were used for sum-biasing; newspaper mode relies on
-// solver telemetry-based gating instead of sum weighting.
-
 int _deriveSolverSeed(int baseSeed, int attempt, int stage) {
   final int attemptSalt = (attempt * _mixMultiplier) & _mask64;
   final int combined = baseSeed ^ _solverSalt ^ attemptSalt ^ stage;
   return combined & _mask64;
 }
 
+/// Kakuro generator used by the engine and on-demand flows.
+///
+/// The generator builds a random "newspaper-style" layout, seeds a fully solved
+/// board, and then gates the candidate puzzle through uniqueness and difficulty
+/// checks. Time budgets are enforced to keep UI flows responsive.
 class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
-  const KakuroGenerator({this.maxTemplateAttempts = 160});
+  const KakuroGenerator({
+    this.maxTemplateAttempts = 160,
+    this.hardTimeLimitOverride,
+    this.maxSearchDepth = 22,
+    this.maxBacktrackNodes = 9000,
+    this.perAttemptTimeLimit = const Duration(milliseconds: 1100),
+  });
 
   final int maxTemplateAttempts;
+  final Duration? hardTimeLimitOverride;
+  final int maxSearchDepth;
+  final int maxBacktrackNodes;
+  final Duration perAttemptTimeLimit;
+
+  // Convenience for callers that want to reuse the same tuning while applying
+  // a tighter time budget (e.g., on-demand service).
+  KakuroGenerator copyWith({Duration? hardTimeLimit}) {
+    return KakuroGenerator(
+      maxTemplateAttempts: maxTemplateAttempts,
+      hardTimeLimitOverride: hardTimeLimit ?? hardTimeLimitOverride,
+      maxSearchDepth: maxSearchDepth,
+      maxBacktrackNodes: maxBacktrackNodes,
+      perAttemptTimeLimit: perAttemptTimeLimit,
+    );
+  }
 
   // Exposed for tests: map numeric and alias difficulties to normalized labels.
-  static String normalizeDifficultyForTest(String raw) => _normalizeDifficulty(raw.trim().toLowerCase());
+  static String normalizeDifficultyForTest(String raw) =>
+      _normalizeDifficulty(raw.trim().toLowerCase());
 
   static final DifficultyBucketConfig _difficultyConfig =
-      const DifficultyConfigLoader().loadSync('assets/kakuro_difficulty_thresholds.json');
+      const DifficultyConfigLoader()
+          .loadSync('assets/kakuro_difficulty_thresholds.json');
 
-  static const KakuroDifficultyScorer _difficultyScorer = KakuroDifficultyScorer();
+  static const KakuroDifficultyScorer _difficultyScorer =
+      KakuroDifficultyScorer();
 
   @override
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
+    final DateTime startedAt = DateTime.now();
     final Stopwatch stopwatch = Stopwatch()..start();
     final String requestedLevelRaw = context.difficulty.level.trim().toLowerCase();
     final String requestedLevel = _normalizeDifficulty(requestedLevelRaw);
-  // Use a strict solver (no node cap) for correctness; gating uses telemetry.
-    final KakuroSolver strictSolver = const KakuroSolver(maxSearchDepth: 26);
 
-    // Decide grid size based on difficulty. Respect provided size when present (incl. 9x9 for tests).
+    final KakuroSolver strictSolver = KakuroSolver(
+      maxSearchDepth: maxSearchDepth,
+      maxBacktrackNodes: maxBacktrackNodes,
+    );
+
+    final Stopwatch layoutWatch = Stopwatch()..start();
+    // Decide grid size based on difficulty. Respect provided size when present.
     final int targetWidth = _chooseWidth(context, requestedLevel);
     final int targetHeight = _chooseHeight(context, requestedLevel);
     final KakuroLayout template = KakuroLayout.buildNewspaper(
@@ -58,20 +92,26 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       height: targetHeight,
       difficulty: requestedLevel,
     );
+    layoutWatch.stop();
 
     int attempts = 0;
+    int nullSolutionCount = 0;
+    int nonUniqueCount = 0;
+    int logicRejectCount = 0;
+    int comboRejectCount = 0;
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
 
-    final int multiplier = template.attemptMultiplier;
-    final int attemptLimit = maxTemplateAttempts * multiplier;
-    final int hardTimeBudgetMs = _timeBudgetMillis(requestedLevel);
+    final int attemptLimit = maxTemplateAttempts * template.attemptMultiplier;
+    final int hardTimeBudgetMs = _effectiveTimeBudgetMs(requestedLevel);
+    final int perAttemptBudgetMs = perAttemptTimeLimit.inMilliseconds;
 
     while (attempts < attemptLimit) {
       if (stopwatch.elapsedMilliseconds > hardTimeBudgetMs) {
-        break; // time budget exceeded for this difficulty
+        break; // global time budget exceeded
       }
       attempts++;
+      final Stopwatch attemptWatch = Stopwatch()..start();
       int solverStage = 0;
       SeededRng nextSolverRng() {
         solverStage++;
@@ -80,17 +120,33 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
       }
 
-      final KakuroSolution? solution = buildSolutionFirst(template, context.rng);
+      // Build a fully solved board using the fast solution-first generator.
+      final Stopwatch solutionWatch = Stopwatch()..start();
+      KakuroSolution? solution = buildSolutionFirst(template, context.rng);
+      // If the initial approach fails quickly, try the bottom-up generator once
+      // before moving to the next attempt.
+      if (solution == null && attemptWatch.elapsedMilliseconds < perAttemptBudgetMs ~/ 2) {
+        solution = const KakuroBottomUpGenerator().generate(template, context.rng);
+      }
+      solutionWatch.stop();
       if (solution == null) {
+        nullSolutionCount++;
         continue;
       }
 
-      // Build a pure-sums puzzle (no digit givens); verify uniqueness and logic thresholds.
+      // Add a handful of digit givens (tuned per difficulty) to improve
+      // uniqueness rates without reducing challenge.
+      final Set<int> givenCells =
+          _selectGivenCells(template, context.rng, requestedLevel);
+
+      // Build a puzzle board with sums and optional givens; verify uniqueness and logic thresholds.
       final KakuroBoard candidateBoard = template.buildBoard(
         solution.entrySums,
-        const <int>{},
-        null,
+        givenCells,
+        solution.values,
       );
+
+      final Stopwatch solverWatch = Stopwatch()..start();
       final SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
         candidateBoard,
         SolverContext(
@@ -98,18 +154,29 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           maxSolutions: 2,
         ),
       );
+      solverWatch.stop();
+
+      final int attemptMs = attemptWatch.elapsedMilliseconds;
+      if (attemptMs > perAttemptBudgetMs && !uniqueness.isUnique) {
+        // Skip long-running, non-unique attempts early to respect budgets.
+        nonUniqueCount++;
+        continue;
+      }
       if (!uniqueness.isUnique) {
+        nonUniqueCount++;
         continue;
       }
 
       // Gate by backtrack/logic thresholds per difficulty.
       if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
+        logicRejectCount++;
         continue;
       }
 
       // Additional gating: ensure a minimum ratio of entries whose (length,sum)
       // has a single-digit-set combination. This biases toward simpler logic for easy puzzles.
       if (!_meetsSingleComboThreshold(template, candidateBoard, requestedLevel)) {
+        comboRejectCount++;
         continue;
       }
 
@@ -141,17 +208,32 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       telemetry = <String, Object?>{
         'attempts': attempts,
         'attemptLimit': attemptLimit,
-        'generationDurationUs': stopwatch.elapsedMicroseconds,
+        'generationDurationMs': stopwatch.elapsedMilliseconds,
+        'attemptDurationMs': attemptMs,
+        'layoutMs': layoutWatch.elapsedMilliseconds,
+        'solutionBuildMs': solutionWatch.elapsedMilliseconds,
+        'solverMs': solverWatch.elapsedMilliseconds,
         'solverTelemetry': sanitizedSolverTelemetry,
         'solutionSignature': solution.signature,
         'difficultyBucket': bucket,
         'requestedDifficulty': requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
         'valueCellCount': template.valueCellCount,
-        'givensCount': 0,
-        'givenRatioMilli': 0,
+        'givensCount': givenCells.length,
+        'givenRatioMilli': template.valueCellCount == 0
+            ? 0
+            : givenCells.length * 1000 ~/ template.valueCellCount,
         'width': template.width,
         'height': template.height,
+        'perAttemptBudgetMs': perAttemptBudgetMs,
+        'hardBudgetMs': hardTimeBudgetMs,
+        'startedAt': startedAt.toIso8601String(),
+        'rejectCounters': <String, int>{
+          'nullSolution': nullSolutionCount,
+          'nonUnique': nonUniqueCount,
+          'logicGate': logicRejectCount,
+          'comboGate': comboRejectCount,
+        },
       };
       break;
     }
@@ -159,31 +241,46 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     stopwatch.stop();
 
     if (puzzle == null) {
-      // Deterministic fallback: try a few alternative layouts, then throw.
-      for (int alt = 0; alt < 3 && puzzle == null; alt++) {
+      // Deterministic fallback: try a few alternative layouts within the remaining budget.
+      for (int alt = 0; alt < 2 && puzzle == null; alt++) {
+        if (stopwatch.elapsedMilliseconds > hardTimeBudgetMs) break;
         final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
           rng: SeededRng(_deriveSolverSeed(context.seed64, 1234, alt + 1)),
           width: targetWidth,
           height: targetHeight,
           difficulty: requestedLevel,
         );
-        final KakuroSolution? sol = buildSolutionFirst(altTemplate, context.rng);
+        final KakuroSolution? sol =
+            buildSolutionFirst(altTemplate, context.rng);
         if (sol == null) continue;
         final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
         final SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
-          SolverContext(rng: SeededRng(_deriveSolverSeed(context.seed64, 4321, alt + 1)), maxSolutions: 2),
+          SolverContext(
+            rng: SeededRng(
+              _deriveSolverSeed(context.seed64, 4321, alt + 1),
+            ),
+            maxSolutions: 2,
+          ),
         );
-        if (uniqueness.isUnique && _meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
+        if (uniqueness.isUnique &&
+            _meetsLogicThresholds(requestedLevel, uniqueness.telemetry) &&
+            _meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
           puzzle = board;
           telemetry = <String, Object?>{
             'attempts': attempts,
             'attemptLimit': attemptLimit,
-            'generationDurationUs': stopwatch.elapsedMicroseconds,
+            'generationDurationMs': stopwatch.elapsedMilliseconds,
             'fallback': true,
             'valueCellCount': altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            'rejectCounters': <String, int>{
+              'nullSolution': nullSolutionCount,
+              'nonUnique': nonUniqueCount,
+              'logicGate': logicRejectCount,
+              'comboGate': comboRejectCount,
+            },
           };
         }
       }
@@ -200,15 +297,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     );
   }
 
-  // Removal-based carving is no longer used; generation produces classic Kakuro
-  // puzzles with sums only (no digit givens) and relies on uniqueness checks.
+  int _effectiveTimeBudgetMs(String level) {
+    final int base = _timeBudgetMillis(level);
+    if (hardTimeLimitOverride != null) {
+      return math.min(base, hardTimeLimitOverride!.inMilliseconds);
+    }
+    return base;
+  }
 }
-
-// Legacy candidate container removed: generation no longer uses digit givens.
-
-// Fallback carving path removed in newspaper mode.
-
-
 
 // Helper: difficulty normalization and grid sizing
 String _normalizeDifficulty(String raw) {
@@ -267,18 +363,59 @@ int _chooseHeight(GeneratorContext context, String level) {
   }
 }
 
+Set<int> _selectGivenCells(
+  KakuroLayout template,
+  SeededRng rng,
+  String level,
+) {
+  int minGivens;
+  int maxGivens;
+  switch (level) {
+    case 'easy':
+      minGivens = 2;
+      maxGivens = 4;
+      break;
+    case 'medium':
+      minGivens = 1;
+      maxGivens = 3;
+      break;
+    case 'hard':
+      minGivens = 0;
+      maxGivens = 1;
+      break;
+    case 'expert':
+      minGivens = 0;
+      maxGivens = 0;
+      break;
+    default:
+      minGivens = 1;
+      maxGivens = 2;
+  }
+  final int valueCount = template.valueCells.length;
+  final int span = math.max(0, maxGivens - minGivens + 1);
+  final int target = math.min(
+    valueCount,
+    minGivens + (span == 0 ? 0 : rng.nextIntInRange(span)),
+  );
+  if (target <= 0) {
+    return const <int>{};
+  }
+  final List<int> order = rng.permute(template.valueCells);
+  return order.take(target).toSet();
+}
+
 int _timeBudgetMillis(String level) {
   switch (level) {
     case 'easy':
-      return 900; // ~<1s target
+      return 2000; // still well under prior 20s baseline
     case 'medium':
-      return 1400;
+      return 2600;
     case 'hard':
-      return 2000;
+      return 3200;
     case 'expert':
-      return 3000;
+      return 4000;
     default:
-      return 1600;
+      return 2600;
   }
 }
 
@@ -287,13 +424,13 @@ bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {
   final int propagationRounds = (telemetry['propagationRounds'] as int?) ?? 0;
   switch (level) {
     case 'easy':
-      return backtrackNodes == 0 && propagationRounds <= 40;
+      return backtrackNodes <= 12 && propagationRounds <= 80;
     case 'medium':
-      return backtrackNodes <= 8 && propagationRounds <= 80;
+      return backtrackNodes <= 40 && propagationRounds <= 140;
     case 'hard':
-      return backtrackNodes <= 40 && propagationRounds <= 160;
+      return backtrackNodes <= 120 && propagationRounds <= 260;
     case 'expert':
-      return backtrackNodes <= 120 && propagationRounds <= 360;
+      return backtrackNodes <= 280 && propagationRounds <= 520;
     default:
       return backtrackNodes <= 80;
   }
@@ -312,23 +449,18 @@ bool _meetsSingleComboThreshold(
       singles++;
     }
   }
-  final int total = template.entries.length == 0 ? 1 : template.entries.length;
+  final int total = template.entries.isEmpty ? 1 : template.entries.length;
   final double ratio = singles / total;
   switch (level) {
     case 'easy':
-      return ratio >= 0.12; // bias toward more forced entries
+      return ratio >= 0.08; // bias toward more forced entries
     case 'medium':
-      return ratio >= 0.06;
+      return ratio >= 0.04;
     case 'hard':
-      return ratio >= 0.02;
+      return ratio >= 0.01;
     case 'expert':
       return ratio >= 0.0; // no requirement; allow toughest
     default:
       return true;
   }
 }
-
-
-
-
-

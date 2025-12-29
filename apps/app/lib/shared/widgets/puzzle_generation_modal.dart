@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../providers/puzzle_generation_controller.dart';
+import '../services/puzzle_progress_service.dart';
 
 /// Modal for generating puzzles with progress indication and cancel/retry functionality.
 class PuzzleGenerationModal extends ConsumerStatefulWidget {
@@ -77,6 +79,14 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
         _hasError = false;
         _errorMessage = null;
       });
+
+      // Clear any previously persisted in-progress puzzle so "New Game"
+      // can't accidentally restore old state on success.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final progress = PuzzleProgressService(prefs);
+        await progress.clear(widget.puzzleType);
+      } catch (_) {}
 
       // Use the real puzzle generation controller
       final controller = ref.read(puzzleGenerationControllerProvider.notifier);

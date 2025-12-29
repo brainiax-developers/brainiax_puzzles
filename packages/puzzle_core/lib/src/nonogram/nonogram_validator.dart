@@ -146,10 +146,6 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
 
   @override
   bool isSolved(NonogramBoard board) {
-    if (!board.isComplete) {
-      return false;
-    }
-
     for (int row = 0; row < board.height; row++) {
       if (!_cluesEqual(_deriveClues(board.rowValues(row)), board.rowClues[row])) {
         return false;

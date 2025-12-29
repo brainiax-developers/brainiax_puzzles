@@ -233,6 +233,7 @@ class SudokuRenderer extends PuzzleRenderer<SudokuRendererWidget>
         conflictPositions: _conflictPositions,
         notes: widget.notes,
         theme: Theme.of(context),
+        hintFilledCells: widget.hintFilledCells,
       ),
       size: size,
     );

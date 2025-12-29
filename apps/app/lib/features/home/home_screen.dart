@@ -76,8 +76,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _buildMenuTile(
           icon: Icons.person,
           title: 'Profile/Stats',
-          subtitle: 'View your progress',
-          onTap: () => context.push('/profile'),
+          subtitle: 'Coming soon',
+          onTap: null,
+          isDisabled: true,
         ),
         _buildMenuTile(
           icon: Icons.settings,
@@ -93,7 +94,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    bool isDisabled = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -103,25 +105,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: ListTile(
         leading: Icon(
           icon,
-          color: colorScheme.primary,
+          color: isDisabled
+              ? colorScheme.onSurface.withOpacity(0.4)
+              : colorScheme.primary,
         ),
         title: Text(
           title,
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
+            color: isDisabled
+                ? colorScheme.onSurface.withOpacity(0.6)
+                : null,
           ),
         ),
         subtitle: Text(
           subtitle,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurface.withOpacity(0.7),
+            color: isDisabled
+                ? colorScheme.onSurface.withOpacity(0.5)
+                : colorScheme.onSurface.withOpacity(0.7),
           ),
         ),
         trailing: Icon(
           Icons.chevron_right,
-          color: colorScheme.onSurface.withOpacity(0.5),
+          color: colorScheme.onSurface.withOpacity(
+            isDisabled ? 0.2 : 0.5,
+          ),
         ),
-        onTap: onTap,
+        onTap: isDisabled ? null : onTap,
       ),
     );
   }

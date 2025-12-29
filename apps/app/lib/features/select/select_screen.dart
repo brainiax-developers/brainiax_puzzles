@@ -1,14 +1,17 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 
 import '../../shared/services/kakuro_on_demand_service.dart';
+import '../../shared/services/puzzle_progress_service.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
@@ -59,12 +62,23 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
     if (puzzleType == PuzzleType.kakuroClassic) {
       () async {
+        await _clearProgress(puzzleType);
         bool dialogOpen = true;
+        bool cancelled = false;
         showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (_) => const _KakuroLoadingDialog(),
-        ).then((_) => dialogOpen = false);
+          builder: (_) => WillPopScope(
+            onWillPop: () async {
+              cancelled = true;
+              return true;
+            },
+            child: const _KakuroLoadingDialog(),
+          ),
+        ).then((_) {
+          dialogOpen = false;
+          cancelled = true;
+        });
         try {
           final service = ref.read(kakuroOnDemandProvider);
           final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
@@ -79,18 +93,25 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
             width: width,
             height: height,
           );
+          if (cancelled) return;
           if (dialogOpen && mounted) {
             Navigator.of(context, rootNavigator: true).pop();
             dialogOpen = false;
           }
           if (!mounted) return;
+          if (kDebugMode) {
+            debugPrint(
+              '[Navigation][NewGame] kakuro seed=${generated.meta.seedStr} '
+              'difficulty=$difficulty source=new',
+            );
+          }
           context.push('/play/${puzzleType.key}/random', extra: generated);
         } catch (_) {
           if (dialogOpen && mounted) {
             Navigator.of(context, rootNavigator: true).pop();
             dialogOpen = false;
           }
-          if (!mounted) return;
+          if (!mounted || cancelled) return;
           _showLegacyModal(puzzleType, difficulty);
         }
       }();
@@ -98,7 +119,10 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
     }
 
     // Non-Kakuro: keep existing modal generation UX
-    _showLegacyModal(puzzleType, difficulty);
+    () async {
+      await _clearProgress(puzzleType);
+      _showLegacyModal(puzzleType, difficulty);
+    }();
   }
 
   void _showLegacyModal(PuzzleType puzzleType, String difficulty) {
@@ -244,6 +268,14 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
       },
     );
   }
+
+  Future<void> _clearProgress(PuzzleType puzzleType) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      await progress.clear(puzzleType);
+    } catch (_) {}
+  }
 }
 
 class _KakuroLoadingDialog extends StatelessWidget {
@@ -266,7 +298,7 @@ class _KakuroLoadingDialog extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 4),
             ),
             const SizedBox(height: 16),
-            Text('Generating Kakuro…', style: theme.textTheme.bodyMedium),
+            Text('Generating Kakuro...', style: theme.textTheme.bodyMedium),
           ],
         ),
       ),

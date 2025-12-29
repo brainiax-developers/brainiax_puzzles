@@ -50,16 +50,22 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
     required PuzzleMode mode,
     DateTime? completedAt,
   }) async {
-    final timestamp = completedAt ?? DateTime.now();
-    final normalizedDate = _normalizeDate(timestamp);
-    final dateKey = _dateKey(normalizedDate);
+    final DateTime timestamp = completedAt ?? DateTime.now();
+    // Daily challenges use UTC to ensure the same calendar day globally.
+    final DateTime normalizedUtc = _normalizeDate(timestamp.toUtc(), useUtc: true);
+    // Streaks and non-daily progress remain tied to the user's local day.
+    final DateTime normalizedLocal = _normalizeDate(timestamp);
 
     await _updateBestTime(puzzleType, difficulty, completionTime);
     if (mode == PuzzleMode.daily) {
-      await _saveDailyCompletion(puzzleType, dateKey, timestamp);
+      await _saveDailyCompletion(
+        puzzleType,
+        _dateKey(normalizedUtc),
+        timestamp.toUtc(),
+      );
     }
-    await _updatePuzzleStreak(puzzleType, normalizedDate);
-    await _updateGlobalStreak(normalizedDate);
+    await _updatePuzzleStreak(puzzleType, normalizedLocal);
+    await _updateGlobalStreak(normalizedLocal);
   }
 
   @override
@@ -74,7 +80,7 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
 
   @override
   Future<bool> isCompletedOn(PuzzleType puzzleType, DateTime date) async {
-    final dateKey = _dateKey(_normalizeDate(date));
+    final dateKey = _dateKey(_normalizeDate(date, useUtc: date.isUtc));
     final key = _dailyCompletionKey(puzzleType, dateKey);
     return _prefs.containsKey(key);
   }
@@ -174,7 +180,10 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
     return '$_puzzleLastCompletionPrefix.${puzzleType.key}';
   }
 
-  DateTime _normalizeDate(DateTime date) {
+  DateTime _normalizeDate(DateTime date, {bool useUtc = false}) {
+    if (useUtc) {
+      return DateTime.utc(date.year, date.month, date.day);
+    }
     return DateTime(date.year, date.month, date.day);
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -31,6 +32,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     if (engine == null) {
       throw Exception('Engine not found: $engineId');
     }
+    final Stopwatch stopwatch = Stopwatch()..start();
 
     // Parse parameters
     final difficultyScore = _parseDifficulty(difficulty);
@@ -47,6 +49,15 @@ class GameStateNotifier extends Notifier<GameState?> {
       size: sizeOpt,
       difficulty: difficultyScore,
     ).timeout(timeout);
+    stopwatch.stop();
+
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(
+        '[GameState][NewGame] engine=$engineId seed=$seed '
+        'difficulty=$difficulty size=$size elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
+    }
 
     // Create game state
     final gameState = GameState(
@@ -78,6 +89,13 @@ class GameStateNotifier extends Notifier<GameState?> {
     required String size,
     required GeneratedPuzzle puzzle,
   }) async {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(
+        '[GameState][RestoreOrReplace] engine=$engineId seed=$seed '
+        'difficulty=$difficulty size=$size',
+      );
+    }
     // Reset action history
     _actionHistory.clear();
     _currentActionIndex = -1;

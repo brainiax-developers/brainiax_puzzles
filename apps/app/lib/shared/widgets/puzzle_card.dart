@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/difficulty_preference_service.dart';
@@ -84,6 +85,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
     });
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final bool isComingSoon =
+      widget.metadata.type == PuzzleType.killerQueens ||
+      widget.metadata.type == PuzzleType.slitherlinkLoop;
     
     return Card(
       elevation: 2,
@@ -148,9 +152,29 @@ class _PuzzleCardState extends State<PuzzleCard> {
               
               const SizedBox(height: 12),
               
-              // Difficulty radio buttons
+              // Difficulty selectors or coming-soon message
               if (_isLoading)
                 const SizedBox(height: 32) // Placeholder while loading
+              else if (isComingSoon)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Coming soon',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: widget.metadata.primaryAccentColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'This puzzle will be available in a future update.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                )
               else
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,16 +205,17 @@ class _PuzzleCardState extends State<PuzzleCard> {
               
               const SizedBox(height: 16),
               
-              // Daily Challenge Surface
-              DailySurface(
-                puzzleType: widget.metadata.type,
-                compact: true,
-              ),
+              // Daily Challenge Surface (disabled for coming-soon puzzles)
+              if (!isComingSoon)
+                DailySurface(
+                  puzzleType: widget.metadata.type,
+                  compact: true,
+                ),
               
-              const SizedBox(height: 12),
+              if (!isComingSoon) const SizedBox(height: 12),
 
               // Continue Game (when in-progress exists)
-              if (_hasProgress) ...[
+              if (!isComingSoon && _hasProgress) ...[
                 SizedBox(
                   width: double.infinity,
                   child: _ActionButton(
@@ -204,6 +229,12 @@ class _PuzzleCardState extends State<PuzzleCard> {
                         final progress = PuzzleProgressService(prefs);
                         final puzzle = progress.load(widget.metadata.type);
                         if (puzzle != null && mounted) {
+                          if (kDebugMode) {
+                            debugPrint(
+                              '[Navigation][Continue] ${widget.metadata.type.key} '
+                              'seed=${puzzle.meta.seedStr}',
+                            );
+                          }
                           if (!context.mounted) return;
                           context.push('/play/${widget.metadata.type.key}/random', extra: puzzle);
                         }
@@ -215,7 +246,7 @@ class _PuzzleCardState extends State<PuzzleCard> {
               ],
               
               // New Game Button (only show if difficulty is selected)
-              if (_selectedDifficulty != null) ...[
+              if (!isComingSoon && _selectedDifficulty != null) ...[
                 SizedBox(
                   width: double.infinity,
                   child: _ActionButton(

@@ -29,6 +29,18 @@ enum PuzzleType {
     return fromKey(key) != null;
   }
 
+  /// Ordered list of puzzle types that participate in Daily Challenges.
+  static const List<PuzzleType> dailyChallengeTypes = [
+    sudokuClassic,
+    nonogramMono,
+    kakuroClassic,
+    mathdokuClassic,
+    takuzuBinary,
+  ];
+
+  /// Whether this puzzle type is eligible for Daily Challenges.
+  bool get isDailyEligible => dailyChallengeTypes.contains(this);
+
   @override
   String toString() => key;
 }

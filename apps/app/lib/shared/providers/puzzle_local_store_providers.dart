@@ -32,7 +32,11 @@ final puzzleDailyCompletionProvider =
 final puzzleTodayCompletionProvider =
     FutureProvider.family<bool, PuzzleType>((ref, puzzleType) async {
   final store = await ref.watch(puzzleLocalStoreProvider.future);
-  return store.isCompletedOn(puzzleType, DateTime.now());
+  final DateTime todayUtc = DateTime.now().toUtc();
+  return store.isCompletedOn(
+    puzzleType,
+    DateTime.utc(todayUtc.year, todayUtc.month, todayUtc.day),
+  );
 });
 
 final puzzleStreakProvider =
@@ -60,6 +64,11 @@ class PuzzleCompletionController {
   }) async {
     final store = await _ref.read(puzzleLocalStoreProvider.future);
     final timestamp = completedAt ?? DateTime.now();
+    final DateTime normalizedUtc = DateTime.utc(
+      timestamp.toUtc().year,
+      timestamp.toUtc().month,
+      timestamp.toUtc().day,
+    );
     await store.recordCompletion(
       puzzleType: puzzleType,
       difficulty: difficulty,
@@ -70,26 +79,15 @@ class PuzzleCompletionController {
 
     _ref.invalidate(puzzleBestTimeProvider((puzzleType, difficulty)));
     if (mode == PuzzleMode.daily) {
-      final DateTime normalized = DateTime(
-        timestamp.year,
-        timestamp.month,
-        timestamp.day,
-      );
-      _ref.invalidate(puzzleDailyCompletionProvider((puzzleType, normalized)));
+      _ref.invalidate(puzzleDailyCompletionProvider((puzzleType, normalizedUtc)));
       _ref.invalidate(puzzleTodayCompletionProvider(puzzleType));
     }
     _ref.invalidate(puzzleStreakProvider(puzzleType));
     _ref.invalidate(puzzleGlobalStreakProvider);
 
-    final DateTime normalized = DateTime(
-      timestamp.year,
-      timestamp.month,
-      timestamp.day,
-    );
-
     final Duration? bestTime = await store.bestTime(puzzleType, difficulty);
     final bool isDailyCompleted =
-        await store.isCompletedOn(puzzleType, normalized);
+        await store.isCompletedOn(puzzleType, normalizedUtc);
     final int puzzleStreak = await store.puzzleStreak(puzzleType);
     final int globalStreak = await store.globalStreak();
 

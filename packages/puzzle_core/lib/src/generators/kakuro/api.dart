@@ -1,4 +1,6 @@
 import 'dart:isolate';
+import 'dart:developer' as developer;
+import 'dart:math' as math;
 
 import '../../api_types.dart';
 import '../../difficulty/difficulty_config.dart';
@@ -25,44 +27,72 @@ class KakuroPuzzleGenerator {
   final KakuroGenerator _generator;
   final KakuroDifficultyScorer _difficultyScorer;
   final DifficultyBucketConfig _difficultyConfig;
-  static final Map<String, KakuroPuzzle> _fallbackCache =
-      <String, KakuroPuzzle>{};
 
   KakuroPuzzle generateSync(GenerateKakuroRequest request) {
+    final DateTime startedAt = DateTime.now();
     final Stopwatch wall = Stopwatch()..start();
     final int baseSeed =
         request.seed ?? DateTime.now().microsecondsSinceEpoch;
     Object? lastError;
+    final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
 
     for (int restart = 0; restart < request.maxRestarts; restart++) {
-      if (wall.elapsed > request.timeBudget) {
-        final KakuroPuzzle? cached =
-            _fallbackCache[request.difficulty.toLowerCase()];
-        if (cached != null) {
-          return cached;
-        }
+      final Duration elapsed = wall.elapsed;
+      final Duration remaining = request.timeBudget - elapsed;
+      if (remaining.isNegative || remaining.inMilliseconds <= 0) {
         break;
       }
 
       final int attemptSeed =
           (baseSeed + restart * 0x9e3779b97f4a7c15) & 0xffffffffffffffff;
+      final Stopwatch attemptWatch = Stopwatch()..start();
       try {
         final KakuroPuzzle puzzle = _attempt(
           request: request,
           attemptSeed: attemptSeed,
           restartIndex: restart,
           elapsedBeforeAttempt: wall.elapsed,
+          timeLimitOverride: remaining,
         );
-        _fallbackCache[request.difficulty.toLowerCase()] = puzzle;
+        attemptWatch.stop();
+        attemptLog.add(<String, Object?>{
+          'seed': attemptSeed,
+          'durationMs': attemptWatch.elapsedMilliseconds,
+          'restart': restart,
+          'status': 'success',
+        });
+        wall.stop();
+        _logGenerationSummary(
+          request: request,
+          startedAt: startedAt,
+          totalElapsed: wall.elapsed,
+          baseSeed: baseSeed,
+          attempts: attemptLog,
+          result: puzzle,
+        );
         return puzzle;
       } catch (err) {
+        attemptWatch.stop();
         lastError = err;
+        attemptLog.add(<String, Object?>{
+          'seed': attemptSeed,
+          'durationMs': attemptWatch.elapsedMilliseconds,
+          'restart': restart,
+          'status': 'error',
+          'error': err.toString(),
+        });
       }
     }
 
-    if (_fallbackCache.containsKey(request.difficulty.toLowerCase())) {
-      return _fallbackCache[request.difficulty.toLowerCase()]!;
-    }
+    wall.stop();
+    _logGenerationSummary(
+      request: request,
+      startedAt: startedAt,
+      totalElapsed: wall.elapsed,
+      baseSeed: baseSeed,
+      attempts: attemptLog,
+      result: null,
+    );
 
     if (lastError != null) {
       throw lastError!;
@@ -75,6 +105,7 @@ class KakuroPuzzleGenerator {
     required int attemptSeed,
     required int restartIndex,
     required Duration elapsedBeforeAttempt,
+    required Duration timeLimitOverride,
   }) {
     final SeededRng rng = SeededRng(attemptSeed);
     final context = GeneratorContext(
@@ -90,8 +121,16 @@ class KakuroPuzzleGenerator {
       difficulty: DifficultyRequest(level: request.difficulty),
     );
 
+    // Respect the request's remaining time budget by applying a stricter cap.
+    final Duration hardCap = timeLimitOverride <= Duration.zero
+        ? const Duration(milliseconds: 250)
+        : timeLimitOverride;
+    final KakuroGenerator tunedGenerator = _generator.copyWith(
+      hardTimeLimit: hardCap,
+    );
+
     final Stopwatch attemptWatch = Stopwatch()..start();
-    final generation = _generator.generate(context);
+    final generation = tunedGenerator.generate(context);
     attemptWatch.stop();
 
     final KakuroBoard board = generation.board;
@@ -113,6 +152,10 @@ class KakuroPuzzleGenerator {
         elapsedBeforeAttempt.inMilliseconds;
     combinedTelemetry['attemptDurationMs'] =
         attemptWatch.elapsedMilliseconds;
+    combinedTelemetry['startTimestamp'] = DateTime.now().toIso8601String();
+    combinedTelemetry['seed'] = attemptSeed.toString();
+    combinedTelemetry['wallTimeBudgetMs'] =
+        math.min(hardCap.inMilliseconds, request.timeBudget.inMilliseconds);
     combinedTelemetry['strategy'] = request.strategy.name;
 
     return KakuroPuzzle(
@@ -124,6 +167,41 @@ class KakuroPuzzleGenerator {
       strategy: request.strategy,
       timeToGenerate: elapsedBeforeAttempt + attemptWatch.elapsed,
       restartCount: restartIndex,
+    );
+  }
+
+  void _logGenerationSummary({
+    required GenerateKakuroRequest request,
+    required DateTime startedAt,
+    required Duration totalElapsed,
+    required int baseSeed,
+    required List<Map<String, Object?>> attempts,
+    required KakuroPuzzle? result,
+  }) {
+    final String status = result != null ? 'success' : 'failure';
+    final String puzzleId = result != null
+        ? '${result.seed}:${result.difficultyBucket}'
+        : 'none';
+    final String attemptSummary = attempts
+        .map((Map<String, Object?> attempt) {
+          final Object? restart = attempt['restart'];
+          final Object? duration = attempt['durationMs'];
+          final Object? attemptStatus = attempt['status'];
+          return 'r$restart:${attemptStatus ?? 'n/a'}:${duration ?? '-'}ms';
+        })
+        .join(' ');
+
+    developer.log(
+      '[KakuroGen] $status '
+      'difficulty=${request.difficulty} '
+      'size=${request.width}x${request.height} '
+      'seed=$baseSeed '
+      'puzzleId=$puzzleId '
+      'attempts=${attempts.length} '
+      'elapsedMs=${totalElapsed.inMilliseconds} '
+      'start=${startedAt.toIso8601String()} '
+      'attempts=[$attemptSummary]',
+      name: 'kakuro.generation',
     );
   }
 }

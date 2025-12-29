@@ -40,63 +40,74 @@ class DailySurface extends ConsumerWidget {
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final status = ref.watch(dailyStatusForPuzzleProvider(puzzleType!));
+    final statusAsync = ref.watch(dailyStatusForPuzzleProvider(puzzleType!));
     
-    if (status == null) {
-      return const SizedBox.shrink();
-    }
-
-    return _DailySurfaceCard(
-      compact: compact,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return statusAsync.when(
+      data: (status) {
+        if (status == null) {
+          return const SizedBox.shrink();
+        }
+        return _DailySurfaceCard(
+          compact: compact,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                status.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: status.isCompleted 
-                    ? Colors.green 
-                    : colorScheme.primary,
-                size: compact ? 16 : 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  showPuzzleName 
-                      ? 'Daily ${puzzleType!.displayName}'
-                      : 'Daily Challenge',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+              Row(
+                children: [
+                  Icon(
+                    status.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: status.isCompleted 
+                        ? Colors.green 
+                        : colorScheme.primary,
+                    size: compact ? 16 : 20,
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      showPuzzleName 
+                          ? 'Daily ${puzzleType!.displayName}'
+                          : 'Daily Challenge',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  if (!compact)
+                    Text(
+                      status.formattedTimeUntilReset,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                ],
               ),
-              if (!compact)
+              if (compact) ...[
+                const SizedBox(height: 4),
                 Text(
                   status.formattedTimeUntilReset,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
+              ],
+              const SizedBox(height: 8),
+              _DailyActionButton(
+                status: status,
+                puzzleType: puzzleType!,
+                compact: compact,
+              ),
             ],
           ),
-          if (compact) ...[
-            const SizedBox(height: 4),
-            Text(
-              status.formattedTimeUntilReset,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          _DailyActionButton(
-            status: status,
-            puzzleType: puzzleType!,
-            compact: compact,
-          ),
-        ],
+        );
+      },
+      loading: () => _DailySurfaceCard(
+        compact: compact,
+        child: _buildLoadingState(colorScheme),
+      ),
+      error: (_, __) => _DailySurfaceCard(
+        compact: compact,
+        child: _buildErrorState(theme, colorScheme),
       ),
     );
   }
@@ -107,69 +118,108 @@ class DailySurface extends ConsumerWidget {
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final overallStatus = ref.watch(dailyOverallStatusProvider);
+    final overallStatusAsync = ref.watch(dailyOverallStatusProvider);
 
-    return _DailySurfaceCard(
-      compact: compact,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                overallStatus.isAllCompleted ? Icons.emoji_events : Icons.calendar_today,
-                color: overallStatus.isAllCompleted 
-                    ? Colors.amber 
-                    : colorScheme.primary,
-                size: compact ? 16 : 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Daily Challenges',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+    return overallStatusAsync.when(
+      data: (overallStatus) => _DailySurfaceCard(
+        compact: compact,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  overallStatus.isAllCompleted ? Icons.emoji_events : Icons.calendar_today,
+                  color: overallStatus.isAllCompleted 
+                      ? Colors.amber 
+                      : colorScheme.primary,
+                  size: compact ? 16 : 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Daily Challenges',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
                 ),
-              ),
-              if (!compact)
-                Text(
-                  overallStatus.formattedTimeUntilReset,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.7),
+                if (!compact)
+                  Text(
+                    overallStatus.formattedTimeUntilReset,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurface.withOpacity(0.7),
+                    ),
                   ),
+              ],
+            ),
+            if (compact) ...[
+              const SizedBox(height: 4),
+              Text(
+                overallStatus.formattedTimeUntilReset,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withOpacity(0.7),
                 ),
+              ),
             ],
-          ),
-          if (compact) ...[
             const SizedBox(height: 4),
             Text(
-              overallStatus.formattedTimeUntilReset,
+              overallStatus.completionText,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurface.withOpacity(0.7),
               ),
             ),
-          ],
-          const SizedBox(height: 4),
-          Text(
-            overallStatus.completionText,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.7),
+            const SizedBox(height: 8),
+            _DailyProgressBar(
+              progress: overallStatus.completionPercentage,
+              colorScheme: colorScheme,
             ),
+            const SizedBox(height: 8),
+            _DailyActionButton(
+              status: null,
+              puzzleType: null,
+              compact: compact,
+            ),
+          ],
+        ),
+      ),
+      loading: () => _DailySurfaceCard(
+        compact: compact,
+        child: _buildLoadingState(colorScheme),
+      ),
+      error: (_, __) => _DailySurfaceCard(
+        compact: compact,
+        child: _buildErrorState(theme, colorScheme),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(ColorScheme colorScheme) {
+    return SizedBox(
+      height: compact ? 40 : 56,
+      child: Center(
+        child: SizedBox(
+          width: compact ? 16 : 20,
+          height: compact ? 16 : 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colorScheme.primary,
           ),
-          const SizedBox(height: 8),
-          _DailyProgressBar(
-            progress: overallStatus.completionPercentage,
-            colorScheme: colorScheme,
-          ),
-          const SizedBox(height: 8),
-          _DailyActionButton(
-            status: null,
-            puzzleType: null,
-            compact: compact,
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(ThemeData theme, ColorScheme colorScheme) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: compact ? 4 : 8),
+      child: Text(
+        'Unable to load daily status',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colorScheme.error,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

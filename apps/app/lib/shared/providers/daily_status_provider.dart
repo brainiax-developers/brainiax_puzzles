@@ -1,6 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/models.dart';
+import 'puzzle_local_store_providers.dart';
+
+DateTime _nowUtc() => DateTime.now().toUtc();
+
+DateTime _todayUtc(DateTime nowUtc) =>
+    DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+
+Duration _timeUntilNextUtcReset(DateTime nowUtc) {
+  final DateTime nextReset =
+      DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day + 1);
+  final Duration remaining = nextReset.difference(nowUtc);
+  return remaining.isNegative ? Duration.zero : remaining;
+}
 
 /// Daily completion status for a specific puzzle type.
 class DailyStatus {
@@ -16,14 +29,10 @@ class DailyStatus {
   final DateTime? completedAt;
   final Duration timeUntilReset;
 
-  /// Get the next reset time (local midnight).
-  DateTime get nextResetTime {
-    final now = DateTime.now();
-    final tomorrow = DateTime(now.year, now.month, now.day + 1);
-    return tomorrow;
-  }
+  /// Get the next reset time (shared UTC midnight).
+  DateTime get nextResetTime => _nowUtc().add(timeUntilReset);
 
-  /// Get formatted time until reset (e.g., "2h 15m" or "23h 45m").
+  /// Get formatted time until reset (e.g., "2h 15m" or "23m").
   String get formattedTimeUntilReset {
     final hours = timeUntilReset.inHours;
     final minutes = timeUntilReset.inMinutes % 60;
@@ -71,132 +80,65 @@ class DailyOverallStatus {
   /// Check if all puzzles are completed today.
   bool get isAllCompleted => completedCount == totalCount;
 
-  /// Get completion text (e.g., "3 of 7 completed").
+  /// Get completion text (e.g., "3 of 5 completed").
   String get completionText => '$completedCount of $totalCount completed';
 }
 
-/// Simple provider for daily status management.
-class DailyStatusService {
-  static final DailyStatusService _instance = DailyStatusService._internal();
-  factory DailyStatusService() => _instance;
-  DailyStatusService._internal();
+/// List of puzzle types that participate in Daily Challenges.
+final dailyPuzzleTypesProvider = Provider<List<PuzzleType>>((ref) {
+  return PuzzleType.dailyChallengeTypes;
+});
 
-  Map<PuzzleType, DailyStatus> _statuses = {};
+/// Provider for all daily statuses keyed by puzzle type for today's UTC date.
+final dailyStatusProvider =
+    FutureProvider<Map<PuzzleType, DailyStatus>>((ref) async {
+  final DateTime nowUtc = _nowUtc();
+  final DateTime todayUtc = _todayUtc(nowUtc);
+  final Duration timeUntilReset = _timeUntilNextUtcReset(nowUtc);
 
-  /// Initialize daily statuses for all puzzle types.
-  void initialize() {
-    _statuses = {};
-    for (final puzzleType in PuzzleType.values) {
-      _statuses[puzzleType] = _createDailyStatus(puzzleType);
-    }
-  }
-
-  /// Create daily status for a puzzle type.
-  DailyStatus _createDailyStatus(PuzzleType puzzleType) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final nextReset = DateTime(now.year, now.month, now.day + 1);
-    
-    // For now, we'll use a simple stub - in real implementation,
-    // this would check SharedPreferences or a database
-    final isCompleted = _isCompletedToday(puzzleType, today);
-    final completedAt = isCompleted ? now : null;
-    final timeUntilReset = nextReset.difference(now);
-    
-    return DailyStatus(
+  final Map<PuzzleType, DailyStatus> statuses = {};
+  for (final puzzleType in ref.watch(dailyPuzzleTypesProvider)) {
+    final bool isCompleted = await ref
+        .watch(puzzleDailyCompletionProvider((puzzleType, todayUtc)).future);
+    statuses[puzzleType] = DailyStatus(
       puzzleType: puzzleType,
       isCompleted: isCompleted,
-      completedAt: completedAt,
+      completedAt: isCompleted ? todayUtc : null,
       timeUntilReset: timeUntilReset,
     );
   }
+  return statuses;
+});
 
-  /// Check if a puzzle type is completed today (stub implementation).
-  bool _isCompletedToday(PuzzleType puzzleType, DateTime today) {
-    // Stub: Randomly mark some puzzles as completed for demo purposes
-    // In real implementation, this would check SharedPreferences or database
-    final seed = today.millisecondsSinceEpoch + puzzleType.index;
-    return (seed % 3) == 0; // ~33% chance of being completed
-  }
+/// Provider for overall daily status.
+final dailyOverallStatusProvider =
+    Provider<AsyncValue<DailyOverallStatus>>((ref) {
+  final AsyncValue<Map<PuzzleType, DailyStatus>> statusMap =
+      ref.watch(dailyStatusProvider);
 
-  /// Mark a puzzle type as completed for today.
-  Future<void> markCompleted(PuzzleType puzzleType) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final nextReset = DateTime(now.year, now.month, now.day + 1);
-    
-    // In real implementation, save to SharedPreferences or database
-    await _saveCompletionStatus(puzzleType, today, now);
-    
-    // Update status
-    _statuses[puzzleType] = DailyStatus(
-      puzzleType: puzzleType,
-      isCompleted: true,
-      completedAt: now,
-      timeUntilReset: nextReset.difference(now),
-    );
-  }
+  return statusMap.whenData((statuses) {
+    final int totalCount = ref.watch(dailyPuzzleTypesProvider).length;
+    final int completedCount =
+        statuses.values.where((status) => status.isCompleted).length;
+    final Duration timeUntilReset = statuses.values.isNotEmpty
+        ? statuses.values.first.timeUntilReset
+        : _timeUntilNextUtcReset(_nowUtc());
+    final double completionPercentage =
+        totalCount > 0 ? completedCount / totalCount : 0.0;
 
-  /// Save completion status (stub implementation).
-  Future<void> _saveCompletionStatus(PuzzleType puzzleType, DateTime date, DateTime completedAt) async {
-    // Stub: In real implementation, save to SharedPreferences or database
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'daily_${puzzleType.key}_${date.millisecondsSinceEpoch}';
-    await prefs.setBool(key, true);
-    await prefs.setInt('${key}_completed_at', completedAt.millisecondsSinceEpoch);
-  }
-
-  /// Refresh all statuses (useful when time changes).
-  void refreshStatuses() {
-    initialize();
-  }
-
-  /// Get status for a specific puzzle type.
-  DailyStatus? getStatus(PuzzleType puzzleType) {
-    return _statuses[puzzleType];
-  }
-
-  /// Get all statuses.
-  Map<PuzzleType, DailyStatus> get allStatuses => Map.unmodifiable(_statuses);
-
-  /// Get overall daily completion status.
-  DailyOverallStatus get overallStatus {
-    final completedCount = _statuses.values.where((status) => status.isCompleted).length;
-    final totalCount = _statuses.length;
-    final completionPercentage = totalCount > 0 ? completedCount / totalCount : 0.0;
-    
     return DailyOverallStatus(
       completedCount: completedCount,
       totalCount: totalCount,
       completionPercentage: completionPercentage,
-      timeUntilReset: _statuses.values.isNotEmpty 
-          ? _statuses.values.first.timeUntilReset 
-          : const Duration(hours: 24),
+      timeUntilReset: timeUntilReset,
     );
-  }
-}
-
-/// Provider for daily status service.
-final dailyStatusServiceProvider = Provider<DailyStatusService>((ref) {
-  final service = DailyStatusService();
-  service.initialize();
-  return service;
-});
-
-/// Provider for all daily statuses.
-final dailyStatusProvider = Provider<Map<PuzzleType, DailyStatus>>((ref) {
-  final service = ref.watch(dailyStatusServiceProvider);
-  return service.allStatuses;
-});
-
-/// Provider for overall daily status.
-final dailyOverallStatusProvider = Provider<DailyOverallStatus>((ref) {
-  final service = ref.watch(dailyStatusServiceProvider);
-  return service.overallStatus;
+  });
 });
 
 /// Provider for a specific puzzle type's daily status.
-final dailyStatusForPuzzleProvider = Provider.family<DailyStatus?, PuzzleType>((ref, puzzleType) {
-  final service = ref.watch(dailyStatusServiceProvider);
-  return service.getStatus(puzzleType);
+final dailyStatusForPuzzleProvider =
+    Provider.family<AsyncValue<DailyStatus?>, PuzzleType>((ref, puzzleType) {
+  final AsyncValue<Map<PuzzleType, DailyStatus>> statusMap =
+      ref.watch(dailyStatusProvider);
+  return statusMap.whenData((statuses) => statuses[puzzleType]);
 });

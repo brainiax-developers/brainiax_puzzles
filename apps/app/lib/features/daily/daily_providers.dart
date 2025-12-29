@@ -49,14 +49,14 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
 
 DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
   const Map<String, DifficultyScore> defaults = {
-    'sudoku_classic': DifficultyScore(value: 0.6, level: 'medium'),
-    'nonogram_mono': DifficultyScore(value: 0.6, level: 'medium'),
-    'kakuro_classic': DifficultyScore(value: 0.6, level: 'medium'),
-    'slitherlink_loop': DifficultyScore(value: 0.6, level: 'medium'),
-    'mathdoku_classic': DifficultyScore(value: 0.6, level: 'medium'),
-    'killer_queens': DifficultyScore(value: 0.6, level: 'medium'),
-    'takuzu_binary': DifficultyScore(value: 0.6, level: 'medium'),
+    'sudoku_classic': DifficultyScore(value: 0.3, level: 'easy'),
+    'nonogram_mono': DifficultyScore(value: 0.3, level: 'easy'),
+    'kakuro_classic': DifficultyScore(value: 0.3, level: 'easy'),
+    'slitherlink_loop': DifficultyScore(value: 0.3, level: 'easy'),
+    'mathdoku_classic': DifficultyScore(value: 0.3, level: 'easy'),
+    'killer_queens': DifficultyScore(value: 0.3, level: 'easy'),
+    'takuzu_binary': DifficultyScore(value: 0.3, level: 'easy'),
   };
   return defaults[puzzleTypeKey] ??
-      const DifficultyScore(value: 0.6, level: 'medium');
+      const DifficultyScore(value: 0.3, level: 'easy');
 }

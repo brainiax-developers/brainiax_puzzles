@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
@@ -14,20 +12,27 @@ class KakuroOnDemandService {
   KakuroOnDemandService();
 
   final Random _random = Random();
-  core.KakuroPuzzleGenerator? _generator;
-  Future<core.DifficultyBucketConfig>? _configFuture;
 
   Future<core.GeneratedPuzzle<dynamic>> nextPuzzle({
     required String difficulty,
-    Duration timeBudget = const Duration(milliseconds: 320),
+    Duration timeBudget = const Duration(milliseconds: 2200),
     int width = 9,
     int height = 9,
   }) async {
     final String normalized = difficulty.toLowerCase();
+    final DateTime startedAt = DateTime.now();
+    final Stopwatch wall = Stopwatch()..start();
     int attempt = 0;
     while (true) {
       attempt++;
       final int seed = _random.nextInt(0x7fffffff);
+      if (kDebugMode) {
+        debugPrint(
+          '[KakuroOnDemand] start attempt=$attempt '
+          'difficulty=$normalized seed=$seed '
+          'budgetMs=${timeBudget.inMilliseconds}',
+        );
+      }
       final request = core.GenerateKakuroRequest(
         width: width,
         height: height,
@@ -37,11 +42,18 @@ class KakuroOnDemandService {
         strategy: core.KakuroGenerationStrategy.solutionFirst,
       );
       try {
-        final core.KakuroPuzzleGenerator generator = await _ensureGenerator();
-        final core.KakuroPuzzle puzzle = await _runGenerator(
-          generator,
-          request,
-        );
+        final core.KakuroPuzzle puzzle = await _runGenerator(request);
+        wall.stop();
+        if (kDebugMode) {
+          debugPrint(
+            '[KakuroOnDemand] success difficulty=$normalized '
+            'seed=${puzzle.seed} attempts=$attempt '
+            'elapsedMs=${wall.elapsedMilliseconds} '
+            'startedAt=${startedAt.toIso8601String()} '
+            'size=${puzzle.width}x${puzzle.height} '
+            'bucket=${puzzle.difficultyBucket}',
+          );
+        }
         return core.kakuroPuzzleAsGeneratedPuzzle(puzzle);
       } catch (error, stackTrace) {
         if (kDebugMode) {
@@ -58,41 +70,10 @@ class KakuroOnDemandService {
     }
   }
 
-  Future<core.KakuroPuzzleGenerator> _ensureGenerator() async {
-    if (_generator != null) {
-      return _generator!;
-    }
-    final core.DifficultyBucketConfig config = await (_configFuture ??=
-        _loadDifficultyConfig());
-    _generator = core.KakuroPuzzleGenerator(difficultyConfig: config);
-    return _generator!;
-  }
-
-  Future<core.DifficultyBucketConfig> _loadDifficultyConfig() async {
-    try {
-      final String raw = await rootBundle.loadString(
-        'packages/puzzle_core/assets/kakuro_difficulty_thresholds.json',
-      );
-      final Map<String, dynamic> jsonMap =
-          jsonDecode(raw) as Map<String, dynamic>;
-      return core.DifficultyBucketConfig.fromJson(jsonMap);
-    } catch (_) {
-      return const core.DifficultyBucketConfig(
-        buckets: <core.DifficultyBucketThreshold>[
-          core.DifficultyBucketThreshold(id: 'easy', maxInclusive: 0.35),
-          core.DifficultyBucketThreshold(id: 'medium', maxInclusive: 0.65),
-          core.DifficultyBucketThreshold(id: 'hard', maxInclusive: 0.95),
-          core.DifficultyBucketThreshold(id: 'expert', maxInclusive: 1.20),
-        ],
-      );
-    }
-  }
-
   Future<core.KakuroPuzzle> _runGenerator(
-    core.KakuroPuzzleGenerator generator,
     core.GenerateKakuroRequest request,
   ) async {
-    return generator.generateSync(request);
+    return core.generateKakuroInIsolate(request);
   }
 }
 

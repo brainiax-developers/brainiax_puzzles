@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
@@ -42,6 +43,7 @@ class PuzzleGenerationController
     String? size,
   }) async {
     await cancelGeneration();
+    final Stopwatch stopwatch = Stopwatch()..start();
 
     final engine = ref.read(engineProvider(puzzleType.key));
     if (engine == null) {
@@ -69,6 +71,13 @@ class PuzzleGenerationController
           difficulty: difficulty,
           size: resolvedSize,
         );
+        if (kDebugMode) {
+          debugPrint(
+            '[Generation][Success] type=${puzzleType.key} '
+            'difficulty=$difficulty size=${resolvedSize.id} '
+            'seed=on-demand elapsedMs=${stopwatch.elapsedMilliseconds}',
+          );
+        }
         if (token == _generationToken) {
           state = AsyncValue.data(generated);
         }
@@ -81,6 +90,13 @@ class PuzzleGenerationController
       for (int attempt = 1; attempt <= maxAttempts; attempt++) {
         final attemptSeed =
             seed ?? SeedService().generateRandomSeed(puzzleType.key);
+        if (kDebugMode) {
+          debugPrint(
+            '[Generation][Start] type=${puzzleType.key} '
+            'difficulty=$difficulty size=${resolvedSize.id} '
+            'seed=$attemptSeed attempt=$attempt',
+          );
+        }
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
           final Duration attemptTimeout = () {
@@ -97,19 +113,27 @@ class PuzzleGenerationController
             size: resolvedSize,
             difficulty: difficultyScore,
           ).timeout(attemptTimeout);
-          if (token == _generationToken) {
-            state = AsyncValue.data(generated);
+            if (token == _generationToken) {
+              state = AsyncValue.data(generated);
+            }
+            if (kDebugMode) {
+              debugPrint(
+                '[Generation][Success] type=${puzzleType.key} '
+                'difficulty=$difficulty size=${resolvedSize.id} '
+                'seed=${generated.meta.seedStr} attempt=$attempt '
+                'elapsedMs=${stopwatch.elapsedMilliseconds}',
+              );
+            }
+            return generated;
+          } catch (e, st) {
+            lastError = e;
+            lastStack = st;
+            // Try next attempt with a new seed
+            if (attempt == maxAttempts) break;
+            // brief microtask yield to keep UI responsive
+            await Future<void>.delayed(const Duration(milliseconds: 10));
           }
-          return generated;
-        } catch (e, st) {
-          lastError = e;
-          lastStack = st;
-          // Try next attempt with a new seed
-          if (attempt == maxAttempts) break;
-          // brief microtask yield to keep UI responsive
-          await Future<void>.delayed(const Duration(milliseconds: 10));
         }
-      }
       // If we get here, all attempts failed
       if (puzzleType == app.PuzzleType.kakuroClassic) {
         try {
@@ -117,6 +141,13 @@ class PuzzleGenerationController
             difficulty: difficulty,
             size: resolvedSize,
           );
+          if (kDebugMode) {
+            debugPrint(
+              '[Generation][Fallback] type=${puzzleType.key} '
+              'difficulty=$difficulty size=${resolvedSize.id} '
+              'seed=${fallback.meta.seedStr} elapsedMs=${stopwatch.elapsedMilliseconds}',
+            );
+          }
           if (token == _generationToken) {
             state = AsyncValue.data(fallback);
           }
@@ -129,6 +160,14 @@ class PuzzleGenerationController
         state = AsyncValue.error(
           lastError ?? StateError('Generation failed'),
           lastStack ?? StackTrace.current,
+        );
+      }
+      if (kDebugMode) {
+        debugPrint(
+          '[Generation][Failure] type=${puzzleType.key} '
+          'difficulty=$difficulty size=${resolvedSize.id} '
+          'elapsedMs=${stopwatch.elapsedMilliseconds} '
+          'error=${lastError ?? 'unknown'}',
         );
       }
       throw lastError ?? StateError('Generation failed');
