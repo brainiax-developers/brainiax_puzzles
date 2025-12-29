@@ -1,6 +1,7 @@
 // apps/app/lib/features/settings/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../shared/providers/simple_theme_provider.dart';
 import '../../shared/providers/haptics_provider.dart';
 
@@ -16,6 +17,7 @@ class SettingsScreen extends ConsumerWidget {
           _ContrastTile(),
           _ThemeModeTile(),
           _HapticsTile(),
+          _PrivacyPolicyTile(),
         ],
       ),
     );
@@ -116,6 +118,31 @@ class _HapticsTile extends ConsumerWidget {
         await SimpleHapticsService.setHapticsEnabled(value);
         // Refresh provider state
         ref.invalidate(hapticsStateProvider);
+      },
+    );
+  }
+}
+
+class _PrivacyPolicyTile extends StatelessWidget {
+  const _PrivacyPolicyTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: const Text('Privacy Policy'),
+      trailing: const Icon(Icons.open_in_new),
+      onTap: () async {
+        final url = Uri.parse('https://brainiax-developers.github.io/brainiax_puzzles_privacy/');
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url);
+        } else {
+          // Handle error, maybe show a snackbar
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not open privacy policy')),
+            );
+          }
+        }
       },
     );
   }
