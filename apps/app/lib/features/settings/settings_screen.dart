@@ -133,10 +133,9 @@ class _PrivacyPolicyTile extends StatelessWidget {
       trailing: const Icon(Icons.open_in_new),
       onTap: () async {
         final url = Uri.parse('https://brainiax-developers.github.io/brainiax_puzzles_privacy/');
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url);
-        } else {
-          // Handle error, maybe show a snackbar
+        try {
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+        } catch (e) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Could not open privacy policy')),
