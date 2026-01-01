@@ -169,19 +169,35 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       timestamp: DateTime.now(),
     );
     _history.add(entry);
-    
+
+    final bool solved = _isSolved(newBoard);
+    final bool hadHintHighlight = state.hintHighlight != null;
+    if (hadHintHighlight) {
+      _cancelHintTimer();
+    }
+    if (solved) {
+      _stopTimer();
+    } else {
+      _ensureTimerRunning();
+    }
+
     // Update state immediately (without showing conflicts yet)
     state = state.copyWith(
       board: newBoard,
       moveHistory: _createMoveRecords(),
       moveCount: _history.length,
+      isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
       clearConflicts: true, // Clear any existing conflicts
+      clearHintHighlight: hadHintHighlight,
     );
-    
-    _ensureTimerRunning();
-    
+
+    if (solved) {
+      unawaited(_dispatchSolved());
+      return;
+    }
+
     // Schedule conflict detection after 2 seconds
     _conflictCheckTimer = Timer(const Duration(seconds: 2), () {
       _checkAndShowConflicts(newBoard);
