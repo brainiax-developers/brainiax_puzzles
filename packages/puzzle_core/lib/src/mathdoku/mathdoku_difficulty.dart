@@ -20,6 +20,13 @@ class MathdokuDifficultyScorer extends DifficultyScorer<MathdokuBoard> {
         (generator['avgCageSize'] as num?)?.toDouble() ?? _avgCageSize(puzzle);
     final int maxCageSize =
         (generator['maxCageSize'] as num?)?.toInt() ?? _maxCageSize(puzzle);
+    final int singleCageCount = (generator['singleCageCount'] as num?)?.toInt() ??
+        _countCagesWhere(puzzle, (MathdokuCage cage) => cage.cells.length == 1);
+    final Map<String, Object?> rawSizeHistogram =
+        (generator['sizeHistogram'] as Map?)?.cast<String, Object?>() ?? const <String, Object?>{};
+    final int histogramLongCount = _parseLongHistogram(rawSizeHistogram);
+    final int longCageCount =
+        max((generator['longCageCount'] as num?)?.toInt() ?? 0, histogramLongCount);
     final double graphDensity =
         (generator['graphDensity'] as num?)?.toDouble() ?? _graphDensity(puzzle);
 
@@ -35,23 +42,28 @@ class MathdokuDifficultyScorer extends DifficultyScorer<MathdokuBoard> {
 
     final double subtractionRatio = cageCount == 0
         ? 0.0
-        : ((opCounts['subtract'] ?? 0).toDouble() + (opCounts['divide'] ?? 0).toDouble()) /
-            cageCount;
+        : ((opCounts['subtract'] ?? 0).toDouble() + (opCounts['divide'] ?? 0).toDouble()) / cageCount;
     final double multiplicationRatio = cageCount == 0
         ? 0.0
         : (opCounts['multiply'] ?? 0).toDouble() / cageCount;
+    final double singleRatio = cageCount == 0 ? 0.0 : singleCageCount / cageCount;
+    final double longCageRatio = cageCount == 0 ? 0.0 : longCageCount / cageCount;
 
     final double propagationDepth =
         (solver['propagationDepth'] as num?)?.toDouble() ?? 0.0;
     final double searchDepth = (solver['searchDepth'] as num?)?.toDouble() ?? 0.0;
     final double searchNodes = (solver['searchNodes'] as num?)?.toDouble() ?? 0.0;
 
-    final double cageComplexity = avgCageSize * 1.6 + maxCageSize * 2.4;
-    final double opPressure = subtractionRatio * 38.0 + multiplicationRatio * 15.0;
-    final double solverPressure = propagationDepth * 3.0 + searchDepth * 5.2 + searchNodes / 9.0;
-    final double adjacencyPressure = graphDensity * 26.0;
+    final double cageComplexity = avgCageSize * 1.5 + maxCageSize * 2.0 + longCageRatio * 16.0;
+    final double opPressure = subtractionRatio * 32.0 + multiplicationRatio * 10.0;
+    final double solverPressure = propagationDepth * 2.8 + searchDepth * 4.5 + searchNodes / 12.0;
+    final double adjacencyPressure = graphDensity * 20.0;
+    final double relief = singleRatio * 10.0;
 
-    final double rawScore = cageComplexity + opPressure + solverPressure + adjacencyPressure;
+    final double rawScore = max(
+      0.0,
+      cageComplexity + opPressure + solverPressure + adjacencyPressure - relief,
+    );
 
     final Map<String, num> metrics = <String, num>{
       'cageCount': cageCount,
@@ -60,6 +72,8 @@ class MathdokuDifficultyScorer extends DifficultyScorer<MathdokuBoard> {
       'graphDensity': graphDensity,
       'subtractiveRatio': subtractionRatio,
       'multiplicativeRatio': multiplicationRatio,
+      'singleCageRatio': singleRatio,
+      'longCageRatio': longCageRatio,
       'propagationDepth': propagationDepth,
       'searchDepth': searchDepth,
       'searchNodes': searchNodes,
@@ -131,5 +145,27 @@ class MathdokuDifficultyScorer extends DifficultyScorer<MathdokuBoard> {
       return 0.0;
     }
     return edges.length / possibleEdges;
+  }
+
+  int _countCagesWhere(MathdokuBoard board, bool Function(MathdokuCage cage) predicate) {
+    int count = 0;
+    for (final MathdokuCage cage in board.cages) {
+      if (predicate(cage)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  int _parseLongHistogram(Map<String, Object?> histogram) {
+    int count = 0;
+    for (final MapEntry<String, Object?> entry in histogram.entries) {
+      final int? size = int.tryParse(entry.key);
+      final int? value = entry.value is num ? (entry.value as num).toInt() : null;
+      if (size != null && value != null && size >= 3) {
+        count += value;
+      }
+    }
+    return count;
   }
 }

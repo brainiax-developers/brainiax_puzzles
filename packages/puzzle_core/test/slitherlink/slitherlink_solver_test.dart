@@ -6,7 +6,7 @@ import 'package:puzzle_core/src/util/seeded_rng.dart';
 void main() {
   group('SlitherlinkSolver', () {
     test('solves generated puzzles and respects uniqueness', () {
-      final SlitherlinkGenerator generator = const SlitherlinkGenerator();
+      final SlitherlinkPipelineGenerator generator = const SlitherlinkPipelineGenerator();
       final GeneratorContext context = GeneratorContext(
         rng: SeededRng(Seed.fromString('slitherlink_solver_test')),
         seedStr: 'slitherlink_solver_test',

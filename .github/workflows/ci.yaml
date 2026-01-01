@@ -45,6 +45,15 @@ jobs:
       - name: Test (root)
         run: melos test
 
+      - name: Coverage (app)
+        run: melos run coverage
+
+      - name: Enforce coverage threshold
+        run: melos run check_coverage
+
+      - name: Performance gate
+        run: melos run perf_gate
+
   build_apk:
     name: Build debug APK (on tag)
     runs-on: ubuntu-latest

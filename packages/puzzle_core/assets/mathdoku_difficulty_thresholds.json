@@ -1,8 +1,8 @@
 {
   "buckets": [
-    { "id": "easy", "maxInclusive": 28.0 },
-    { "id": "medium", "maxInclusive": 60.0 },
-    { "id": "hard", "maxInclusive": 95.0 },
+    { "id": "easy", "maxInclusive": 34.0 },
+    { "id": "medium", "maxInclusive": 72.0 },
+    { "id": "hard", "maxInclusive": 110.0 },
     { "id": "expert", "maxInclusive": 9999.0 }
   ]
 }

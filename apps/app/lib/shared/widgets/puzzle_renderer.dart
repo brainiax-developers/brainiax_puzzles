@@ -1,0 +1,298 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:puzzle_core/puzzle_core.dart';
+import '../providers/game_state_provider.dart';
+
+/// Base class for puzzle renderers providing common functionality.
+///
+/// This abstract class defines the interface and common utilities for
+/// rendering different types of puzzles with consistent interaction patterns.
+abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> with TickerProviderStateMixin {
+  /// The current puzzle state being rendered.
+  GeneratedPuzzle? get puzzle => widget.puzzle;
+
+  /// The current game state containing puzzle and metadata.
+  GameState? get gameState => widget.gameState;
+
+  /// Whether the puzzle is currently being interacted with.
+  bool get isInteracting => _isInteracting;
+  bool _isInteracting = false;
+
+  /// The currently selected cell position.
+  Offset? get selectedPosition => _selectedPosition;
+  Offset? _selectedPosition;
+
+  /// The current focus position for keyboard navigation.
+  Offset? get focusPosition => _focusPosition;
+  Offset? _focusPosition;
+
+  /// Error positions to highlight.
+  Set<Offset> get errorPositions => Set.unmodifiable(_errorPositions);
+  final Set<Offset> _errorPositions = {};
+
+  /// Animation controller for smooth transitions.
+  late AnimationController _animationController;
+
+  /// Animation for selection highlights.
+  late Animation<double> _selectionAnimation;
+
+  /// Animation for error feedback.
+  late Animation<double> _errorAnimation;
+
+  // Public accessors for subclasses (and other files) to use the base
+  // animations. Private fields (starting with `_`) are library-private in
+  // Dart and cannot be accessed across files; expose safe getters instead.
+  AnimationController get animationController => _animationController;
+  Animation<double> get selectionAnimation => _selectionAnimation;
+  Animation<double> get errorAnimation => _errorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAnimations();
+  }
+
+  void _setupAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _selectionAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _errorAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.elasticOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  /// Handle tap events on the puzzle grid.
+  void onTap(Offset position) {
+    final gridPosition = hitTest(position);
+    if (gridPosition != null) {
+      setState(() {
+        _selectedPosition = gridPosition;
+        _focusPosition = gridPosition;
+        _isInteracting = true;
+      });
+      _animationController.forward();
+
+      // Notify parent of selection
+      widget.onCellSelected?.call(gridPosition);
+    }
+  }
+
+  /// Handle drag events for multi-cell selection.
+  void onPanStart(DragStartDetails details) {
+    final gridPosition = hitTest(details.localPosition);
+    if (gridPosition != null) {
+      setState(() {
+        _selectedPosition = gridPosition;
+        _isInteracting = true;
+      });
+      _animationController.forward();
+    }
+  }
+
+  void onPanUpdate(DragUpdateDetails details) {
+    final gridPosition = hitTest(details.localPosition);
+    if (gridPosition != null && gridPosition != _selectedPosition) {
+      setState(() {
+        _selectedPosition = gridPosition;
+      });
+    }
+  }
+
+  void onPanEnd(DragEndDetails details) {
+    setState(() {
+      _isInteracting = false;
+    });
+    _animationController.reverse();
+  }
+
+  /// Handle keyboard navigation.
+  void onKeyEvent(KeyEvent event) {
+    if (_focusPosition == null) return;
+
+    Offset? newPosition;
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      newPosition = moveFocus(_focusPosition!, const Offset(0, -1));
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      newPosition = moveFocus(_focusPosition!, const Offset(0, 1));
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      newPosition = moveFocus(_focusPosition!, const Offset(-1, 0));
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      newPosition = moveFocus(_focusPosition!, const Offset(1, 0));
+    } else {
+      return;
+    }
+
+    if (newPosition != null) {
+      setState(() {
+        _focusPosition = newPosition;
+        _selectedPosition = newPosition;
+      });
+    }
+  }
+
+  /// Move focus in the specified direction.
+  @protected
+  Offset? moveFocus(Offset current, Offset direction) {
+    // This should be implemented by subclasses based on their grid structure
+    return null;
+  }
+
+  /// Perform hit testing to convert screen coordinates to grid coordinates.
+  @protected
+  Offset? hitTest(Offset position) {
+    // This should be implemented by subclasses
+    return null;
+  }
+
+  /// Clear the current selection.
+  void clearSelection() {
+    setState(() {
+      _selectedPosition = null;
+      _focusPosition = null;
+      _isInteracting = false;
+    });
+    _animationController.reverse();
+  }
+
+  /// Set error positions to highlight.
+  void setErrorPositions(Set<Offset> positions) {
+    setState(() {
+      _errorPositions.clear();
+      _errorPositions.addAll(positions);
+    });
+    _animationController.forward();
+  }
+
+  /// Clear all error positions.
+  void clearErrors() {
+    setState(() {
+      _errorPositions.clear();
+    });
+  }
+
+  /// Get the current selection animation value.
+  double get selectionAnimationValue => _selectionAnimation.value;
+
+  /// Get the current error animation value.
+  double get errorAnimationValue => _errorAnimation.value;
+
+  /// Build the puzzle content - to be implemented by subclasses.
+  Widget buildPuzzleContent(BuildContext context, Size size);
+
+  /// Build the grid background - to be implemented by subclasses.
+  Widget buildGridBackground(BuildContext context, Size size);
+
+  /// Build cell content at the given position - to be implemented by subclasses.
+  Widget buildCellContent(BuildContext context, Offset position, Size cellSize);
+
+  /// Build selection highlight - to be implemented by subclasses.
+  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize);
+
+  /// Build error highlight - to be implemented by subclasses.
+  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize);
+
+  /// Build a hint highlight for a single cell. Subclasses should provide
+  /// a widget that visually highlights the cell at `position` using the
+  /// provided `cellSize`. The default implementation returns SizedBox.shrink().
+  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
+    return const SizedBox.shrink();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        final cellSize = getCellSize(size);
+
+        return GestureDetector(
+          onTapDown: (details) => onTap(details.localPosition),
+          onPanStart: onPanStart,
+          onPanUpdate: onPanUpdate,
+          onPanEnd: onPanEnd,
+          child: Focus(
+            autofocus: true,
+            onKeyEvent: (node, event) {
+              onKeyEvent(event);
+              return KeyEventResult.handled;
+            },
+            child: Stack(
+              children: [
+                // Grid background
+                buildGridBackground(context, size),
+
+                // Puzzle content
+                buildPuzzleContent(context, size),
+
+                // Selection highlights
+                if (_selectedPosition != null)
+                  buildSelectionHighlight(context, _selectedPosition!, cellSize),
+
+                // Error highlights
+                for (final position in _errorPositions)
+                  buildErrorHighlight(context, position, cellSize),
+
+                // Hint highlights (provided by parent)
+                if (widget.hintCells != null)
+                  for (final position in widget.hintCells!)
+                    buildHintHighlight(context, position, cellSize),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Get the size of individual cells - to be implemented by subclasses.
+  @protected
+  Size getCellSize(Size totalSize) {
+    // This should be implemented by subclasses
+    return Size.zero;
+  }
+}
+
+/// Base widget for puzzle renderers.
+abstract class PuzzleRendererWidget extends StatefulWidget {
+  const PuzzleRendererWidget({
+    super.key,
+    required this.puzzle,
+    this.gameState,
+    this.onCellSelected,
+    this.onMove,
+    this.onError,
+    this.hintCells,
+    this.hintAnimationValue = 0.0,
+  });
+
+  final GeneratedPuzzle? puzzle;
+  final GameState? gameState;
+  final ValueChanged<Offset>? onCellSelected;
+  final ValueChanged<dynamic>? onMove;
+  final ValueChanged<String>? onError;
+  // Optional list of grid positions to highlight as a hint (col,row -> Offset(dx=col, dy=row)).
+  final List<Offset>? hintCells;
+  // A small animation value [0..1] supplied by parent to animate hint flashing.
+  final double hintAnimationValue;
+}

@@ -5,16 +5,19 @@
 /// "boring and stable" - they don't leak engine internals.
 library puzzle_core.api_types;
 
+import 'dart:collection';
+
 import 'difficulty/telemetry.dart';
 
 /// Abstract base class for puzzle engines.
-/// 
+///
 /// [S] is the state type (e.g., SudokuBoard, CrosswordGrid)
 /// [M] is the move type (e.g., SudokuMove, CrosswordMove)
+
 abstract class PuzzleEngine<S, M> {
   /// Unique identifier for this engine type.
   String get id;
-  
+
   /// Human-readable name for this engine.
   String get name;
   
@@ -43,6 +46,27 @@ abstract class PuzzleEngine<S, M> {
   
   /// Check if the puzzle is solved.
   bool isSolved(S state);
+
+  /// Capabilities exposed by this engine implementation.
+  ///
+  /// Engines can override this getter to advertise support for optional
+  /// features. By default, engines opt out of all capabilities to maintain
+  /// backwards compatibility.
+  PuzzleCapabilities get capabilities => const PuzzleCapabilities();
+
+  /// Request a hint for the current puzzle state.
+  ///
+  /// Engines that support hints should override this method and return a
+  /// [PuzzleHint] describing the affected cells or units. Implementations
+  /// must remain deterministic given the same [PuzzleHintRequest].
+  ///
+  /// Engines that do not support hints may rely on the default implementation
+  /// which returns `null`.
+  PuzzleHint? requestHint({
+    required S currentState,
+    PuzzleHintRequest? request,
+  }) =>
+      null;
 }
 
 /// Registry for managing puzzle engines.
@@ -174,6 +198,167 @@ class GeneratedPuzzle<S> {
 
   @override
   String toString() => 'GeneratedPuzzle(meta: $meta, telemetry: $telemetry)';
+}
+
+/// Advertised capabilities for a puzzle engine.
+class PuzzleCapabilities {
+  const PuzzleCapabilities({
+    this.supportsHints = false,
+  });
+
+  /// Whether this engine can provide gameplay hints.
+  final bool supportsHints;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PuzzleCapabilities &&
+          runtimeType == other.runtimeType &&
+          supportsHints == other.supportsHints;
+
+  @override
+  int get hashCode => supportsHints.hashCode;
+}
+
+/// Parameters describing a hint request.
+class PuzzleHintRequest {
+  const PuzzleHintRequest({
+    this.seed64,
+    this.iteration = 0,
+    this.moveCount,
+    this.metadata = const <String, Object?>{},
+  });
+
+  /// Optional deterministic seed to use when deriving the hint.
+  final int? seed64;
+
+  /// Sequence number for multiple hint requests within the same session.
+  final int iteration;
+
+  /// Optional current move count when the hint was requested.
+  final int? moveCount;
+
+  /// Additional metadata contextualising the request.
+  final Map<String, Object?> metadata;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PuzzleHintRequest &&
+          runtimeType == other.runtimeType &&
+          seed64 == other.seed64 &&
+          iteration == other.iteration &&
+          moveCount == other.moveCount &&
+          _deepEquals(metadata, other.metadata);
+
+  @override
+  int get hashCode => Object.hash(
+        seed64,
+        iteration,
+        moveCount,
+        _deepHash(metadata),
+      );
+}
+
+/// Highlight information returned from [PuzzleEngine.requestHint].
+class PuzzleHint {
+  PuzzleHint({
+    List<PuzzleHintCell> cells = const <PuzzleHintCell>[],
+    List<PuzzleHintUnit> units = const <PuzzleHintUnit>[],
+    Map<String, Object?> metadata = const <String, Object?>{},
+  })  : cells = UnmodifiableListView<PuzzleHintCell>(
+            List<PuzzleHintCell>.from(cells)),
+        units = UnmodifiableListView<PuzzleHintUnit>(
+            List<PuzzleHintUnit>.from(units)),
+        metadata = Map.unmodifiable(Map<String, Object?>.from(metadata));
+
+  /// Highlighted cells in row/column space.
+  final UnmodifiableListView<PuzzleHintCell> cells;
+
+  /// Highlighted logical units such as rows, columns, or boxes.
+  final UnmodifiableListView<PuzzleHintUnit> units;
+
+  /// Arbitrary metadata describing the hint.
+  final Map<String, Object?> metadata;
+
+  /// Whether the hint contains no highlight information.
+  bool get isEmpty => cells.isEmpty && units.isEmpty && metadata.isEmpty;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PuzzleHint &&
+          runtimeType == other.runtimeType &&
+          _deepEquals(cells, other.cells) &&
+          _deepEquals(units, other.units) &&
+          _deepEquals(metadata, other.metadata);
+
+  @override
+  int get hashCode => Object.hash(
+        _deepHash(cells),
+        _deepHash(units),
+        _deepHash(metadata),
+      );
+}
+
+/// A single cell highlighted by a hint.
+class PuzzleHintCell {
+  PuzzleHintCell({
+    required this.row,
+    required this.column,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) : metadata = Map.unmodifiable(Map<String, Object?>.from(metadata));
+
+  /// Row coordinate of the highlighted cell.
+  final int row;
+
+  /// Column coordinate of the highlighted cell.
+  final int column;
+
+  /// Additional metadata describing the cell highlight.
+  final Map<String, Object?> metadata;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PuzzleHintCell &&
+          runtimeType == other.runtimeType &&
+          row == other.row &&
+          column == other.column &&
+          _deepEquals(metadata, other.metadata);
+
+  @override
+  int get hashCode => Object.hash(row, column, _deepHash(metadata));
+}
+
+/// A logical unit (row, column, box, etc.) highlighted by a hint.
+class PuzzleHintUnit {
+  PuzzleHintUnit({
+    required this.type,
+    required this.index,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) : metadata = Map.unmodifiable(Map<String, Object?>.from(metadata));
+
+  /// Identifier for the unit type (e.g. `row`, `column`, `box`).
+  final String type;
+
+  /// Index within the given unit type.
+  final int index;
+
+  /// Additional metadata describing the unit highlight.
+  final Map<String, Object?> metadata;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PuzzleHintUnit &&
+          runtimeType == other.runtimeType &&
+          type == other.type &&
+          index == other.index &&
+          _deepEquals(metadata, other.metadata);
+
+  @override
+  int get hashCode => Object.hash(type, index, _deepHash(metadata));
 }
 
 class GenerationTelemetry {

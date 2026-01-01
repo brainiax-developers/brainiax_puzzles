@@ -70,20 +70,20 @@ void main() {
       difficultyFixtures: _sudokuDifficultyFixtures(),
       validationP95Millis: 35,
     ),
-    EngineAcceptanceConfig<FutoshikiBoard>(
-      name: 'Futoshiki',
-      engineFactory: () => FutoshikiEngine(),
-      solverFactory: () => const FutoshikiSolver(),
+    EngineAcceptanceConfig<KillerQueensBoard>(
+      name: 'Killer Queens',
+      engineFactory: () => KillerQueensEngine(),
+      solverFactory: () => const KillerQueensSolver(),
       size: const SizeOpt(
-        id: 'latin4x4',
-        description: 'Futoshiki 4x4',
-        width: 4,
-        height: 4,
+        id: 'killer6x6',
+        description: 'Killer Queens 6x6',
+        width: 6,
+        height: 6,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (FutoshikiBoard board) => jsonEncode(board.toJson()),
-      difficultyFixtures: _futoshikiDifficultyFixtures(),
-      validationP95Millis: 40,
+      canonicalSignature: (KillerQueensBoard board) => jsonEncode(board.toJson()),
+      difficultyFixtures: _killerQueensDifficultyFixtures(),
+      validationP95Millis: 45,
     ),
     EngineAcceptanceConfig<MathdokuBoard>(
       name: 'Mathdoku',
@@ -497,77 +497,199 @@ SudokuBoard _sudokuBoardFromMatrix(List<List<int>> values) {
   return SudokuBoard(cells: cells, fixed: fixed);
 }
 
-List<DifficultyFixture<FutoshikiBoard>> _futoshikiDifficultyFixtures() {
-  FutoshikiBoard _puzzleWithCells(int size) {
+List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
+  KillerQueensBoard _puzzle({
+    required int size,
+    required List<int> queenCols,
+    Set<int> givens = const <int>{},
+    Set<int> blocked = const <int>{},
+    List<int> cagePattern = const <int>[2],
+  }) {
     final int cellCount = size * size;
-    return FutoshikiBoard(
+    final List<bool> blockedFlags = List<bool>.filled(cellCount, false);
+    for (final int index in blocked) {
+      blockedFlags[index] = true;
+    }
+    final List<KillerQueensCage> cages = _buildRowCages(
       size: size,
-      cells: List<int>.filled(cellCount, 0),
-      fixed: List<bool>.filled(cellCount, false),
-      inequalities: const <FutoshikiInequality>[],
+      blocked: blockedFlags,
+      cagePattern: cagePattern,
     );
-  }
-
-  FutoshikiBoard _solution(int size) {
-    final int cellCount = size * size;
-    final List<int> cells = List<int>.generate(cellCount, (int index) => (index % size) + 1);
-    return FutoshikiBoard(
+    final List<int> cells = List<int>.filled(cellCount, 0);
+    final List<bool> fixed = List<bool>.filled(cellCount, false);
+    for (int row = 0; row < size; row++) {
+      final int col = queenCols[row];
+      final int index = row * size + col;
+      if (givens.contains(index)) {
+        cells[index] = 1;
+        fixed[index] = true;
+      }
+    }
+    return KillerQueensBoard(
       size: size,
       cells: cells,
-      fixed: List<bool>.filled(cellCount, true),
-      inequalities: const <FutoshikiInequality>[],
+      fixed: fixed,
+      cages: cages,
     );
   }
 
-  final FutoshikiBoard easyPuzzle = _puzzleWithCells(4);
-  final FutoshikiBoard solution = _solution(4);
+  KillerQueensBoard _solution({
+    required int size,
+    required List<int> queenCols,
+    Set<int> blocked = const <int>{},
+    List<int> cagePattern = const <int>[2],
+  }) {
+    final int cellCount = size * size;
+    final List<bool> blockedFlags = List<bool>.filled(cellCount, false);
+    for (final int index in blocked) {
+      blockedFlags[index] = true;
+    }
+    final List<KillerQueensCage> cages = _buildRowCages(
+      size: size,
+      blocked: blockedFlags,
+      cagePattern: cagePattern,
+    );
+    final List<int> cells = List<int>.filled(cellCount, 0);
+    final List<bool> fixed = List<bool>.filled(cellCount, true);
+    for (int row = 0; row < size; row++) {
+      final int col = queenCols[row];
+      final int index = row * size + col;
+      cells[index] = 1;
+    }
+    return KillerQueensBoard(
+      size: size,
+      cells: cells,
+      fixed: fixed,
+      cages: cages,
+    );
+  }
 
-  return <DifficultyFixture<FutoshikiBoard>>[
-    DifficultyFixture<FutoshikiBoard>(
-      name: 'futoshiki-easy',
+  final KillerQueensBoard easyPuzzle = _puzzle(
+    size: 6,
+    queenCols: const <int>[1, 3, 5, 0, 2, 4],
+    givens: {1, 26, 34},
+    cagePattern: const <int>[2],
+  );
+  final KillerQueensBoard easySolution = _solution(
+    size: 6,
+    queenCols: const <int>[1, 3, 5, 0, 2, 4],
+    cagePattern: const <int>[2],
+  );
+
+  final KillerQueensBoard mediumPuzzle = _puzzle(
+    size: 8,
+    queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
+    givens: {1, 35},
+    blocked: {10, 44},
+    cagePattern: const <int>[3, 2],
+  );
+  final KillerQueensBoard mediumSolution = _solution(
+    size: 8,
+    queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
+    blocked: {10, 44},
+    cagePattern: const <int>[3, 2],
+  );
+
+  final KillerQueensBoard hardPuzzle = _puzzle(
+    size: 9,
+    queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
+    blocked: {9, 40, 63},
+    cagePattern: const <int>[4, 3, 2],
+  );
+  final KillerQueensBoard hardSolution = _solution(
+    size: 9,
+    queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
+    blocked: {9, 40, 63},
+    cagePattern: const <int>[4, 3, 2],
+  );
+
+  final KillerQueensBoard expertPuzzle = _puzzle(
+    size: 10,
+    queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
+    blocked: {11, 22, 45, 66, 77},
+    cagePattern: const <int>[3, 4, 3, 2],
+  );
+  final KillerQueensBoard expertSolution = _solution(
+    size: 10,
+    queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
+    blocked: {11, 22, 45, 66, 77},
+    cagePattern: const <int>[3, 4, 3, 2],
+  );
+
+  return <DifficultyFixture<KillerQueensBoard>>[
+    DifficultyFixture<KillerQueensBoard>(
+      name: 'killer-queens-easy',
       puzzle: easyPuzzle,
-      solution: solution,
-      solverTelemetry: const <String, Object?>{
-        'tightenings': 10,
-        'firstGuessDepth': 0,
-        'branches': 0,
-      },
+      solution: easySolution,
+      generatorTelemetry: const <String, Object?>{'attempts': 1},
+      solverTelemetry: const <String, Object?>{'branches': 0},
       expectedBucket: 'easy',
     ),
-    DifficultyFixture<FutoshikiBoard>(
-      name: 'futoshiki-medium',
-      puzzle: easyPuzzle,
-      solution: solution,
-      solverTelemetry: const <String, Object?>{
-        'tightenings': 120,
-        'firstGuessDepth': 8,
-        'branches': 80,
-      },
+    DifficultyFixture<KillerQueensBoard>(
+      name: 'killer-queens-medium',
+      puzzle: mediumPuzzle,
+      solution: mediumSolution,
+      generatorTelemetry: const <String, Object?>{'attempts': 2},
+      solverTelemetry: const <String, Object?>{'branches': 18},
       expectedBucket: 'medium',
     ),
-    DifficultyFixture<FutoshikiBoard>(
-      name: 'futoshiki-hard',
-      puzzle: easyPuzzle,
-      solution: solution,
-      solverTelemetry: const <String, Object?>{
-        'tightenings': 150,
-        'firstGuessDepth': 20,
-        'branches': 150,
-      },
+    DifficultyFixture<KillerQueensBoard>(
+      name: 'killer-queens-hard',
+      puzzle: hardPuzzle,
+      solution: hardSolution,
+      generatorTelemetry: const <String, Object?>{'attempts': 3},
+      solverTelemetry: const <String, Object?>{'branches': 36},
       expectedBucket: 'hard',
     ),
-    DifficultyFixture<FutoshikiBoard>(
-      name: 'futoshiki-expert',
-      puzzle: easyPuzzle,
-      solution: solution,
-      solverTelemetry: const <String, Object?>{
-        'tightenings': 220,
-        'firstGuessDepth': 30,
-        'branches': 400,
-      },
+    DifficultyFixture<KillerQueensBoard>(
+      name: 'killer-queens-expert',
+      puzzle: expertPuzzle,
+      solution: expertSolution,
+      generatorTelemetry: const <String, Object?>{'attempts': 4},
+      solverTelemetry: const <String, Object?>{'branches': 72},
       expectedBucket: 'expert',
     ),
   ];
+}
+
+List<KillerQueensCage> _buildRowCages({
+  required int size,
+  required List<bool> blocked,
+  required List<int> cagePattern,
+}) {
+  final List<KillerQueensCage> cages = <KillerQueensCage>[];
+  int patternIndex = 0;
+  int currentTarget = cagePattern[patternIndex % cagePattern.length];
+
+  for (int row = 0; row < size; row++) {
+    List<int> buffer = <int>[];
+    for (int col = 0; col < size; col++) {
+      final int index = row * size + col;
+      if (blocked[index]) {
+        if (buffer.isNotEmpty) {
+          cages.add(KillerQueensCage(cells: List<int>.from(buffer)));
+          buffer = <int>[];
+          patternIndex += 1;
+          currentTarget = cagePattern[patternIndex % cagePattern.length];
+        }
+        continue;
+      }
+      buffer.add(index);
+      if (buffer.length >= currentTarget) {
+        cages.add(KillerQueensCage(cells: List<int>.from(buffer)));
+        buffer = <int>[];
+        patternIndex += 1;
+        currentTarget = cagePattern[patternIndex % cagePattern.length];
+      }
+    }
+    if (buffer.isNotEmpty) {
+      cages.add(KillerQueensCage(cells: List<int>.from(buffer)));
+      patternIndex += 1;
+      currentTarget = cagePattern[patternIndex % cagePattern.length];
+    }
+  }
+
+  return cages;
 }
 
 List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {

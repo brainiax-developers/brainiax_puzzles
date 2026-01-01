@@ -10,6 +10,17 @@ class NonogramLineSolver {
     final List<List<int>> placements = <List<int>>[];
     final List<int?> constraint = current ?? List<int?>.filled(length, null);
 
+    final int clueSum = clues.fold<int>(0, (int sum, int value) => sum + value);
+    final int minimumRequired = clueSum + (clues.isEmpty ? 0 : clues.length - 1);
+    if (minimumRequired > length) {
+      return placements;
+    }
+
+    final int knownFilled = constraint.where((int? value) => value == filled).length;
+    if (knownFilled > clueSum) {
+      return placements;
+    }
+
     void dfs(int clueIndex, int position, List<int> buffer) {
       if (clueIndex == clues.length) {
         for (int i = position; i < length; i++) {

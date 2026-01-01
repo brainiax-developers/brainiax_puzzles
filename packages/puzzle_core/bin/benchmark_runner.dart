@@ -87,7 +87,7 @@ Future<void> _initializeEngines() async {
   }
 
   try {
-    registry.register(FutoshikiEngine());
+    registry.register(KillerQueensEngine());
   } catch (e) {
     // Engine might not be available
   }
