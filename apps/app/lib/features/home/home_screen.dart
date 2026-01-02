@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../shared/widgets/widgets.dart';
 
-const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'dev');
+const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'prod');
 bool get _isProdFlavor => _appFlavor == 'prod';
 
 class HomeScreen extends ConsumerStatefulWidget {

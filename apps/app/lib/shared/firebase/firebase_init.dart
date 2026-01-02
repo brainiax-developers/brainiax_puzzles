@@ -13,7 +13,8 @@ bool get _crashlyticsSupported =>
      defaultTargetPlatform == TargetPlatform.macOS);
 
 // Compile-time flavor (set via --dart-define=APP_FLAVOR=dev|staging|prod)
-const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'dev');
+// Default to 'prod' so missing defines behave like production.
+const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'prod');
 
 bool get _enableAnalytics =>
   !kDebugMode && (_appFlavor == 'staging' || _appFlavor == 'prod');
