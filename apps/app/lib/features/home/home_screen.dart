@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../shared/widgets/widgets.dart';
 
+const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'dev');
+bool get _isProdFlavor => _appFlavor == 'prod';
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -23,7 +26,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     _lastTapTime = now;
 
-    if (_tapCount >= 5) {
+    if (_tapCount >= 5 && !_isProdFlavor) {
       _tapCount = 0;
       context.push('/bench');
     }
