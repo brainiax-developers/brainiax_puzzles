@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform, FlutterError;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import '../../firebase_options.dart';
 
 bool get _crashlyticsSupported =>
@@ -9,6 +11,17 @@ bool get _crashlyticsSupported =>
     (defaultTargetPlatform == TargetPlatform.android ||
      defaultTargetPlatform == TargetPlatform.iOS ||
      defaultTargetPlatform == TargetPlatform.macOS);
+
+// Compile-time flavor (set via --dart-define=APP_FLAVOR=dev|staging|prod)
+// Default to 'prod' so missing defines behave like production.
+const String _appFlavor = String.fromEnvironment('APP_FLAVOR', defaultValue: 'prod');
+
+bool get _enableAnalytics =>
+  !kDebugMode && (_appFlavor == 'staging' || _appFlavor == 'prod');
+
+bool get _enableCrashlytics =>
+  _crashlyticsSupported &&
+  (_appFlavor == 'dev' || _appFlavor == 'staging' || _appFlavor == 'prod');
 
 Future<void> initFirebase() async {
   try {
@@ -32,13 +45,35 @@ Future<void> initFirebase() async {
     return;
   }
 
-  // Crashlytics: ONLY on supported platforms
-  if (_crashlyticsSupported) {
+  // Analytics: enable collection only for staging/prod (non-debug)
+  if (_enableAnalytics) {
+    try {
+      await FirebaseAnalytics.instance
+          .setAnalyticsCollectionEnabled(true);
+      if (kDebugMode) {
+        print('✅ Firebase Analytics initialized');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Firebase Analytics initialization failed: $e');
+      }
+      // Analytics failures should not block app startup
+    }
+  } else if (kDebugMode) {
+    print('ℹ️ Firebase Analytics disabled for this flavor / build type');
+  }
+
+  // Crashlytics: enabled on supported platforms for dev/staging/prod flavors
+  if (_enableCrashlytics) {
     try {
       await FirebaseCrashlytics.instance
-          .setCrashlyticsCollectionEnabled(!kDebugMode);
+          .setCrashlyticsCollectionEnabled(true);
       FlutterError.onError =
           FirebaseCrashlytics.instance.recordFlutterFatalError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
       if (kDebugMode) {
         print('✅ Firebase Crashlytics initialized');
       }

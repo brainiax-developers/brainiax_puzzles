@@ -44,7 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Daily Challenge Surface
           const DailySurface(),
           const SizedBox(height: 24),
-          
+
           // Menu Items
           _buildMenuSection(),
         ],
@@ -55,7 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildMenuSection() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -99,7 +99,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(

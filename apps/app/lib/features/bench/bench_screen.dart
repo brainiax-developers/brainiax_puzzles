@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class BenchScreen extends StatefulWidget {
   const BenchScreen({super.key});
@@ -197,6 +198,14 @@ class _BenchScreenState extends State<BenchScreen> {
       appBar: AppBar(
         title: const Text('Engine Bench'),
         actions: [
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              tooltip: 'Trigger test crash (debug only)',
+              onPressed: () {
+                FirebaseCrashlytics.instance.crash();
+              },
+            ),
           if (_lastResult != null) ...[
             IconButton(
               icon: const Icon(Icons.file_download),
