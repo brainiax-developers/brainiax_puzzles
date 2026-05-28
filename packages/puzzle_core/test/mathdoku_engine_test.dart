@@ -53,6 +53,18 @@ void main() {
           SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
         );
 
+        for (final MathdokuCage cage in first.state.cages) {
+          if (cage.cells.length > 2) {
+            expect(
+              cage.operation == MathdokuOperation.subtraction ||
+                  cage.operation == MathdokuOperation.division,
+              isFalse,
+              reason:
+                  'Cage size ${cage.cells.length} must not use subtraction/division: ${cage.operation}',
+            );
+          }
+        }
+
         expect(result.hasSolution, isTrue, reason: 'Puzzle should be solvable');
         expect(result.isUnique, isTrue, reason: 'Puzzle must be unique');
 
@@ -80,6 +92,18 @@ void main() {
           generated.state,
           SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
         );
+
+        for (final MathdokuCage cage in generated.state.cages) {
+          if (cage.cells.length > 2) {
+            expect(
+              cage.operation == MathdokuOperation.subtraction ||
+                  cage.operation == MathdokuOperation.division,
+              isFalse,
+              reason:
+                  'Cage size ${cage.cells.length} must not use subtraction/division: ${cage.operation}',
+            );
+          }
+        }
 
         expect(result.solutions.length, equals(1));
 

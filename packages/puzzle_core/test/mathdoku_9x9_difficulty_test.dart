@@ -41,26 +41,22 @@ void main() {
         }
         expect(covered.length, equals(expectedCells));
 
-        // Collect operations
-        final Set<MathdokuOperation> ops = generated.state.cages
-            .map((c) => c.operation)
-            .toSet();
-
-        if (level == 'easy') {
-          // Only equality (single) and addition expected.
-            expect(ops.every((op) => op == MathdokuOperation.addition || op == MathdokuOperation.equality), isTrue,
-              reason: 'Easy should restrict to addition/equality, got: $ops');
-        } else if (level == 'medium') {
-          // No division/multiplication.
-          expect(ops.contains(MathdokuOperation.division), isFalse);
-          expect(ops.contains(MathdokuOperation.multiplication), isFalse);
-        } else if (level == 'hard') {
-          // Allow multiplication & subtraction; division excluded.
-          expect(ops.contains(MathdokuOperation.multiplication) || ops.contains(MathdokuOperation.subtraction), isTrue);
-          expect(ops.contains(MathdokuOperation.division), isFalse);
-        } else if (level == 'expert') {
-          // All ops potentially allowed (at least one advanced op besides addition).
-          expect(ops.contains(MathdokuOperation.division) || ops.contains(MathdokuOperation.multiplication) || ops.contains(MathdokuOperation.subtraction), isTrue);
+        // Production rule: only 2-cell cages may use subtraction/division.
+        for (final MathdokuCage cage in generated.state.cages) {
+          if (cage.cells.length == 1) {
+            expect(cage.operation, equals(MathdokuOperation.equality));
+            continue;
+          }
+          expect(cage.operation == MathdokuOperation.equality, isFalse);
+          if (cage.cells.length > 2) {
+            expect(
+              cage.operation == MathdokuOperation.subtraction ||
+                  cage.operation == MathdokuOperation.division,
+              isFalse,
+              reason:
+                  'Cage size ${cage.cells.length} must not use subtraction/division: ${cage.operation}',
+            );
+          }
         }
 
         // Solve to ensure uniqueness still holds.

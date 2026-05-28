@@ -213,13 +213,15 @@ class MathdokuGenerator extends PuzzleGenerator<MathdokuBoard> {
     options.add(_OperationChoice(MathdokuOperation.addition, sum));
     options.add(_OperationChoice(MathdokuOperation.multiplication, product));
 
-    final Set<int> subtractionTargets = mathdokuSubtractionTargets(values);
-    for (final int target in subtractionTargets) {
-      options.add(_OperationChoice(MathdokuOperation.subtraction, target));
-    }
-    final Set<int> divisionTargets = mathdokuDivisionTargets(values);
-    for (final int target in divisionTargets) {
-      options.add(_OperationChoice(MathdokuOperation.division, target));
+    if (values.length == 2) {
+      final Set<int> subtractionTargets = mathdokuSubtractionTargets(values);
+      for (final int target in subtractionTargets) {
+        options.add(_OperationChoice(MathdokuOperation.subtraction, target));
+      }
+      final Set<int> divisionTargets = mathdokuDivisionTargets(values);
+      for (final int target in divisionTargets) {
+        options.add(_OperationChoice(MathdokuOperation.division, target));
+      }
     }
 
     // Safety fallback: if filtering removed all multi-cell ops, use addition.
