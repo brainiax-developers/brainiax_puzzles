@@ -54,6 +54,43 @@ void main() {
     expect(summary.isValid, isTrue, reason: summary.issues.join(','));
   });
 
+  test('engine generates 9x9 with matching meta size for all difficulties', () {
+    const List<String> levels = <String>['easy', 'medium', 'hard', 'expert'];
+    const List<String> seedCandidates = <String>[
+      'kakuro_engine_seed',
+      'kakuro_move_seed',
+      'kakuro_engine_seed_alt_1',
+      'kakuro_engine_seed_alt_2',
+    ];
+
+    for (final String level in levels) {
+      GeneratedPuzzle<KakuroBoard>? generated;
+      for (final String seedStr in seedCandidates) {
+        try {
+          final int seed64 = Seed.fromString('${seedStr}_$level');
+          generated = engine.generate(
+            seedStr: '${seedStr}_$level',
+            seed64: seed64,
+            size: size,
+            difficulty: DifficultyScore(value: 0.0, level: level),
+          );
+          break;
+        } catch (_) {
+          // Try next deterministic seed candidate.
+        }
+      }
+
+      expect(generated, isNotNull, reason: 'generation failed for $level');
+      final GeneratedPuzzle<KakuroBoard> puzzle = generated!;
+
+      expect(puzzle.state.width, equals(9), reason: 'width for $level');
+      expect(puzzle.state.height, equals(9), reason: 'height for $level');
+      expect(puzzle.meta.size.width, equals(puzzle.state.width));
+      expect(puzzle.meta.size.height, equals(puzzle.state.height));
+      expect(puzzle.meta.size.id, equals('template9x9'));
+    }
+  });
+
   test('validateMove enforces bounds and rules', () {
     final int seed64 = Seed.fromString('kakuro_move_seed');
     final generated = engine.generate(
