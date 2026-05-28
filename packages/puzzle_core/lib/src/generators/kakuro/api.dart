@@ -17,12 +17,13 @@ class KakuroPuzzleGenerator {
     KakuroGenerator? generator,
     KakuroDifficultyScorer? scorer,
     DifficultyBucketConfig? difficultyConfig,
-  })  : _generator = generator ?? const KakuroGenerator(),
-        _difficultyScorer = scorer ?? const KakuroDifficultyScorer(),
-        _difficultyConfig = difficultyConfig ??
-            const DifficultyConfigLoader().loadSync(
-              'assets/kakuro_difficulty_thresholds.json',
-            );
+  }) : _generator = generator ?? const KakuroGenerator(),
+       _difficultyScorer = scorer ?? const KakuroDifficultyScorer(),
+       _difficultyConfig =
+           difficultyConfig ??
+           const DifficultyConfigLoader().loadSync(
+             'assets/kakuro_difficulty_thresholds.json',
+           );
 
   final KakuroGenerator _generator;
   final KakuroDifficultyScorer _difficultyScorer;
@@ -31,8 +32,7 @@ class KakuroPuzzleGenerator {
   KakuroPuzzle generateSync(GenerateKakuroRequest request) {
     final DateTime startedAt = DateTime.now();
     final Stopwatch wall = Stopwatch()..start();
-    final int baseSeed =
-        request.seed ?? DateTime.now().microsecondsSinceEpoch;
+    final int baseSeed = request.seed ?? DateTime.now().microsecondsSinceEpoch;
     Object? lastError;
     final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
 
@@ -94,10 +94,21 @@ class KakuroPuzzleGenerator {
       result: null,
     );
 
-    if (lastError != null) {
-      throw lastError!;
-    }
-    throw StateError('Unable to generate Kakuro puzzle');
+    throw GenerationFailure(
+      message:
+          'Unable to generate Kakuro puzzle within bounded attempts/budget',
+      attempts: attemptLog.length,
+      elapsed: wall.elapsed,
+      baseSeed: baseSeed,
+      lastError: lastError,
+      context: <String, Object?>{
+        'difficulty': request.difficulty,
+        'width': request.width,
+        'height': request.height,
+        'maxRestarts': request.maxRestarts,
+        'timeBudgetMs': request.timeBudget.inMilliseconds,
+      },
+    );
   }
 
   KakuroPuzzle _attempt({
@@ -139,23 +150,27 @@ class KakuroPuzzleGenerator {
       solution: board,
       context: DifficultyContext(
         generatorTelemetry: generation.snapshot.telemetry,
-        solverTelemetry:
-            Map<String, Object?>.from(generation.snapshot.telemetry['solverTelemetry'] as Map? ?? const {}),
+        solverTelemetry: Map<String, Object?>.from(
+          generation.snapshot.telemetry['solverTelemetry'] as Map? ?? const {},
+        ),
       ),
     );
-    final String bucket =
-        _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
-    final Map<String, Object?> combinedTelemetry =
-        Map<String, Object?>.from(generation.snapshot.telemetry);
+    final String bucket = _difficultyConfig.bucketFor(
+      difficultyTelemetry.rawScore,
+    );
+    final Map<String, Object?> combinedTelemetry = Map<String, Object?>.from(
+      generation.snapshot.telemetry,
+    );
     combinedTelemetry['restartIndex'] = restartIndex;
     combinedTelemetry['elapsedBeforeAttemptMs'] =
         elapsedBeforeAttempt.inMilliseconds;
-    combinedTelemetry['attemptDurationMs'] =
-        attemptWatch.elapsedMilliseconds;
+    combinedTelemetry['attemptDurationMs'] = attemptWatch.elapsedMilliseconds;
     combinedTelemetry['startTimestamp'] = DateTime.now().toIso8601String();
     combinedTelemetry['seed'] = attemptSeed.toString();
-    combinedTelemetry['wallTimeBudgetMs'] =
-        math.min(hardCap.inMilliseconds, request.timeBudget.inMilliseconds);
+    combinedTelemetry['wallTimeBudgetMs'] = math.min(
+      hardCap.inMilliseconds,
+      request.timeBudget.inMilliseconds,
+    );
     combinedTelemetry['strategy'] = request.strategy.name;
 
     return KakuroPuzzle(
@@ -206,9 +221,7 @@ class KakuroPuzzleGenerator {
   }
 }
 
-Future<KakuroPuzzle> generateKakuroInIsolate(
-  GenerateKakuroRequest request,
-) {
+Future<KakuroPuzzle> generateKakuroInIsolate(GenerateKakuroRequest request) {
   return Isolate.run(() => KakuroPuzzleGenerator().generateSync(request));
 }
 

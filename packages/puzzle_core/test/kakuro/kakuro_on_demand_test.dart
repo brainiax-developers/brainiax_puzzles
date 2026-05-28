@@ -8,10 +8,7 @@ bool _containsForbiddenKey(Object? node) {
     'signature',
     'answer',
   };
-  const Set<String> forbiddenPairs = <String>{
-    'full values',
-    'solved values',
-  };
+  const Set<String> forbiddenPairs = <String>{'full values', 'solved values'};
 
   List<String> tokenize(String key) {
     final String separated = key
@@ -104,10 +101,7 @@ void main() {
     final solver = const core.KakuroSolver(maxSearchDepth: 18);
     final result = solver.solve(
       puzzle!.board,
-      core.SolverContext(
-        rng: core.SeededRng(1),
-        maxSolutions: 2,
-      ),
+      core.SolverContext(rng: core.SeededRng(1), maxSolutions: 2),
     );
     expect(result.isUnique, isTrue);
   });
@@ -115,13 +109,7 @@ void main() {
   test('kakuro telemetry and metadata contain no solution-bearing keys', () {
     final generator = core.KakuroPuzzleGenerator();
     core.KakuroPuzzle? puzzle;
-    final List<int> seeds = <int>[
-      12345,
-      67890,
-      2222,
-      9999,
-      424242,
-    ];
+    final List<int> seeds = <int>[12345, 67890, 2222, 9999, 424242];
     for (final int seed in seeds) {
       try {
         puzzle = generator.generateSync(
@@ -142,8 +130,30 @@ void main() {
 
     expect(_containsForbiddenKey(puzzle!.telemetry), isFalse);
 
-    final core.GeneratedPuzzle<core.KakuroBoard> generated =
-        core.kakuroPuzzleAsGeneratedPuzzle(puzzle);
+    final core.GeneratedPuzzle<core.KakuroBoard> generated = core
+        .kakuroPuzzleAsGeneratedPuzzle(puzzle);
     expect(_containsForbiddenKey(generated.toJson()), isFalse);
+  });
+
+  test('forced failure exits in bounded time with GenerationFailure', () {
+    final generator = core.KakuroPuzzleGenerator();
+    final Stopwatch watch = Stopwatch()..start();
+
+    expect(
+      () => generator.generateSync(
+        core.GenerateKakuroRequest(
+          width: 9,
+          height: 9,
+          difficulty: 'easy',
+          seed: 12345,
+          maxRestarts: 0,
+          timeBudget: const Duration(milliseconds: 1),
+        ),
+      ),
+      throwsA(isA<core.GenerationFailure>()),
+    );
+
+    watch.stop();
+    expect(watch.elapsedMilliseconds, lessThan(500));
   });
 }

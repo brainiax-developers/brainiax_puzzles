@@ -9,7 +9,6 @@ import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import 'engine_provider.dart';
 import '../services/generation_isolate.dart';
-import '../services/kakuro_on_demand_service.dart';
 import '../services/slitherlink_on_demand_service.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
@@ -68,9 +67,9 @@ class PuzzleGenerationController
       if (puzzleType == app.PuzzleType.slitherlinkLoop) {
         final core.GeneratedPuzzle<dynamic> generated =
             await _generateSlitherlinkOnDemand(
-          difficulty: difficulty,
-          size: resolvedSize,
-        );
+              difficulty: difficulty,
+              size: resolvedSize,
+            );
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
@@ -113,49 +112,28 @@ class PuzzleGenerationController
             size: resolvedSize,
             difficulty: difficultyScore,
           ).timeout(attemptTimeout);
-            if (token == _generationToken) {
-              state = AsyncValue.data(generated);
-            }
-            if (kDebugMode) {
-              debugPrint(
-                '[Generation][Success] type=${puzzleType.key} '
-                'difficulty=$difficulty size=${resolvedSize.id} '
-                'seed=${generated.meta.seedStr} attempt=$attempt '
-                'elapsedMs=${stopwatch.elapsedMilliseconds}',
-              );
-            }
-            return generated;
-          } catch (e, st) {
-            lastError = e;
-            lastStack = st;
-            // Try next attempt with a new seed
-            if (attempt == maxAttempts) break;
-            // brief microtask yield to keep UI responsive
-            await Future<void>.delayed(const Duration(milliseconds: 10));
+          if (token == _generationToken) {
+            state = AsyncValue.data(generated);
           }
-        }
-      // If we get here, all attempts failed
-      if (puzzleType == app.PuzzleType.kakuroClassic) {
-        try {
-          final fallback = await _generateKakuroOnDemand(
-            difficulty: difficulty,
-            size: resolvedSize,
-          );
           if (kDebugMode) {
             debugPrint(
-              '[Generation][Fallback] type=${puzzleType.key} '
+              '[Generation][Success] type=${puzzleType.key} '
               'difficulty=$difficulty size=${resolvedSize.id} '
-              'seed=${fallback.meta.seedStr} elapsedMs=${stopwatch.elapsedMilliseconds}',
+              'seed=${generated.meta.seedStr} attempt=$attempt '
+              'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );
           }
-          if (token == _generationToken) {
-            state = AsyncValue.data(fallback);
-          }
-          return fallback;
-        } catch (_) {
-          // Fall through to existing error handling if fallback fails.
+          return generated;
+        } catch (e, st) {
+          lastError = e;
+          lastStack = st;
+          // Try next attempt with a new seed
+          if (attempt == maxAttempts) break;
+          // brief microtask yield to keep UI responsive
+          await Future<void>.delayed(const Duration(milliseconds: 10));
         }
       }
+      // If we get here, all attempts failed.
       if (token == _generationToken) {
         state = AsyncValue.error(
           lastError ?? StateError('Generation failed'),
@@ -326,18 +304,6 @@ class PuzzleGenerationController
       default:
         return const core.DifficultyScore(value: 0.6, level: 'medium');
     }
-  }
-
-  Future<core.GeneratedPuzzle<dynamic>> _generateKakuroOnDemand({
-    required String difficulty,
-    required core.SizeOpt size,
-  }) async {
-    final service = ref.read(kakuroOnDemandProvider);
-    return service.nextPuzzle(
-      difficulty: difficulty,
-      width: size.width,
-      height: size.height,
-    );
   }
 
   Future<core.GeneratedPuzzle<dynamic>> _generateSlitherlinkOnDemand({

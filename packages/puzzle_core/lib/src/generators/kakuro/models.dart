@@ -4,6 +4,33 @@ import '../../kakuro/kakuro_board.dart';
 
 enum KakuroGenerationStrategy { solutionFirst, bottomUp }
 
+class GenerationFailure implements Exception {
+  GenerationFailure({
+    required this.message,
+    required this.attempts,
+    required this.elapsed,
+    this.baseSeed,
+    this.lastError,
+    this.lastStackTrace,
+    this.context = const <String, Object?>{},
+  });
+
+  final String message;
+  final int attempts;
+  final Duration elapsed;
+  final int? baseSeed;
+  final Object? lastError;
+  final StackTrace? lastStackTrace;
+  final Map<String, Object?> context;
+
+  @override
+  String toString() {
+    return 'GenerationFailure(message: $message, attempts: $attempts, '
+        'elapsedMs: ${elapsed.inMilliseconds}, baseSeed: $baseSeed, '
+        'lastError: ${lastError ?? 'none'})';
+  }
+}
+
 class KakuroDifficultyProfile {
   const KakuroDifficultyProfile({
     this.maxBacktrackNodes = 14,
@@ -77,24 +104,30 @@ class KakuroPuzzle {
   int get height => board.height;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'board': board.toJson(),
-        'difficultyBucket': difficultyBucket,
-        'telemetry': telemetry,
-        'difficultyTelemetry': difficultyTelemetry.toJson(),
-        'seed': seed,
-        'strategy': strategy.name,
-        'timeToGenerateMs': timeToGenerate.inMilliseconds,
-        'restartCount': restartCount,
-      };
+    'board': board.toJson(),
+    'difficultyBucket': difficultyBucket,
+    'telemetry': telemetry,
+    'difficultyTelemetry': difficultyTelemetry.toJson(),
+    'seed': seed,
+    'strategy': strategy.name,
+    'timeToGenerateMs': timeToGenerate.inMilliseconds,
+    'restartCount': restartCount,
+  };
 
   factory KakuroPuzzle.fromJson(Map<String, dynamic> json) {
     final strategyName = json['strategy'] as String? ?? 'solutionFirst';
     return KakuroPuzzle(
-      board: KakuroBoard.fromJson(Map<String, dynamic>.from(json['board'] as Map)),
+      board: KakuroBoard.fromJson(
+        Map<String, dynamic>.from(json['board'] as Map),
+      ),
       difficultyBucket: json['difficultyBucket'] as String? ?? 'unknown',
-      telemetry: Map<String, Object?>.from(json['telemetry'] as Map? ?? const {}),
+      telemetry: Map<String, Object?>.from(
+        json['telemetry'] as Map? ?? const {},
+      ),
       difficultyTelemetry: DifficultyTelemetry.fromJson(
-        Map<String, dynamic>.from(json['difficultyTelemetry'] as Map? ?? const {}),
+        Map<String, dynamic>.from(
+          json['difficultyTelemetry'] as Map? ?? const {},
+        ),
       ),
       seed: json['seed'] as int?,
       strategy: KakuroGenerationStrategy.values.firstWhere(
