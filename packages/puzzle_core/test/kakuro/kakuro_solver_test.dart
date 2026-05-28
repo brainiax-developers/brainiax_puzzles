@@ -40,10 +40,28 @@ void main() {
     expect(telemetry.containsKey('forcedAssignments'), isTrue);
     expect(telemetry.containsKey('candidateRemovals'), isTrue);
     expect(telemetry.containsKey('candidateShrinkPercent'), isTrue);
+    expect(telemetry.containsKey('searchNodes'), isTrue);
+    expect(telemetry.containsKey('backtracks'), isTrue);
+    expect(telemetry.containsKey('maxDepth'), isTrue);
+    expect(telemetry.containsKey('maxBranchingFactor'), isTrue);
+    expect(telemetry.containsKey('avgRunCombinationCount'), isTrue);
+    expect(telemetry.containsKey('singleComboRunRatio'), isTrue);
+    expect(telemetry.containsKey('maxRunLength'), isTrue);
+    expect(telemetry.containsKey('whiteCellCount'), isTrue);
+    expect(telemetry.containsKey('runCount'), isTrue);
     expect(telemetry.containsKey('backtrackNodes'), isTrue);
 
     final double shrink = (telemetry['candidateShrinkPercent'] as num).toDouble();
+    final double singleComboRunRatio =
+        (telemetry['singleComboRunRatio'] as num).toDouble();
     expect(shrink, inInclusiveRange(0.0, 1.0));
+    expect(singleComboRunRatio, inInclusiveRange(0.0, 1.0));
+    expect((telemetry['searchNodes'] as num).toInt(), greaterThanOrEqualTo(1));
+    expect((telemetry['maxDepth'] as num).toInt(), greaterThanOrEqualTo(0));
+    expect(
+      (telemetry['maxBranchingFactor'] as num).toInt(),
+      greaterThanOrEqualTo(0),
+    );
     expect((telemetry['forcedAssignments'] as num).toInt(), greaterThanOrEqualTo(0));
     expect((telemetry['backtrackNodes'] as num).toInt(), greaterThanOrEqualTo(0));
   });

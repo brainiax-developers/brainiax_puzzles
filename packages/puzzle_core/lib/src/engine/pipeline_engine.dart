@@ -73,7 +73,13 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
             DifficultyRequest(level: difficulty.level, hint: difficulty.value),
       );
 
-      final generation = generator.generate(generationContext);
+      late final PuzzleGenerationResult<S> generation;
+      try {
+        generation = generator.generate(generationContext);
+      } on StateError catch (err) {
+        lastError = err;
+        continue;
+      }
       final S puzzle = generation.board;
 
       final ValidationSummary puzzleValidation = validator.validatePuzzle(puzzle);

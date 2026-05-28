@@ -61,8 +61,17 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
 
     final SolverStatus status = search.solutionStatus;
     final Map<String, Object?> telemetry = <String, Object?>{
+      'searchNodes': search.searchNodes,
+      'backtracks': search.backtracks,
+      'maxDepth': search.maxDepth,
+      'maxBranchingFactor': search.maxBranchingFactor,
       'forcedAssignments': search.forcedAssignments,
       'candidateRemovals': search.candidateRemovals,
+      'avgRunCombinationCount': search.avgRunCombinationCount,
+      'singleComboRunRatio': search.singleComboRunRatio,
+      'maxRunLength': search.maxRunLength,
+      'whiteCellCount': search.whiteCellCount,
+      'runCount': search.runCount,
       'candidateShrinkPercent': search.candidateShrinkPercent,
       'backtrackNodes': search.backtrackNodes,
       'propagationRounds': search.propagationRounds,
@@ -161,9 +170,18 @@ class _KakuroSearch {
 
   int forcedAssignments = 0;
   int candidateRemovals = 0;
+  int searchNodes = 0;
+  int backtracks = 0;
+  int maxDepth = 0;
+  int maxBranchingFactor = 0;
   int backtrackNodes = 0;
   int propagationRounds = 0;
   int initialCandidateSlots = 0;
+  int runCount = 0;
+  int whiteCellCount = 0;
+  int maxRunLength = 0;
+  int singleComboRunCount = 0;
+  int totalRunCombinationCount = 0;
   bool hitSearchDepthLimit = false;
   bool hitBacktrackNodeLimit = false;
 
@@ -174,6 +192,20 @@ class _KakuroSearch {
   }
 
   bool get searchBudgetExceeded => hitSearchDepthLimit || hitBacktrackNodeLimit;
+
+  double get avgRunCombinationCount {
+    if (runCount <= 0) {
+      return 0.0;
+    }
+    return totalRunCombinationCount / runCount;
+  }
+
+  double get singleComboRunRatio {
+    if (runCount <= 0) {
+      return 0.0;
+    }
+    return singleComboRunCount / runCount;
+  }
 
   SolverStatus get solutionStatus {
     if (solutions.length >= 2) {
@@ -236,6 +268,24 @@ class _KakuroSearch {
       _unsatisfiable = true;
       return;
     }
+
+    runCount = entryStates.length;
+    whiteCellCount = valueCellCount;
+    maxRunLength = 0;
+    totalRunCombinationCount = 0;
+    singleComboRunCount = 0;
+    for (final _EntryState state in entryStates) {
+      final int runLength = state.entry.cells.length;
+      if (runLength > maxRunLength) {
+        maxRunLength = runLength;
+      }
+      final int combos = state.combos.length;
+      totalRunCombinationCount += combos;
+      if (combos == 1) {
+        singleComboRunCount++;
+      }
+    }
+
     initialCandidateSlots = _totalCandidateSlots();
   }
 
@@ -258,6 +308,10 @@ class _KakuroSearch {
   }
 
   void _search(int depth) {
+    searchNodes++;
+    if (depth > maxDepth) {
+      maxDepth = depth;
+    }
     if (_unsatisfiable) {
       return;
     }
@@ -289,11 +343,16 @@ class _KakuroSearch {
     }
 
     final List<int> digits = _digitsFromMask(candidates[cellIndex]);
+    if (digits.length > maxBranchingFactor) {
+      maxBranchingFactor = digits.length;
+    }
     for (final int digit in digits) {
       if (solutions.length >= maxSolutions) {
         break;
       }
       final _Snapshot snapshot = _Snapshot.capture(this);
+      final int solutionsBefore = solutions.length;
+      final bool budgetBeforeBranch = searchBudgetExceeded;
       backtrackNodes++;
       if (maxBacktrackNodes != null && backtrackNodes > maxBacktrackNodes!) {
         hitBacktrackNodeLimit = true;
@@ -303,6 +362,11 @@ class _KakuroSearch {
       values[cellIndex] = digit;
       candidates[cellIndex] = _bitFor(digit);
       _search(depth + 1);
+      final bool foundNewSolution = solutions.length > solutionsBefore;
+      if (!foundNewSolution &&
+          !(searchBudgetExceeded && !budgetBeforeBranch)) {
+        backtracks++;
+      }
       snapshot.restore(this);
     }
   }

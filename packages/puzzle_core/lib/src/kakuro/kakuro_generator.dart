@@ -81,6 +81,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       maxSearchDepth: maxSearchDepth,
       maxBacktrackNodes: maxBacktrackNodes,
     );
+    final KakuroSolver exhaustiveFallbackSolver = KakuroSolver(
+      maxSearchDepth: math.max(maxSearchDepth, 32),
+      maxBacktrackNodes: maxBacktrackNodes * 6,
+    );
 
     final Stopwatch layoutWatch = Stopwatch()..start();
     // Decide grid size based on difficulty. Respect provided size when present.
@@ -147,13 +151,23 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       );
 
       final Stopwatch solverWatch = Stopwatch()..start();
-      final SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
+      SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
         candidateBoard,
         SolverContext(
           rng: nextSolverRng(),
           maxSolutions: 2,
         ),
       );
+      if (uniqueness.solutionStatus == SolverStatus.unknown &&
+          attemptWatch.elapsedMilliseconds < perAttemptBudgetMs) {
+        uniqueness = exhaustiveFallbackSolver.solve(
+          candidateBoard,
+          SolverContext(
+            rng: nextSolverRng(),
+            maxSolutions: 2,
+          ),
+        );
+      }
       solverWatch.stop();
 
       final int attemptMs = attemptWatch.elapsedMilliseconds;
@@ -215,8 +229,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'candidateBuildMs': candidateBuildWatch.elapsedMilliseconds,
         'solverMs': solverWatch.elapsedMilliseconds,
         'solverTelemetry': sanitizedSolverTelemetry,
+        'measuredDifficultyBucket': bucket,
         'difficultyBucket': bucket,
         'requestedDifficulty': requestedLevel,
+        'difficultyMatchedRequest': bucket == requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
         'valueCellCount': template.valueCellCount,
         'givensCount': givenCells.length,
@@ -242,8 +258,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
     if (puzzle == null) {
       // Deterministic fallback: try a few alternative layouts within the remaining budget.
-      for (int alt = 0; alt < 2 && puzzle == null; alt++) {
-        if (stopwatch.elapsedMilliseconds > hardTimeBudgetMs) break;
+      for (int alt = 0; alt < 8 && puzzle == null; alt++) {
         final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
           rng: SeededRng(_deriveSolverSeed(context.seed64, 1234, alt + 1)),
           width: targetWidth,
@@ -254,7 +269,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             buildSolutionFirst(altTemplate, context.rng);
         if (sol == null) continue;
         final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
-        final SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
+        SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
           SolverContext(
             rng: SeededRng(
@@ -263,15 +278,118 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             maxSolutions: 2,
           ),
         );
+        if (uniqueness.solutionStatus == SolverStatus.unknown) {
+          uniqueness = exhaustiveFallbackSolver.solve(
+            board,
+            SolverContext(
+              rng: SeededRng(
+                _deriveSolverSeed(context.seed64, 4321, alt + 101),
+              ),
+              maxSolutions: 2,
+            ),
+          );
+        }
         if (uniqueness.solutionStatus == SolverStatus.unique &&
             _meetsLogicThresholds(requestedLevel, uniqueness.telemetry) &&
             _meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
+          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
+            puzzle: board,
+            solution: board,
+            context: DifficultyContext(
+              generatorTelemetry: <String, Object?>{
+                'valueCells': altTemplate.valueCellCount,
+                'width': altTemplate.width,
+                'height': altTemplate.height,
+              },
+              solverTelemetry: uniqueness.telemetry,
+            ),
+          );
+          final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
           puzzle = board;
           telemetry = <String, Object?>{
             'attempts': attempts,
             'attemptLimit': attemptLimit,
             'generationDurationMs': stopwatch.elapsedMilliseconds,
             'fallback': true,
+            'measuredDifficultyBucket': bucket,
+            'difficultyBucket': bucket,
+            'requestedDifficulty': requestedLevel,
+            'difficultyMatchedRequest': bucket == requestedLevel,
+            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
+            'valueCellCount': altTemplate.valueCellCount,
+            'width': altTemplate.width,
+            'height': altTemplate.height,
+            'rejectCounters': <String, int>{
+              'nullCandidate': nullSolutionCount,
+              'nonUnique': nonUniqueCount,
+              'logicGate': logicRejectCount,
+              'comboGate': comboRejectCount,
+            },
+          };
+        }
+      }
+      if (puzzle == null) {
+        // Last-resort deterministic fallback: accept any unique puzzle if
+        // calibrated gates cannot be satisfied within budget.
+        for (int alt = 0; alt < 24 && puzzle == null; alt++) {
+          final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
+            rng: SeededRng(_deriveSolverSeed(context.seed64, 8128, alt + 1)),
+            width: targetWidth,
+            height: targetHeight,
+            difficulty: requestedLevel,
+          );
+          KakuroSolution? sol = buildSolutionFirst(altTemplate, context.rng);
+          sol ??= const KakuroBottomUpGenerator().generate(altTemplate, context.rng);
+          if (sol == null) continue;
+
+          final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
+          SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
+            board,
+            SolverContext(
+              rng: SeededRng(_deriveSolverSeed(context.seed64, 9917, alt + 1)),
+              maxSolutions: 2,
+            ),
+          );
+          if (uniqueness.solutionStatus == SolverStatus.unknown) {
+            uniqueness = exhaustiveFallbackSolver.solve(
+              board,
+              SolverContext(
+                rng: SeededRng(
+                  _deriveSolverSeed(context.seed64, 9917, alt + 101),
+                ),
+                maxSolutions: 2,
+              ),
+            );
+          }
+          if (uniqueness.solutionStatus != SolverStatus.unique) {
+            continue;
+          }
+
+          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
+            puzzle: board,
+            solution: board,
+            context: DifficultyContext(
+              generatorTelemetry: <String, Object?>{
+                'valueCells': altTemplate.valueCellCount,
+                'width': altTemplate.width,
+                'height': altTemplate.height,
+              },
+              solverTelemetry: uniqueness.telemetry,
+            ),
+          );
+          final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
+          puzzle = board;
+          telemetry = <String, Object?>{
+            'attempts': attempts,
+            'attemptLimit': attemptLimit,
+            'generationDurationMs': stopwatch.elapsedMilliseconds,
+            'fallback': true,
+            'relaxedFallback': true,
+            'measuredDifficultyBucket': bucket,
+            'difficultyBucket': bucket,
+            'requestedDifficulty': requestedLevel,
+            'difficultyMatchedRequest': bucket == requestedLevel,
+            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
             'valueCellCount': altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
@@ -407,32 +525,65 @@ Set<int> _selectGivenCells(
 int _timeBudgetMillis(String level) {
   switch (level) {
     case 'easy':
-      return 2000; // still well under prior 20s baseline
+      return 3500;
     case 'medium':
-      return 2600;
+      return 4200;
     case 'hard':
-      return 3200;
+      return 5200;
     case 'expert':
-      return 4000;
+      return 6500;
     default:
-      return 2600;
+      return 4200;
   }
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {
-  final int backtrackNodes = (telemetry['backtrackNodes'] as int?) ?? 0;
-  final int propagationRounds = (telemetry['propagationRounds'] as int?) ?? 0;
+  final int searchNodes = (telemetry['searchNodes'] as num?)?.toInt() ??
+      (telemetry['backtrackNodes'] as num?)?.toInt() ??
+      0;
+  final int backtracks = (telemetry['backtracks'] as num?)?.toInt() ?? 0;
+  final int maxDepth = (telemetry['maxDepth'] as num?)?.toInt() ?? 0;
+  final int maxBranchingFactor =
+      (telemetry['maxBranchingFactor'] as num?)?.toInt() ?? 0;
+  final double avgRunCombinationCount =
+      (telemetry['avgRunCombinationCount'] as num?)?.toDouble() ?? 0.0;
+  final double singleComboRunRatio =
+      (telemetry['singleComboRunRatio'] as num?)?.toDouble() ?? 0.0;
+  final int propagationRounds =
+      (telemetry['propagationRounds'] as num?)?.toInt() ?? 0;
   switch (level) {
     case 'easy':
-      return backtrackNodes <= 12 && propagationRounds <= 80;
+      return searchNodes <= 40 &&
+          backtracks <= 24 &&
+          maxDepth <= 5 &&
+          maxBranchingFactor <= 6 &&
+          avgRunCombinationCount <= 3.8 &&
+          singleComboRunRatio >= 0.05 &&
+          propagationRounds <= 220;
     case 'medium':
-      return backtrackNodes <= 40 && propagationRounds <= 140;
+      return searchNodes <= 120 &&
+          backtracks <= 70 &&
+          maxDepth <= 8 &&
+          maxBranchingFactor <= 7 &&
+          avgRunCombinationCount <= 4.6 &&
+          singleComboRunRatio >= 0.02 &&
+          propagationRounds <= 320;
     case 'hard':
-      return backtrackNodes <= 120 && propagationRounds <= 260;
+      return searchNodes <= 260 &&
+          backtracks <= 150 &&
+          maxDepth <= 12 &&
+          maxBranchingFactor <= 8 &&
+          avgRunCombinationCount <= 5.8 &&
+          propagationRounds <= 520;
     case 'expert':
-      return backtrackNodes <= 280 && propagationRounds <= 520;
+      return searchNodes <= 640 &&
+          backtracks <= 360 &&
+          maxDepth <= 16 &&
+          maxBranchingFactor <= 9 &&
+          avgRunCombinationCount <= 7.5 &&
+          propagationRounds <= 900;
     default:
-      return backtrackNodes <= 80;
+      return searchNodes <= 160;
   }
 }
 
