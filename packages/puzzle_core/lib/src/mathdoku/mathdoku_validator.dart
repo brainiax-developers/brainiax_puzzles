@@ -24,7 +24,10 @@ class MathdokuValidator extends PuzzleValidator<MathdokuBoard> {
   }
 
   @override
-  ValidationSummary validateSolution(MathdokuBoard puzzle, MathdokuBoard solution) {
+  ValidationSummary validateSolution(
+    MathdokuBoard puzzle,
+    MathdokuBoard solution,
+  ) {
     final Stopwatch stopwatch = Stopwatch()..start();
     final List<String> issues = <String>[];
 
@@ -55,7 +58,10 @@ class MathdokuValidator extends PuzzleValidator<MathdokuBoard> {
     return _checkCages(board, strict: true).isEmpty;
   }
 
-  List<String> _checkLatinConstraints(MathdokuBoard board, {bool requireFilled = false}) {
+  List<String> _checkLatinConstraints(
+    MathdokuBoard board, {
+    bool requireFilled = false,
+  }) {
     final List<String> issues = <String>[];
     final int size = board.size;
     for (int row = 0; row < size; row++) {
@@ -126,16 +132,35 @@ class MathdokuValidator extends PuzzleValidator<MathdokuBoard> {
 
   List<String> _checkCages(MathdokuBoard board, {required bool strict}) {
     final List<String> issues = <String>[];
+    final Set<int> seenCageIds = <int>{};
+
     for (final MathdokuCage cage in board.cages) {
-      if (cage.operation == MathdokuOperation.equality && cage.cells.length != 1) {
-        issues.add('cage_${cage.id}_invalid_equality');
+      if (!seenCageIds.add(cage.id)) {
+        issues.add('duplicate_cage_id_${cage.id}');
+      }
+      if (!_isOrthogonallyConnected(cage.cells, board.size)) {
+        issues.add('cage_${cage.id}_disconnected');
       }
       if (cage.operation == MathdokuOperation.equality &&
-          (cage.target < 1 || cage.target > board.size)) {
+          cage.cells.length != 1) {
+        issues.add('cage_${cage.id}_invalid_equality');
+      }
+      if (cage.operation == MathdokuOperation.subtraction &&
+          cage.cells.length != 2) {
+        issues.add('cage_${cage.id}_invalid_subtract_size');
+      }
+      if (cage.operation == MathdokuOperation.division &&
+          cage.cells.length != 2) {
+        issues.add('cage_${cage.id}_invalid_divide_size');
+      }
+      if (cage.target <= 0) {
+        issues.add('cage_${cage.id}_target_non_positive');
+      } else if (!_isTargetPlausible(cage, board.size)) {
         issues.add('cage_${cage.id}_target_out_of_range');
       }
-      final List<int> values =
-          cage.cells.map((int index) => board.cells[index]).toList(growable: false);
+      final List<int> values = cage.cells
+          .map((int index) => board.cells[index])
+          .toList(growable: false);
       if (values.any((int value) => value < 0 || value > board.size)) {
         issues.add('cage_${cage.id}_value_out_of_range');
         continue;
@@ -157,5 +182,64 @@ class MathdokuValidator extends PuzzleValidator<MathdokuBoard> {
       }
     }
     return issues;
+  }
+
+  bool _isTargetPlausible(MathdokuCage cage, int size) {
+    switch (cage.operation) {
+      case MathdokuOperation.equality:
+        return cage.target >= 1 && cage.target <= size;
+      case MathdokuOperation.addition:
+        final int min = cage.cells.length;
+        final int max = cage.cells.length * size;
+        return cage.target >= min && cage.target <= max;
+      case MathdokuOperation.multiplication:
+        final int max = _powInt(size, cage.cells.length);
+        return cage.target >= 1 && cage.target <= max;
+      case MathdokuOperation.subtraction:
+        return cage.target >= 1 && cage.target <= size - 1;
+      case MathdokuOperation.division:
+        return cage.target >= 1 && cage.target <= size;
+    }
+  }
+
+  int _powInt(int base, int exponent) {
+    int result = 1;
+    for (int i = 0; i < exponent; i++) {
+      result *= base;
+    }
+    return result;
+  }
+
+  bool _isOrthogonallyConnected(List<int> cells, int size) {
+    if (cells.length <= 1) {
+      return true;
+    }
+
+    final Set<int> cellSet = cells.toSet();
+    final Set<int> visited = <int>{};
+    final List<int> stack = <int>[cells.first];
+
+    while (stack.isNotEmpty) {
+      final int index = stack.removeLast();
+      if (!visited.add(index)) {
+        continue;
+      }
+
+      final int row = index ~/ size;
+      final int col = index % size;
+      final List<int> neighbours = <int>[
+        if (row > 0) index - size,
+        if (row < size - 1) index + size,
+        if (col > 0) index - 1,
+        if (col < size - 1) index + 1,
+      ];
+      for (final int neighbour in neighbours) {
+        if (cellSet.contains(neighbour) && !visited.contains(neighbour)) {
+          stack.add(neighbour);
+        }
+      }
+    }
+
+    return visited.length == cellSet.length;
   }
 }
