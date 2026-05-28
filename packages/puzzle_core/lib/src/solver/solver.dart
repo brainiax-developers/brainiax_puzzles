@@ -1,5 +1,13 @@
 import '../util/seeded_rng.dart';
 
+/// Explicit outcome status for solver runs.
+enum SolverStatus {
+  noSolution,
+  unique,
+  multiple,
+  unknown,
+}
+
 /// Context for solver invocations.
 class SolverContext {
   final SeededRng rng;
@@ -23,15 +31,30 @@ class SolverResult<TBoard> {
   final List<TBoard> solutions;
   final Duration elapsed;
   final Map<String, Object?> telemetry;
+  final SolverStatus? status;
 
   const SolverResult({
     required this.solutions,
     required this.elapsed,
     this.telemetry = const <String, Object?>{},
+    this.status,
   });
 
+  SolverStatus get solutionStatus {
+    if (status != null) {
+      return status!;
+    }
+    if (solutions.isEmpty) {
+      return SolverStatus.noSolution;
+    }
+    if (solutions.length == 1) {
+      return SolverStatus.unique;
+    }
+    return SolverStatus.multiple;
+  }
+
   bool get hasSolution => solutions.isNotEmpty;
-  bool get isUnique => solutions.length == 1;
+  bool get isUnique => solutionStatus == SolverStatus.unique;
 }
 
 /// Base class for puzzle solvers.

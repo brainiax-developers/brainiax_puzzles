@@ -121,14 +121,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
 
       // Build a fully solved board using the fast solution-first generator.
-      final Stopwatch solutionWatch = Stopwatch()..start();
+      final Stopwatch candidateBuildWatch = Stopwatch()..start();
       KakuroSolution? solution = buildSolutionFirst(template, context.rng);
       // If the initial approach fails quickly, try the bottom-up generator once
       // before moving to the next attempt.
       if (solution == null && attemptWatch.elapsedMilliseconds < perAttemptBudgetMs ~/ 2) {
         solution = const KakuroBottomUpGenerator().generate(template, context.rng);
       }
-      solutionWatch.stop();
+      candidateBuildWatch.stop();
       if (solution == null) {
         nullSolutionCount++;
         continue;
@@ -157,12 +157,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       solverWatch.stop();
 
       final int attemptMs = attemptWatch.elapsedMilliseconds;
-      if (attemptMs > perAttemptBudgetMs && !uniqueness.isUnique) {
+      if (attemptMs > perAttemptBudgetMs &&
+          uniqueness.solutionStatus != SolverStatus.unique) {
         // Skip long-running, non-unique attempts early to respect budgets.
         nonUniqueCount++;
         continue;
       }
-      if (!uniqueness.isUnique) {
+      if (uniqueness.solutionStatus != SolverStatus.unique) {
         nonUniqueCount++;
         continue;
       }
@@ -211,10 +212,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'generationDurationMs': stopwatch.elapsedMilliseconds,
         'attemptDurationMs': attemptMs,
         'layoutMs': layoutWatch.elapsedMilliseconds,
-        'solutionBuildMs': solutionWatch.elapsedMilliseconds,
+        'candidateBuildMs': candidateBuildWatch.elapsedMilliseconds,
         'solverMs': solverWatch.elapsedMilliseconds,
         'solverTelemetry': sanitizedSolverTelemetry,
-        'solutionSignature': solution.signature,
         'difficultyBucket': bucket,
         'requestedDifficulty': requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
@@ -229,7 +229,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'hardBudgetMs': hardTimeBudgetMs,
         'startedAt': startedAt.toIso8601String(),
         'rejectCounters': <String, int>{
-          'nullSolution': nullSolutionCount,
+          'nullCandidate': nullSolutionCount,
           'nonUnique': nonUniqueCount,
           'logicGate': logicRejectCount,
           'comboGate': comboRejectCount,
@@ -263,7 +263,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             maxSolutions: 2,
           ),
         );
-        if (uniqueness.isUnique &&
+        if (uniqueness.solutionStatus == SolverStatus.unique &&
             _meetsLogicThresholds(requestedLevel, uniqueness.telemetry) &&
             _meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
           puzzle = board;
@@ -276,7 +276,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'width': altTemplate.width,
             'height': altTemplate.height,
             'rejectCounters': <String, int>{
-              'nullSolution': nullSolutionCount,
+              'nullCandidate': nullSolutionCount,
               'nonUnique': nonUniqueCount,
               'logicGate': logicRejectCount,
               'comboGate': comboRejectCount,

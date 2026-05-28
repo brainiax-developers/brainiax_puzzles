@@ -4,19 +4,10 @@ class KakuroSolution {
   KakuroSolution({
     required this.values,
     required this.entrySums,
-  }) : signature = _computeSignature(values);
+  });
 
   final List<int> values;
   final Map<int, int> entrySums;
-  final String signature;
-
-  static String _computeSignature(List<int> values) {
-    final StringBuffer buffer = StringBuffer();
-    for (final int value in values) {
-      buffer.write(value);
-    }
-    return buffer.toString();
-  }
 }
 
 KakuroSolution? buildSolutionFirst(KakuroLayout template, SeededRng rng) {

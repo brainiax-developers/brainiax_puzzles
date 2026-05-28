@@ -49,6 +49,7 @@ void main() {
       SolverContext(rng: SeededRng(seed64 ^ 0x9f61d35a2234e881), maxSolutions: 2),
     );
 
+    expect(result.solutionStatus, SolverStatus.unique);
     expect(result.isUnique, isTrue, reason: 'Puzzle should have unique solution');
     expect(result.solutions, hasLength(1));
 
@@ -64,5 +65,30 @@ void main() {
       }
       expect(sum, equals(entry.sum));
     }
+  });
+
+  test('generator rejects unknown uniqueness when search budget is tiny', () {
+    const KakuroGenerator generator = KakuroGenerator(
+      maxTemplateAttempts: 2,
+      maxBacktrackNodes: 0,
+    );
+    final int seed64 = Seed.fromString('kakuro_gen_tiny_budget_seed');
+    final GeneratorContext context = GeneratorContext(
+      rng: SeededRng(seed64),
+      seedStr: 'kakuro_gen_tiny_budget_seed',
+      seed64: seed64,
+      size: const SizeOpt(
+        id: 'template9x9',
+        description: 'Template 9x9',
+        width: 9,
+        height: 9,
+      ),
+      difficulty: const DifficultyRequest(level: 'auto'),
+    );
+
+    expect(
+      () => generator.generate(context),
+      throwsA(isA<StateError>()),
+    );
   });
 }

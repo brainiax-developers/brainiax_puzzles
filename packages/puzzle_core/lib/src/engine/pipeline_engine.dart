@@ -90,6 +90,14 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
         puzzle,
         SolverContext(rng: solverRng, maxSolutions: 2),
       );
+      final SolverStatus solverStatus = solverResult.solutionStatus;
+
+      if (solverStatus == SolverStatus.unknown) {
+        lastError = StateError(
+          'Generated puzzle uniqueness is unknown for seed $seedStr (search budget exceeded)',
+        );
+        continue;
+      }
 
       if (!solverResult.hasSolution) {
         lastError = StateError('Generated puzzle is unsolvable for seed $seedStr');
@@ -160,6 +168,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
             'generator': generation.snapshot.telemetry,
             'solver': solverResult.telemetry,
             'solutionCount': solverResult.solutions.length,
+            'solutionStatus': solverResult.solutionStatus.name,
             'puzzleValidationMs':
                 puzzleValidation.elapsed.inMicroseconds / 1000.0,
             'solutionValidationMs':
@@ -221,6 +230,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
           'generator': lastGeneratorTelemetry,
           'solver': lastSolverTelemetry,
           'solutionCount': 1,
+          'solutionStatus': SolverStatus.unique.name,
           'puzzleValidationMs':
               lastPuzzleValidation.elapsed.inMicroseconds / 1000.0,
           'solutionValidationMs':

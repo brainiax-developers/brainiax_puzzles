@@ -59,6 +59,7 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
         .map((List<int> values) => board.copyWith(values: values))
         .toList(growable: false);
 
+    final SolverStatus status = search.solutionStatus;
     final Map<String, Object?> telemetry = <String, Object?>{
       'forcedAssignments': search.forcedAssignments,
       'candidateRemovals': search.candidateRemovals,
@@ -66,12 +67,15 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
       'backtrackNodes': search.backtrackNodes,
       'propagationRounds': search.propagationRounds,
       'initialCandidateSlots': search.initialCandidateSlots,
+      'searchBudgetExceeded': search.searchBudgetExceeded,
+      'solverStatus': status.name,
     };
 
     return SolverResult<KakuroBoard>(
       solutions: solutions,
       elapsed: stopwatch.elapsed,
       telemetry: telemetry,
+      status: status,
     );
   }
 }
@@ -160,11 +164,32 @@ class _KakuroSearch {
   int backtrackNodes = 0;
   int propagationRounds = 0;
   int initialCandidateSlots = 0;
+  bool hitSearchDepthLimit = false;
+  bool hitBacktrackNodeLimit = false;
 
   double get candidateShrinkPercent {
     final int maxSlots = max(valueCellCount * 9, 1);
     final double ratio = candidateRemovals / maxSlots;
     return ratio.clamp(0.0, 1.0);
+  }
+
+  bool get searchBudgetExceeded => hitSearchDepthLimit || hitBacktrackNodeLimit;
+
+  SolverStatus get solutionStatus {
+    if (solutions.length >= 2) {
+      return SolverStatus.multiple;
+    }
+    if (searchBudgetExceeded) {
+      return SolverStatus.unknown;
+    }
+    if (solutions.isEmpty) {
+      return SolverStatus.noSolution;
+    }
+    if (maxSolutions <= 1) {
+      // A one-solution cap cannot prove uniqueness if a solution exists.
+      return SolverStatus.unknown;
+    }
+    return SolverStatus.unique;
   }
 
   void _initialise() {
@@ -240,6 +265,7 @@ class _KakuroSearch {
       return;
     }
     if (maxBacktrackNodes != null && backtrackNodes >= maxBacktrackNodes!) {
+      hitBacktrackNodeLimit = true;
       return;
     }
 
@@ -253,6 +279,7 @@ class _KakuroSearch {
     }
 
     if (depth >= maxSearchDepth) {
+      hitSearchDepthLimit = true;
       return;
     }
 
@@ -269,6 +296,7 @@ class _KakuroSearch {
       final _Snapshot snapshot = _Snapshot.capture(this);
       backtrackNodes++;
       if (maxBacktrackNodes != null && backtrackNodes > maxBacktrackNodes!) {
+        hitBacktrackNodeLimit = true;
         snapshot.restore(this);
         return;
       }
