@@ -15,16 +15,14 @@ class PuzzleRegistry {
   /// Initialize the puzzle registry with metadata for all available engines.
   void initialize() {
     final engineRegistry = core.EngineRegistry();
-    
+
     // Clear existing metadata
     _metadata.clear();
 
     // Add metadata for each available puzzle type
     for (final puzzleType in app.PuzzleType.values) {
-      final core.PuzzleEngine<dynamic, dynamic>? engine =
-          engineRegistry.getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(
-        puzzleType.key,
-      );
+      final core.PuzzleEngine<dynamic, dynamic>? engine = engineRegistry
+          .getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(puzzleType.key);
       if (engine != null) {
         _metadata[puzzleType] = _createMetadataForType(puzzleType, engine);
       }
@@ -33,13 +31,11 @@ class PuzzleRegistry {
     // If no engines are available, create stub engines for testing
     if (_metadata.isEmpty) {
       _createStubEnginesForTesting(engineRegistry);
-      
+
       // Re-check for available engines after creating stubs
       for (final puzzleType in app.PuzzleType.values) {
-        final core.PuzzleEngine<dynamic, dynamic>? engine =
-            engineRegistry.getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(
-          puzzleType.key,
-        );
+        final core.PuzzleEngine<dynamic, dynamic>? engine = engineRegistry
+            .getEngineAs<core.PuzzleEngine<dynamic, dynamic>>(puzzleType.key);
         if (engine != null) {
           _metadata[puzzleType] = _createMetadataForType(puzzleType, engine);
         }
@@ -53,10 +49,12 @@ class PuzzleRegistry {
     for (final puzzleType in app.PuzzleType.values) {
       if (!engineRegistry.hasEngine(puzzleType.key)) {
         try {
-          engineRegistry.register(core.StubPuzzleEngine(
-            engineId: puzzleType.key,
-            engineName: puzzleType.displayName,
-          ));
+          engineRegistry.register(
+            core.StubPuzzleEngine(
+              engineId: puzzleType.key,
+              engineName: puzzleType.displayName,
+            ),
+          );
         } catch (e) {
           // Engine might already exist, continue
         }
@@ -90,11 +88,11 @@ class PuzzleRegistry {
   /// Get puzzles organized by category.
   Map<PuzzleCategory, List<PuzzleMetadata>> getPuzzlesByCategory() {
     final Map<PuzzleCategory, List<PuzzleMetadata>> categorized = {};
-    
+
     for (final metadata in _metadata.values) {
       categorized.putIfAbsent(metadata.category, () => []).add(metadata);
     }
-    
+
     // Ensure a stable, intentional ordering within each category. In
     // particular, keep "coming soon" puzzles like Killer Queens and
     // Slitherlink at the bottom of the list (after Binary Takuzu) while
@@ -104,13 +102,15 @@ class PuzzleRegistry {
         (a, b) => _sortKeyForType(a.type).compareTo(_sortKeyForType(b.type)),
       );
     }
-    
+
     return categorized;
   }
 
   /// Get puzzles for a specific category.
   List<PuzzleMetadata> getPuzzlesForCategory(PuzzleCategory category) {
-    return _metadata.values.where((metadata) => metadata.category == category).toList();
+    return _metadata.values
+        .where((metadata) => metadata.category == category)
+        .toList();
   }
 
   /// Sort key to control display order of puzzles within a category.
@@ -168,7 +168,7 @@ class PuzzleRegistry {
           displayName: type.displayName,
           icon: Icons.add_box,
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
-          supportedSizes: ['9x9'],
+          supportedSizes: ['5x5', '7x7', '9x9', '11x11'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,

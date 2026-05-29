@@ -206,6 +206,38 @@ class PuzzleGenerationController
               height: 8,
             );
         }
+      case app.PuzzleType.kakuroClassic:
+        switch (difficulty.toLowerCase()) {
+          case 'easy':
+            return const core.SizeOpt(
+              id: '7x7',
+              description: '7x7',
+              width: 7,
+              height: 7,
+            );
+          case 'medium':
+          case 'hard':
+            return const core.SizeOpt(
+              id: '9x9',
+              description: '9x9',
+              width: 9,
+              height: 9,
+            );
+          case 'expert':
+            return const core.SizeOpt(
+              id: '11x11',
+              description: '11x11',
+              width: 11,
+              height: 11,
+            );
+          default:
+            return const core.SizeOpt(
+              id: '9x9',
+              description: '9x9',
+              width: 9,
+              height: 9,
+            );
+        }
       default:
         return _defaultSizeFor(puzzleType);
     }

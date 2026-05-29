@@ -126,10 +126,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   }
   final width = int.parse(sizeParts[0]);
   final height = int.parse(sizeParts[1]);
-  if (measureKakuroUniqueness && (width != 9 || height != 9)) {
+  const Set<int> kakuroPhoneV1Sizes = <int>{5, 7, 9, 11};
+  if (measureKakuroUniqueness &&
+      (width != height || !kakuroPhoneV1Sizes.contains(width))) {
     throw Exception(
-      'Kakuro benchmarking is calibrated for 9x9 only. '
-      'Received size=${width}x$height.',
+      'Unsupported Kakuro benchmark size ${width}x$height. '
+      'Phone V1 supports only 5x5, 7x7, 9x9, and 11x11.',
     );
   }
 
@@ -211,7 +213,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final Map<String, Object?> extras = <String, Object?>{};
   if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
     uniquenessSolveTimes.sort();
-    extras['benchmarkMode'] = 'kakuro_9x9_calibration';
+    extras['benchmarkMode'] = 'kakuro_phone_v1_calibration';
     extras['size'] = '${width}x$height';
     extras['uniquenessSolveMs'] = <String, double>{
       'p50': _percentile(uniquenessSolveTimes, 0.50) / 1000.0,

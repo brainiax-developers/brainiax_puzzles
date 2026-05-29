@@ -90,7 +90,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     );
 
     final Stopwatch layoutWatch = Stopwatch()..start();
-    // Kakuro is explicitly 9x9-only in production mode.
+    // Respect the requested phone-supported square size.
     final int targetWidth = _chooseWidth(context, requestedLevel);
     final int targetHeight = _chooseHeight(context, requestedLevel);
     final KakuroLayout template = KakuroLayout.buildNewspaper(
@@ -496,12 +496,44 @@ String _normalizeDifficulty(String raw) {
   }
 }
 
+const Set<int> _supportedKakuroSizes = <int>{5, 7, 9, 11};
+
 int _chooseWidth(GeneratorContext context, String level) {
-  return 9;
+  return _resolveGridSize(context, level);
 }
 
 int _chooseHeight(GeneratorContext context, String level) {
-  return 9;
+  return _resolveGridSize(context, level);
+}
+
+int _resolveGridSize(GeneratorContext context, String level) {
+  final int width = context.size.width;
+  final int height = context.size.height;
+  if (width <= 0 || height <= 0) {
+    return _defaultSizeForLevel(level);
+  }
+  if (width == height && _supportedKakuroSizes.contains(width)) {
+    return width;
+  }
+  throw ArgumentError(
+    'Unsupported Kakuro size ${width}x$height for level "$level". '
+    'Supported sizes: 5x5, 7x7, 9x9, 11x11.',
+  );
+}
+
+int _defaultSizeForLevel(String level) {
+  switch (level) {
+    case 'easy':
+      return 7;
+    case 'medium':
+      return 9;
+    case 'hard':
+      return 9;
+    case 'expert':
+      return 11;
+    default:
+      return 9;
+  }
 }
 
 Set<int> _selectGivenCells(KakuroLayout template, SeededRng rng, String level) {

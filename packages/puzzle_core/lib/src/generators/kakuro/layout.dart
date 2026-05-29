@@ -55,8 +55,8 @@ class KakuroLayout {
     required int height,
     required String difficulty,
   }) {
-    final int w = width.clamp(9, 14);
-    final int h = height.clamp(9, 14);
+    final int w = width;
+    final int h = height;
     const int minRun = 2;
     const int maxRun = 9;
 

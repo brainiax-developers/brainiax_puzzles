@@ -148,6 +148,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
       // Accept if bucket matches or enforcement is off; otherwise try next attempt.
       final bool matches = !shouldEnforce || bucket == requestedLevel;
       if (matches) {
+        final SizeOpt effectiveSize = _resolveMetaSize(size, puzzle);
         final DifficultyTelemetry normalizedTelemetry = DifficultyTelemetry(
           rawScore: difficultyTelemetry.rawScore,
           bucket: bucket,
@@ -161,7 +162,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
         final PuzzleMetadata meta = PuzzleMetadata(
           engineVersion: version,
           rngId: SeededRng.rngId,
-          size: size,
+          size: effectiveSize,
           difficulty: finalDifficulty,
           seedStr: seedStr,
           seed64: seed64,
@@ -202,6 +203,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
     // If we reach here: we couldn't satisfy the requested bucket after retries.
     // Return the last valid puzzle instead of throwing, to avoid blocking play.
     if (lastGeneratorTelemetry != null && lastSolverTelemetry != null) {
+      final SizeOpt effectiveSize = _resolveMetaSize(size, lastPuzzle);
       final difficultyTelemetry = difficultyScorer.score(
         puzzle: lastPuzzle,
         solution: lastSolution,
@@ -223,7 +225,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
       final PuzzleMetadata meta = PuzzleMetadata(
         engineVersion: version,
         rngId: SeededRng.rngId,
-        size: size,
+        size: effectiveSize,
         difficulty: finalDifficulty,
         seedStr: seedStr,
         seed64: seed64,
@@ -259,4 +261,24 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
 
   @override
   bool isSolved(S state) => validator.isSolved(state);
+
+  SizeOpt _resolveMetaSize(SizeOpt requested, S puzzle) {
+    final dynamic board = puzzle;
+    try {
+      final int width = board.width as int;
+      final int height = board.height as int;
+      if (width > 0 && height > 0) {
+        final String id = '${width}x$height';
+        return SizeOpt(
+          id: id,
+          description: id,
+          width: width,
+          height: height,
+        );
+      }
+    } catch (_) {
+      // Keep requested size when board does not expose width/height.
+    }
+    return requested;
+  }
 }

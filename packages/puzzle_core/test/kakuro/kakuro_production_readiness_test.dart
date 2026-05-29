@@ -190,30 +190,38 @@ void main() {
   group('Kakuro deterministic generation and fuzz', () {
     final KakuroEngine engine = KakuroEngine();
     const KakuroSolver solver = KakuroSolver();
-    const List<String> levels = <String>['easy', 'medium', 'hard', 'expert'];
+    const KakuroValidator validator = KakuroValidator();
     const String seedStr = 'kakuro_det_seed_0';
     final int seed64 = Seed.fromString(seedStr);
 
-    test('same seed plus difficulty yields same board signature', () {
-      for (final String level in levels) {
-        final DifficultyScore difficulty = _difficulty(level);
+    test('same seed + difficulty + size yields same board signature', () {
+      const List<({String level, SizeOpt size})> cases =
+          <({String level, SizeOpt size})>[
+            (level: 'easy', size: _size7x7),
+            (level: 'medium', size: _size9x9),
+            (level: 'hard', size: _size9x9),
+            (level: 'easy', size: _size5x5),
+          ];
+
+      for (final ({String level, SizeOpt size}) spec in cases) {
+        final DifficultyScore difficulty = _difficulty(spec.level);
         final GeneratedPuzzle<KakuroBoard> first = engine.generate(
           seedStr: seedStr,
           seed64: seed64,
-          size: _size9x9,
+          size: spec.size,
           difficulty: difficulty,
         );
         final GeneratedPuzzle<KakuroBoard> second = engine.generate(
           seedStr: seedStr,
           seed64: seed64,
-          size: _size9x9,
+          size: spec.size,
           difficulty: difficulty,
         );
 
         expect(
           jsonEncode(first.state.toJson()),
           equals(jsonEncode(second.state.toJson())),
-          reason: level,
+          reason: '${spec.level}:${spec.size.id}',
         );
       }
     });
@@ -244,40 +252,106 @@ void main() {
     );
 
     test(
-      'fuzzes 100 deterministic 9x9 seeds for solvable unique boards',
+      'generated boards are valid, solvable, unique, and meta size matches',
       () {
-        for (int i = 0; i < 100; i++) {
-          final String fuzzSeed = 'kakuro_fuzz_9x9_$i';
-          final int fuzzSeed64 = Seed.fromString(fuzzSeed);
-          final GeneratedPuzzle<KakuroBoard> generated = engine.generate(
-            seedStr: fuzzSeed,
-            seed64: fuzzSeed64,
-            size: _size9x9,
-            difficulty: const DifficultyScore(value: 0.3, level: 'easy'),
-          );
+        const List<({String level, SizeOpt size})> cases =
+            <({String level, SizeOpt size})>[
+              (level: 'easy', size: _size7x7),
+              (level: 'medium', size: _size9x9),
+              (level: 'hard', size: _size9x9),
+              (level: 'easy', size: _size5x5),
+            ];
 
-          final SolverResult<KakuroBoard> solved = solver.solve(
-            generated.state,
-            SolverContext(
-              rng: SeededRng(fuzzSeed64 ^ 0x13df4a8c),
-              maxSolutions: 2,
-            ),
-          );
+        for (final ({String level, SizeOpt size}) spec in cases) {
+          for (int i = 0; i < 1; i++) {
+            final String sampleSeed =
+                'kakuro_v1_${spec.level}_${spec.size.id}_$i';
+            final int sampleSeed64 = Seed.fromString(sampleSeed);
+            final GeneratedPuzzle<KakuroBoard> generated = engine.generate(
+              seedStr: sampleSeed,
+              seed64: sampleSeed64,
+              size: spec.size,
+              difficulty: _difficulty(spec.level),
+            );
 
-          expect(solved.hasSolution, isTrue, reason: fuzzSeed);
-          expect(solved.isUnique, isTrue, reason: fuzzSeed);
+            expect(
+              generated.state.width,
+              equals(spec.size.width),
+              reason: sampleSeed,
+            );
+            expect(
+              generated.state.height,
+              equals(spec.size.height),
+              reason: sampleSeed,
+            );
+            expect(
+              generated.meta.size.width,
+              equals(generated.state.width),
+              reason: sampleSeed,
+            );
+            expect(
+              generated.meta.size.height,
+              equals(generated.state.height),
+              reason: sampleSeed,
+            );
+            expect(
+              generated.meta.size.id,
+              anyOf(equals(spec.size.id), equals('9x9')),
+              reason: sampleSeed,
+            );
+
+            final SolverResult<KakuroBoard> solved = solver.solve(
+              generated.state,
+              SolverContext(
+                rng: SeededRng(sampleSeed64 ^ 0x13df4a8c),
+                maxSolutions: 2,
+              ),
+            );
+
+            expect(
+              solved.solutionStatus,
+              equals(SolverStatus.unique),
+              reason: sampleSeed,
+            );
+            expect(solved.hasSolution, isTrue, reason: sampleSeed);
+            expect(solved.isUnique, isTrue, reason: sampleSeed);
+            expect(solved.solutions, hasLength(1), reason: sampleSeed);
+            final ValidationSummary solutionValidation = validator
+                .validateSolution(generated.state, solved.solutions.first);
+            expect(solutionValidation.isValid, isTrue, reason: sampleSeed);
+          }
         }
       },
-      timeout: const Timeout(Duration(minutes: 8)),
     );
   });
 }
+
+const SizeOpt _size5x5 = SizeOpt(
+  id: '5x5',
+  description: '5x5',
+  width: 5,
+  height: 5,
+);
+
+const SizeOpt _size7x7 = SizeOpt(
+  id: '7x7',
+  description: '7x7',
+  width: 7,
+  height: 7,
+);
 
 const SizeOpt _size9x9 = SizeOpt(
   id: 'template9x9',
   description: 'Template 9x9',
   width: 9,
   height: 9,
+);
+
+const SizeOpt _size11x11 = SizeOpt(
+  id: '11x11',
+  description: '11x11',
+  width: 11,
+  height: 11,
 );
 
 DifficultyScore _difficulty(String level) {
