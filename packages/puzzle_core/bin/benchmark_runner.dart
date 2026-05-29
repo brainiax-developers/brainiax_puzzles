@@ -126,6 +126,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   }
   final width = int.parse(sizeParts[0]);
   final height = int.parse(sizeParts[1]);
+  if (measureKakuroUniqueness && (width != 9 || height != 9)) {
+    throw Exception(
+      'Kakuro benchmarking is calibrated for 9x9 only. '
+      'Received size=${width}x$height.',
+    );
+  }
 
   if (engineId == 'mathdoku_classic' && width == 9 && height == 9) {
     return _benchmarkMathdoku9x9(
@@ -205,6 +211,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final Map<String, Object?> extras = <String, Object?>{};
   if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
     uniquenessSolveTimes.sort();
+    extras['benchmarkMode'] = 'kakuro_9x9_calibration';
+    extras['size'] = '${width}x$height';
     extras['uniquenessSolveMs'] = <String, double>{
       'p50': _percentile(uniquenessSolveTimes, 0.50) / 1000.0,
       'p95': _percentile(uniquenessSolveTimes, 0.95) / 1000.0,

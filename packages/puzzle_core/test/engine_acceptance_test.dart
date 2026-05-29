@@ -23,10 +23,11 @@ class EngineAcceptanceConfig<TBoard> {
 
   final String name;
   final PipelinePuzzleEngine<TBoard, dynamic> Function() engineFactory;
-  final PuzzleSolver<TBoard> Function() solverFactory;
+  final PuzzleSolver<dynamic> Function(PipelinePuzzleEngine<dynamic, dynamic> engine)
+      solverFactory;
   final SizeOpt size;
   final DifficultyScore difficulty;
-  final String Function(TBoard board) canonicalSignature;
+  final String Function(dynamic board) canonicalSignature;
   final List<DifficultyFixture<TBoard>> difficultyFixtures;
   final double validationP95Millis;
   final double generationP95Millis;
@@ -58,7 +59,7 @@ void main() {
     EngineAcceptanceConfig<SudokuBoard>(
       name: 'Sudoku',
       engineFactory: () => SudokuEngine(),
-      solverFactory: () => const SudokuSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'classic9x9',
         description: 'Classic 9x9',
@@ -66,14 +67,14 @@ void main() {
         height: 9,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (SudokuBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as SudokuBoard).toJson()),
       difficultyFixtures: _sudokuDifficultyFixtures(),
       validationP95Millis: 35,
     ),
     EngineAcceptanceConfig<KillerQueensBoard>(
       name: 'Killer Queens',
       engineFactory: () => KillerQueensEngine(),
-      solverFactory: () => const KillerQueensSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'killer6x6',
         description: 'Killer Queens 6x6',
@@ -81,14 +82,14 @@ void main() {
         height: 6,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (KillerQueensBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as KillerQueensBoard).toJson()),
       difficultyFixtures: _killerQueensDifficultyFixtures(),
       validationP95Millis: 45,
     ),
     EngineAcceptanceConfig<MathdokuBoard>(
       name: 'Mathdoku',
       engineFactory: () => MathdokuEngine(),
-      solverFactory: () => const MathdokuSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'latin4x4',
         description: 'Mathdoku 4x4',
@@ -96,14 +97,14 @@ void main() {
         height: 4,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (MathdokuBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as MathdokuBoard).toJson()),
       difficultyFixtures: _mathdokuDifficultyFixtures(),
       validationP95Millis: 45,
     ),
     EngineAcceptanceConfig<NonogramBoard>(
       name: 'Nonogram',
       engineFactory: () => NonogramEngine(),
-      solverFactory: () => const NonogramSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'mono10x10',
         description: 'Monochrome 10x10',
@@ -111,14 +112,14 @@ void main() {
         height: 10,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (NonogramBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as NonogramBoard).toJson()),
       difficultyFixtures: _nonogramDifficultyFixtures(),
       validationP95Millis: 45,
     ),
     EngineAcceptanceConfig<KakuroBoard>(
       name: 'Kakuro',
       engineFactory: () => KakuroEngine(),
-      solverFactory: () => const KakuroSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'template9x9',
         description: 'Template 9x9',
@@ -126,14 +127,14 @@ void main() {
         height: 9,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (KakuroBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as KakuroBoard).toJson()),
       difficultyFixtures: _kakuroDifficultyFixtures(),
       validationP95Millis: 55,
     ),
     EngineAcceptanceConfig<SlitherlinkBoard>(
       name: 'Slitherlink',
       engineFactory: () => SlitherlinkEngine(),
-      solverFactory: () => const SlitherlinkSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'rectangular6x6',
         description: 'Slitherlink 6x6',
@@ -141,14 +142,14 @@ void main() {
         height: 6,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (SlitherlinkBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as SlitherlinkBoard).toJson()),
       difficultyFixtures: _slitherlinkDifficultyFixtures(),
       validationP95Millis: 55,
     ),
     EngineAcceptanceConfig<TakuzuBoard>(
       name: 'Takuzu',
       engineFactory: () => TakuzuEngine(),
-      solverFactory: () => const TakuzuSolver(),
+      solverFactory: (engine) => engine.solver,
       size: const SizeOpt(
         id: 'binary8x8',
         description: 'Takuzu 8x8',
@@ -156,7 +157,7 @@ void main() {
         height: 8,
       ),
       difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-      canonicalSignature: (TakuzuBoard board) => jsonEncode(board.toJson()),
+      canonicalSignature: (dynamic board) => jsonEncode((board as TakuzuBoard).toJson()),
       difficultyFixtures: _takuzuDifficultyFixtures(),
       validationP95Millis: 40,
     ),
@@ -196,7 +197,7 @@ void main() {
 
       test('uniqueness enforced via second-solution early exit', () {
         final PipelinePuzzleEngine<dynamic, dynamic> engine = config.engineFactory();
-        final PuzzleSolver<dynamic> solver = config.solverFactory();
+        final PuzzleSolver<dynamic> solver = config.solverFactory(engine);
         final String seedStr = '${engine.id}:uniqueness';
         final int seed64 = Seed.fromString(seedStr);
 
@@ -218,7 +219,7 @@ void main() {
 
       test('solver reaches a solved state that validates', () {
         final PipelinePuzzleEngine<dynamic, dynamic> engine = config.engineFactory();
-        final PuzzleSolver<dynamic> solver = config.solverFactory();
+        final PuzzleSolver<dynamic> solver = config.solverFactory(engine);
         final String seedStr = '${engine.id}:solve-check';
         final int seed64 = Seed.fromString(seedStr);
 
@@ -247,7 +248,7 @@ void main() {
 
       test('validator p95 on solved boards stays under ${config.validationP95Millis}ms', () {
         final PipelinePuzzleEngine<dynamic, dynamic> engine = config.engineFactory();
-        final PuzzleSolver<dynamic> solver = config.solverFactory();
+        final PuzzleSolver<dynamic> solver = config.solverFactory(engine);
         final List<int> durations = <int>[];
 
         const int samples = 20;
@@ -300,7 +301,7 @@ void main() {
 
       test('property sample of random seeds stay solvable and unique', () {
         final PipelinePuzzleEngine<dynamic, dynamic> engine = config.engineFactory();
-        final PuzzleSolver<dynamic> solver = config.solverFactory();
+        final PuzzleSolver<dynamic> solver = config.solverFactory(engine);
 
         for (int i = 0; i < config.propertySeedCount; i++) {
           final String seedStr = '${engine.id}:property:$i:${i * 17}';
@@ -550,11 +551,12 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       cagePattern: cagePattern,
     );
     final List<int> cells = List<int>.filled(cellCount, 0);
-    final List<bool> fixed = List<bool>.filled(cellCount, true);
+    final List<bool> fixed = List<bool>.filled(cellCount, false);
     for (int row = 0; row < size; row++) {
       final int col = queenCols[row];
       final int index = row * size + col;
       cells[index] = 1;
+      fixed[index] = true;
     }
     return KillerQueensBoard(
       size: size,
@@ -580,39 +582,33 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
     size: 8,
     queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
     givens: {1, 35},
-    blocked: {10, 44},
     cagePattern: const <int>[3, 2],
   );
   final KillerQueensBoard mediumSolution = _solution(
     size: 8,
     queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
-    blocked: {10, 44},
     cagePattern: const <int>[3, 2],
   );
 
   final KillerQueensBoard hardPuzzle = _puzzle(
     size: 9,
     queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
-    blocked: {9, 40, 63},
     cagePattern: const <int>[4, 3, 2],
   );
   final KillerQueensBoard hardSolution = _solution(
     size: 9,
     queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
-    blocked: {9, 40, 63},
     cagePattern: const <int>[4, 3, 2],
   );
 
   final KillerQueensBoard expertPuzzle = _puzzle(
     size: 10,
     queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
-    blocked: {11, 22, 45, 66, 77},
     cagePattern: const <int>[3, 4, 3, 2],
   );
   final KillerQueensBoard expertSolution = _solution(
     size: 10,
     queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
-    blocked: {11, 22, 45, 66, 77},
     cagePattern: const <int>[3, 4, 3, 2],
   );
 

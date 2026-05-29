@@ -219,6 +219,31 @@ void main() {
     });
 
     test(
+      'regression: kakuro_det_seed_0 hard yields unique 9x9 with matching meta size',
+      () {
+        final GeneratedPuzzle<KakuroBoard> generated = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: _size9x9,
+          difficulty: _difficulty('hard'),
+        );
+
+        expect(generated.state.width, equals(9));
+        expect(generated.state.height, equals(9));
+        expect(generated.meta.size.width, equals(generated.state.width));
+        expect(generated.meta.size.height, equals(generated.state.height));
+
+        final SolverResult<KakuroBoard> solved = solver.solve(
+          generated.state,
+          SolverContext(rng: SeededRng(seed64 ^ 0x22f14e87), maxSolutions: 2),
+        );
+        expect(solved.solutionStatus, equals(SolverStatus.unique));
+        expect(solved.isUnique, isTrue);
+        expect(solved.solutions, hasLength(1));
+      },
+    );
+
+    test(
       'fuzzes 100 deterministic 9x9 seeds for solvable unique boards',
       () {
         for (int i = 0; i < 100; i++) {

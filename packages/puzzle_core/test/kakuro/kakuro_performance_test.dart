@@ -1,25 +1,21 @@
 import 'package:puzzle_core/src/api_types.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_engine.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_board.dart';
+import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_solver.dart';
+import 'package:puzzle_core/src/generators/generator.dart';
 import 'package:puzzle_core/src/solver/solver.dart';
 import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:test/test.dart';
 
-int _percentile(List<int> values, double percentile) {
-  if (values.isEmpty) {
-    return 0;
-  }
-  final List<int> sorted = List<int>.from(values)..sort();
-  final int index = (percentile * (sorted.length - 1)).round();
-  return sorted[index];
-}
-
 void main() {
   test(
-    'kakuro benchmark prints generation and uniqueness-solve p95/p99',
+    'kakuro 9x9 bounded smoke test validates generation and uniqueness solve',
     () {
-      final KakuroEngine engine = KakuroEngine();
+      const KakuroGenerator generator = KakuroGenerator(
+        maxTemplateAttempts: 96,
+        hardTimeLimitOverride: Duration(milliseconds: 5200),
+        perAttemptTimeLimit: Duration(milliseconds: 1100),
+      );
       const KakuroSolver solver = KakuroSolver();
       const SizeOpt size = SizeOpt(
         id: 'template9x9',
@@ -28,57 +24,33 @@ void main() {
         height: 9,
       );
 
-      const int samples = 30;
-      final List<int> generationDurationsUs = <int>[];
-      final List<int> uniquenessSolveDurationsUs = <int>[];
+      const List<String> seeds = <String>[
+        'kakuro_smoke_9x9_seed_0',
+        'kakuro_smoke_9x9_seed_1',
+      ];
 
-      for (int i = 0; i < samples; i++) {
-        final String seedStr = 'kakuro_benchmark_$i';
+      for (final String seedStr in seeds) {
         final int seed64 = Seed.fromString(seedStr);
-
-        final Stopwatch generationWatch = Stopwatch()..start();
-        final GeneratedPuzzle<KakuroBoard> generated = engine.generate(
-          seedStr: seedStr,
-          seed64: seed64,
-          size: size,
-          difficulty: const DifficultyScore(value: 0.6, level: 'medium'),
+        final PuzzleGenerationResult<KakuroBoard> generated = generator.generate(
+          GeneratorContext(
+            rng: SeededRng(seed64),
+            seedStr: seedStr,
+            seed64: seed64,
+            size: size,
+            difficulty: const DifficultyRequest(level: 'medium', hint: 0.6),
+          ),
         );
-        generationWatch.stop();
-        generationDurationsUs.add(generationWatch.elapsedMicroseconds);
-
-        final Stopwatch solveWatch = Stopwatch()..start();
         final SolverResult<KakuroBoard> solved = solver.solve(
-          generated.state,
+          generated.board,
           SolverContext(rng: SeededRng(seed64 ^ 0x7f4a7c15), maxSolutions: 2),
         );
-        solveWatch.stop();
 
+        expect(generated.board.width, 9, reason: seedStr);
+        expect(generated.board.height, 9, reason: seedStr);
         expect(solved.hasSolution, isTrue, reason: seedStr);
         expect(solved.isUnique, isTrue, reason: seedStr);
-        uniquenessSolveDurationsUs.add(solveWatch.elapsedMicroseconds);
       }
-
-      final int generationP95Us = _percentile(generationDurationsUs, 0.95);
-      final int generationP99Us = _percentile(generationDurationsUs, 0.99);
-      final int uniquenessP95Us = _percentile(uniquenessSolveDurationsUs, 0.95);
-      final int uniquenessP99Us = _percentile(uniquenessSolveDurationsUs, 0.99);
-
-      print(
-        'Kakuro generation benchmark: '
-        'p95=${(generationP95Us / 1000).toStringAsFixed(2)}ms, '
-        'p99=${(generationP99Us / 1000).toStringAsFixed(2)}ms',
-      );
-      print(
-        'Kakuro uniqueness-solve benchmark: '
-        'p95=${(uniquenessP95Us / 1000).toStringAsFixed(2)}ms, '
-        'p99=${(uniquenessP99Us / 1000).toStringAsFixed(2)}ms',
-      );
-
-      expect(generationP95Us, greaterThan(0));
-      expect(generationP99Us, greaterThanOrEqualTo(generationP95Us));
-      expect(uniquenessP95Us, greaterThan(0));
-      expect(uniquenessP99Us, greaterThanOrEqualTo(uniquenessP95Us));
     },
-    timeout: const Timeout(Duration(minutes: 6)),
+    timeout: const Timeout(Duration(seconds: 120)),
   );
 }

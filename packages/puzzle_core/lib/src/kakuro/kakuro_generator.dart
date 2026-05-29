@@ -64,8 +64,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       _normalizeDifficulty(raw.trim().toLowerCase());
 
   static final DifficultyBucketConfig _difficultyConfig =
-      const DifficultyConfigLoader()
-          .loadSync('assets/kakuro_difficulty_thresholds.json');
+      const DifficultyConfigLoader().loadSync(
+        'assets/kakuro_difficulty_thresholds.json',
+      );
 
   static const KakuroDifficultyScorer _difficultyScorer =
       KakuroDifficultyScorer();
@@ -74,7 +75,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
     final DateTime startedAt = DateTime.now();
     final Stopwatch stopwatch = Stopwatch()..start();
-    final String requestedLevelRaw = context.difficulty.level.trim().toLowerCase();
+    final String requestedLevelRaw = context.difficulty.level
+        .trim()
+        .toLowerCase();
     final String requestedLevel = _normalizeDifficulty(requestedLevelRaw);
 
     final KakuroSolver strictSolver = KakuroSolver(
@@ -87,7 +90,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     );
 
     final Stopwatch layoutWatch = Stopwatch()..start();
-    // Decide grid size based on difficulty. Respect provided size when present.
+    // Kakuro is explicitly 9x9-only in production mode.
     final int targetWidth = _chooseWidth(context, requestedLevel);
     final int targetHeight = _chooseHeight(context, requestedLevel);
     final KakuroLayout template = KakuroLayout.buildNewspaper(
@@ -111,9 +114,6 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     final int perAttemptBudgetMs = perAttemptTimeLimit.inMilliseconds;
 
     while (attempts < attemptLimit) {
-      if (stopwatch.elapsedMilliseconds > hardTimeBudgetMs) {
-        break; // global time budget exceeded
-      }
       attempts++;
       final Stopwatch attemptWatch = Stopwatch()..start();
       int solverStage = 0;
@@ -126,11 +126,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Build a fully solved board using the fast solution-first generator.
       final Stopwatch candidateBuildWatch = Stopwatch()..start();
-      KakuroSolution? solution = buildSolutionFirst(template, context.rng);
-      // If the initial approach fails quickly, try the bottom-up generator once
-      // before moving to the next attempt.
-      if (solution == null && attemptWatch.elapsedMilliseconds < perAttemptBudgetMs ~/ 2) {
-        solution = const KakuroBottomUpGenerator().generate(template, context.rng);
+      KakuroSolution? solution = buildSolutionFirst(
+        template,
+        SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
+      );
+      // If the initial approach fails, try the bottom-up generator once before
+      // moving to the next attempt.
+      if (solution == null) {
+        solution = const KakuroBottomUpGenerator().generate(
+          template,
+          SeededRng(_deriveSolverSeed(context.seed64, attempts, 1002)),
+        );
       }
       candidateBuildWatch.stop();
       if (solution == null) {
@@ -140,8 +146,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Add a handful of digit givens (tuned per difficulty) to improve
       // uniqueness rates without reducing challenge.
-      final Set<int> givenCells =
-          _selectGivenCells(template, context.rng, requestedLevel);
+      final Set<int> givenCells = _selectGivenCells(
+        template,
+        SeededRng(_deriveSolverSeed(context.seed64, attempts, 1003)),
+        requestedLevel,
+      );
 
       // Build a puzzle board with sums and optional givens; verify uniqueness and logic thresholds.
       final KakuroBoard candidateBoard = template.buildBoard(
@@ -153,30 +162,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       final Stopwatch solverWatch = Stopwatch()..start();
       SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
         candidateBoard,
-        SolverContext(
-          rng: nextSolverRng(),
-          maxSolutions: 2,
-        ),
+        SolverContext(rng: nextSolverRng(), maxSolutions: 2),
       );
-      if (uniqueness.solutionStatus == SolverStatus.unknown &&
-          attemptWatch.elapsedMilliseconds < perAttemptBudgetMs) {
+      if (uniqueness.solutionStatus == SolverStatus.unknown) {
         uniqueness = exhaustiveFallbackSolver.solve(
           candidateBoard,
-          SolverContext(
-            rng: nextSolverRng(),
-            maxSolutions: 2,
-          ),
+          SolverContext(rng: nextSolverRng(), maxSolutions: 2),
         );
       }
       solverWatch.stop();
 
       final int attemptMs = attemptWatch.elapsedMilliseconds;
-      if (attemptMs > perAttemptBudgetMs &&
-          uniqueness.solutionStatus != SolverStatus.unique) {
-        // Skip long-running, non-unique attempts early to respect budgets.
-        nonUniqueCount++;
-        continue;
-      }
       if (uniqueness.solutionStatus != SolverStatus.unique) {
         nonUniqueCount++;
         continue;
@@ -190,7 +186,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Additional gating: ensure a minimum ratio of entries whose (length,sum)
       // has a single-digit-set combination. This biases toward simpler logic for easy puzzles.
-      if (!_meetsSingleComboThreshold(template, candidateBoard, requestedLevel)) {
+      if (!_meetsSingleComboThreshold(
+        template,
+        candidateBoard,
+        requestedLevel,
+      )) {
         comboRejectCount++;
         continue;
       }
@@ -209,15 +209,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           solverTelemetry: uniqueness.telemetry,
         ),
       );
-      final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
+      final String bucket = _difficultyConfig.bucketFor(
+        difficultyTelemetry.rawScore,
+      );
 
-      final Map<String, Object?> sanitizedSolverTelemetry =
-          uniqueness.telemetry.map((String key, Object? value) {
-        if (value is double) {
-          return MapEntry<String, Object?>(key, (value * 1000).round());
-        }
-        return MapEntry<String, Object?>(key, value);
-      });
+      final Map<String, Object?> sanitizedSolverTelemetry = uniqueness.telemetry
+          .map((String key, Object? value) {
+            if (value is double) {
+              return MapEntry<String, Object?>(key, (value * 1000).round());
+            }
+            return MapEntry<String, Object?>(key, value);
+          });
 
       puzzle = candidateBoard;
       telemetry = <String, Object?>{
@@ -257,7 +259,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     stopwatch.stop();
 
     if (puzzle == null) {
-      // Deterministic fallback: try a few alternative layouts within the remaining budget.
+      // Deterministic fallback: try a few alternative layouts and candidate
+      // seeds before failing the request.
       for (int alt = 0; alt < 8 && puzzle == null; alt++) {
         final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
           rng: SeededRng(_deriveSolverSeed(context.seed64, 1234, alt + 1)),
@@ -265,16 +268,29 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           height: targetHeight,
           difficulty: requestedLevel,
         );
-        final KakuroSolution? sol =
-            buildSolutionFirst(altTemplate, context.rng);
+        KakuroSolution? sol = buildSolutionFirst(
+          altTemplate,
+          SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 1)),
+        );
+        sol ??= const KakuroBottomUpGenerator().generate(
+          altTemplate,
+          SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 101)),
+        );
         if (sol == null) continue;
-        final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
+        final Set<int> altGivens = _selectGivenCells(
+          altTemplate,
+          SeededRng(_deriveSolverSeed(context.seed64, 3234, alt + 1)),
+          requestedLevel,
+        );
+        final KakuroBoard board = altTemplate.buildBoard(
+          sol.entrySums,
+          altGivens,
+          sol.values,
+        );
         SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
           SolverContext(
-            rng: SeededRng(
-              _deriveSolverSeed(context.seed64, 4321, alt + 1),
-            ),
+            rng: SeededRng(_deriveSolverSeed(context.seed64, 4321, alt + 1)),
             maxSolutions: 2,
           ),
         );
@@ -292,19 +308,22 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         if (uniqueness.solutionStatus == SolverStatus.unique &&
             _meetsLogicThresholds(requestedLevel, uniqueness.telemetry) &&
             _meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
-          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
-            puzzle: board,
-            solution: board,
-            context: DifficultyContext(
-              generatorTelemetry: <String, Object?>{
-                'valueCells': altTemplate.valueCellCount,
-                'width': altTemplate.width,
-                'height': altTemplate.height,
-              },
-              solverTelemetry: uniqueness.telemetry,
-            ),
+          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer
+              .score(
+                puzzle: board,
+                solution: board,
+                context: DifficultyContext(
+                  generatorTelemetry: <String, Object?>{
+                    'valueCells': altTemplate.valueCellCount,
+                    'width': altTemplate.width,
+                    'height': altTemplate.height,
+                  },
+                  solverTelemetry: uniqueness.telemetry,
+                ),
+              );
+          final String bucket = _difficultyConfig.bucketFor(
+            difficultyTelemetry.rawScore,
           );
-          final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
           puzzle = board;
           telemetry = <String, Object?>{
             'attempts': attempts,
@@ -315,8 +334,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
             'difficultyMatchedRequest': bucket == requestedLevel,
-            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
+            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
+                .round(),
             'valueCellCount': altTemplate.valueCellCount,
+            'givensCount': altGivens.length,
+            'givenRatioMilli': altTemplate.valueCellCount == 0
+                ? 0
+                : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
             'rejectCounters': <String, int>{
@@ -338,11 +362,26 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             height: targetHeight,
             difficulty: requestedLevel,
           );
-          KakuroSolution? sol = buildSolutionFirst(altTemplate, context.rng);
-          sol ??= const KakuroBottomUpGenerator().generate(altTemplate, context.rng);
+          KakuroSolution? sol = buildSolutionFirst(
+            altTemplate,
+            SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 1)),
+          );
+          sol ??= const KakuroBottomUpGenerator().generate(
+            altTemplate,
+            SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 101)),
+          );
           if (sol == null) continue;
 
-          final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
+          final Set<int> altGivens = _selectGivenCells(
+            altTemplate,
+            SeededRng(_deriveSolverSeed(context.seed64, 10128, alt + 1)),
+            requestedLevel,
+          );
+          final KakuroBoard board = altTemplate.buildBoard(
+            sol.entrySums,
+            altGivens,
+            sol.values,
+          );
           SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
             board,
             SolverContext(
@@ -365,19 +404,22 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             continue;
           }
 
-          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
-            puzzle: board,
-            solution: board,
-            context: DifficultyContext(
-              generatorTelemetry: <String, Object?>{
-                'valueCells': altTemplate.valueCellCount,
-                'width': altTemplate.width,
-                'height': altTemplate.height,
-              },
-              solverTelemetry: uniqueness.telemetry,
-            ),
+          final DifficultyTelemetry difficultyTelemetry = _difficultyScorer
+              .score(
+                puzzle: board,
+                solution: board,
+                context: DifficultyContext(
+                  generatorTelemetry: <String, Object?>{
+                    'valueCells': altTemplate.valueCellCount,
+                    'width': altTemplate.width,
+                    'height': altTemplate.height,
+                  },
+                  solverTelemetry: uniqueness.telemetry,
+                ),
+              );
+          final String bucket = _difficultyConfig.bucketFor(
+            difficultyTelemetry.rawScore,
           );
-          final String bucket = _difficultyConfig.bucketFor(difficultyTelemetry.rawScore);
           puzzle = board;
           telemetry = <String, Object?>{
             'attempts': attempts,
@@ -389,8 +431,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
             'difficultyMatchedRequest': bucket == requestedLevel,
-            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
+            'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
+                .round(),
             'valueCellCount': altTemplate.valueCellCount,
+            'givensCount': altGivens.length,
+            'givenRatioMilli': altTemplate.valueCellCount == 0
+                ? 0
+                : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
             'rejectCounters': <String, int>{
@@ -403,7 +450,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         }
       }
       if (puzzle == null) {
-        throw StateError('Unable to generate unique Kakuro for seed ${context.seedStr}');
+        throw StateError(
+          'Unable to generate unique Kakuro for seed ${context.seedStr}',
+        );
       }
     }
 
@@ -448,44 +497,14 @@ String _normalizeDifficulty(String raw) {
 }
 
 int _chooseWidth(GeneratorContext context, String level) {
-  final int provided = context.size.width;
-  if (provided > 0) return provided;
-  switch (level) {
-    case 'easy':
-      return 9 + context.rng.nextIntInRange(3); // 9..11
-    case 'medium':
-      return 10 + context.rng.nextIntInRange(3); // 10..12
-    case 'hard':
-      return 12 + context.rng.nextIntInRange(3); // 12..14
-    case 'expert':
-      return 13 + context.rng.nextIntInRange(2); // 13..14
-    default:
-      return 10 + context.rng.nextIntInRange(5); // 10..14
-  }
+  return 9;
 }
 
 int _chooseHeight(GeneratorContext context, String level) {
-  final int provided = context.size.height;
-  if (provided > 0) return provided;
-  switch (level) {
-    case 'easy':
-      return 9 + context.rng.nextIntInRange(3);
-    case 'medium':
-      return 10 + context.rng.nextIntInRange(3);
-    case 'hard':
-      return 12 + context.rng.nextIntInRange(3);
-    case 'expert':
-      return 13 + context.rng.nextIntInRange(2);
-    default:
-      return 10 + context.rng.nextIntInRange(5);
-  }
+  return 9;
 }
 
-Set<int> _selectGivenCells(
-  KakuroLayout template,
-  SeededRng rng,
-  String level,
-) {
+Set<int> _selectGivenCells(KakuroLayout template, SeededRng rng, String level) {
   int minGivens;
   int maxGivens;
   switch (level) {
@@ -538,7 +557,8 @@ int _timeBudgetMillis(String level) {
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {
-  final int searchNodes = (telemetry['searchNodes'] as num?)?.toInt() ??
+  final int searchNodes =
+      (telemetry['searchNodes'] as num?)?.toInt() ??
       (telemetry['backtrackNodes'] as num?)?.toInt() ??
       0;
   final int backtracks = (telemetry['backtracks'] as num?)?.toInt() ?? 0;
@@ -595,7 +615,10 @@ bool _meetsSingleComboThreshold(
   // Count entries whose (length,sum) combination set has exactly 1 mask.
   int singles = 0;
   for (final KakuroEntry e in board.entries) {
-    final Set<int>? combos = KakuroDictionary.getCombinations(e.cells.length, e.sum);
+    final Set<int>? combos = KakuroDictionary.getCombinations(
+      e.cells.length,
+      e.sum,
+    );
     if (combos != null && combos.length == 1) {
       singles++;
     }
