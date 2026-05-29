@@ -112,6 +112,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 }) async {
   final registry = EngineRegistry();
   final engine = registry.getEngine(engineId);
+  const KakuroSolver kakuroSolver = KakuroSolver();
+  final bool measureKakuroUniqueness = engineId == 'kakuro_classic';
 
   if (engine == null) {
     throw Exception('Engine not found: $engineId');
@@ -140,6 +142,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final difficultyScore = _parseDifficulty(difficulty);
 
   final times = <int>[];
+  final List<int> uniquenessSolveTimes = <int>[];
   final totalStopwatch = Stopwatch()..start();
 
   for (int i = 0; i < count; i++) {
@@ -147,9 +150,10 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     final seed64 = Seed.fromString(seedStr);
 
     final stopwatch = Stopwatch()..start();
+    late final GeneratedPuzzle<dynamic> puzzle;
 
     try {
-      final puzzle = engine.generate(
+      puzzle = engine.generate(
         seedStr: seedStr,
         seed64: seed64,
         size: SizeOpt(
@@ -171,6 +175,24 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
     stopwatch.stop();
     times.add(stopwatch.elapsedMicroseconds);
+
+    if (measureKakuroUniqueness) {
+      if (puzzle.state is! KakuroBoard) {
+        throw Exception('Kakuro benchmark expected KakuroBoard state');
+      }
+      final Stopwatch solveWatch = Stopwatch()..start();
+      final SolverResult<KakuroBoard> solved = kakuroSolver.solve(
+        puzzle.state as KakuroBoard,
+        SolverContext(rng: SeededRng(seed64 ^ 0x7f4a7c15), maxSolutions: 2),
+      );
+      solveWatch.stop();
+      if (!solved.hasSolution || !solved.isUnique) {
+        throw Exception(
+          'Kakuro uniqueness solve failed for seed $seedStr: ${solved.solutionStatus.name}',
+        );
+      }
+      uniquenessSolveTimes.add(solveWatch.elapsedMicroseconds);
+    }
   }
 
   totalStopwatch.stop();
@@ -180,6 +202,15 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final p50 = _percentile(times, 0.50);
   final p95 = _percentile(times, 0.95);
   final p99 = _percentile(times, 0.99);
+  final Map<String, Object?> extras = <String, Object?>{};
+  if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
+    uniquenessSolveTimes.sort();
+    extras['uniquenessSolveMs'] = <String, double>{
+      'p50': _percentile(uniquenessSolveTimes, 0.50) / 1000.0,
+      'p95': _percentile(uniquenessSolveTimes, 0.95) / 1000.0,
+      'p99': _percentile(uniquenessSolveTimes, 0.99) / 1000.0,
+    };
+  }
 
   return EngineBenchmarkResult(
     engineId: engineId,
@@ -190,6 +221,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     p99Ms: p99 / 1000.0,
     totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
     iterations: count,
+    extras: extras,
   );
 }
 
