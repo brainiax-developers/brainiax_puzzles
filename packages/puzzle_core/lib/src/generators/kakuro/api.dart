@@ -165,7 +165,6 @@ class KakuroPuzzleGenerator {
     combinedTelemetry['elapsedBeforeAttemptMs'] =
         elapsedBeforeAttempt.inMilliseconds;
     combinedTelemetry['attemptDurationMs'] = attemptWatch.elapsedMilliseconds;
-    combinedTelemetry['startTimestamp'] = DateTime.now().toIso8601String();
     combinedTelemetry['seed'] = attemptSeed.toString();
     combinedTelemetry['wallTimeBudgetMs'] = math.min(
       hardCap.inMilliseconds,

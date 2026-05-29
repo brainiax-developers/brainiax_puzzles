@@ -13,6 +13,9 @@ import '../services/slitherlink_on_demand_service.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
 const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
+const Duration _kakuroGenerationCap = Duration(seconds: 8);
+const Duration _defaultGenerationCap = Duration(seconds: 2);
+const int _maxGenerationAttempts = 3;
 
 /// Riverpod controller responsible for generating puzzles asynchronously.
 final puzzleGenerationControllerProvider =
@@ -82,33 +85,38 @@ class PuzzleGenerationController
         }
         return generated;
       }
-      // Some engines (e.g., Kakuro) may fail for specific seeds; retry with fresh seeds a few times
-      const int maxAttempts = 3;
+      // Retry with deterministic sub-seeds derived from one base seed.
+      final String baseSeed =
+          seed ?? SeedService().generateRandomSeed(puzzleType.key);
       Object? lastError;
       StackTrace? lastStack;
-      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        final attemptSeed =
-            seed ?? SeedService().generateRandomSeed(puzzleType.key);
+      for (int attempt = 1; attempt <= _maxGenerationAttempts; attempt++) {
+        final String attemptSeed = _seedForAttempt(baseSeed, attempt);
+        final Duration attemptTimeout = _attemptTimeoutFor(
+          puzzleType: puzzleType,
+          elapsed: stopwatch.elapsed,
+        );
+        if (attemptTimeout <= Duration.zero) {
+          lastError = TimeoutException(
+            'Generation budget exceeded for ${puzzleType.key}',
+            _kakuroGenerationCap,
+          );
+          break;
+        }
         if (kDebugMode) {
           debugPrint(
             '[Generation][Start] type=${puzzleType.key} '
             'difficulty=$difficulty size=${resolvedSize.id} '
-            'seed=$attemptSeed attempt=$attempt',
+            'seed=$attemptSeed attempt=$attempt '
+            'attemptBudgetMs=${attemptTimeout.inMilliseconds}',
           );
         }
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          final Duration attemptTimeout = () {
-            if (puzzleType == app.PuzzleType.kakuroClassic)
-              return const Duration(seconds: 3);
-            if (puzzleType == app.PuzzleType.slitherlinkLoop)
-              return const Duration(seconds: 3);
-            return const Duration(seconds: 2);
-          }();
           final generated = await generatePuzzleIsolated(
             engineId: puzzleType.key,
             seedStr: attemptSeed,
-            seed64: attemptSeed.hashCode,
+            seed64: core.Seed.fromString(attemptSeed),
             size: resolvedSize,
             difficulty: difficultyScore,
           ).timeout(attemptTimeout);
@@ -127,8 +135,7 @@ class PuzzleGenerationController
         } catch (e, st) {
           lastError = e;
           lastStack = st;
-          // Try next attempt with a new seed
-          if (attempt == maxAttempts) break;
+          if (attempt == _maxGenerationAttempts) break;
           // brief microtask yield to keep UI responsive
           await Future<void>.delayed(const Duration(milliseconds: 10));
         }
@@ -217,18 +224,12 @@ class PuzzleGenerationController
             );
           case 'medium':
           case 'hard':
+          case 'expert':
             return const core.SizeOpt(
               id: '9x9',
               description: '9x9',
               width: 9,
               height: 9,
-            );
-          case 'expert':
-            return const core.SizeOpt(
-              id: '11x11',
-              description: '11x11',
-              width: 11,
-              height: 11,
             );
           default:
             return const core.SizeOpt(
@@ -348,5 +349,23 @@ class PuzzleGenerationController
       width: size.width,
       height: size.height,
     );
+  }
+
+  String _seedForAttempt(String baseSeed, int attempt) {
+    if (attempt <= 1) {
+      return baseSeed;
+    }
+    return '$baseSeed#attempt$attempt';
+  }
+
+  Duration _attemptTimeoutFor({
+    required app.PuzzleType puzzleType,
+    required Duration elapsed,
+  }) {
+    if (puzzleType == app.PuzzleType.kakuroClassic) {
+      final Duration remaining = _kakuroGenerationCap - elapsed;
+      return remaining <= Duration.zero ? Duration.zero : remaining;
+    }
+    return _defaultGenerationCap;
   }
 }

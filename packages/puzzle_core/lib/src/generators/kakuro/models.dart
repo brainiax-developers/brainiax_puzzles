@@ -62,7 +62,7 @@ class GenerateKakuroRequest {
     required this.difficulty,
     this.seed,
     this.profile = const KakuroDifficultyProfile(),
-    this.timeBudget = const Duration(milliseconds: 250),
+    this.timeBudget = const Duration(seconds: 8),
     this.maxRestarts = 40,
     this.strategy = KakuroGenerationStrategy.solutionFirst,
   });

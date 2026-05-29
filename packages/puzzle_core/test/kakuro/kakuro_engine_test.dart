@@ -60,6 +60,8 @@ void main() {
       const Map<String, SizeOpt> defaultsByDifficulty = <String, SizeOpt>{
         'easy': SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7),
         'medium': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
+        'hard': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
+        'expert': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
       };
       const List<String> seedCandidates = <String>[
         'kakuro_engine_seed',
@@ -106,19 +108,6 @@ void main() {
         expect(puzzle.meta.size.id, equals(requestedSize.id));
       }
     },
-  );
-
-  test(
-    'engine expert 11x11 default policy is covered in slow/device benchmarks',
-    () {
-      expect(
-        const SizeOpt(id: '11x11', description: '11x11', width: 11, height: 11)
-            .width,
-        11,
-      );
-    },
-    skip:
-        '11x11 expert generation is intentionally excluded from normal test runs; validate via benchmark_runner/manual device calibration.',
   );
 
   test('validateMove enforces bounds and rules', () {

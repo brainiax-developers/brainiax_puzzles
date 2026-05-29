@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../../shared/services/generation_isolate.dart';
@@ -23,17 +25,53 @@ final dailyPuzzleProvider =
       final seed = seedGenerator.generate(puzzleTypeKey);
       final size = _defaultSizeFor(puzzleTypeKey);
       final difficulty = _defaultDifficultyFor(puzzleTypeKey);
+      if (puzzleTypeKey == 'kakuro_classic') {
+        const Duration cap = Duration(seconds: 8);
+        const int maxAttempts = 3;
+        final Stopwatch watch = Stopwatch()..start();
+        Object? lastError;
+        StackTrace? lastStackTrace;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+          final Duration remaining = cap - watch.elapsed;
+          if (remaining <= Duration.zero) {
+            break;
+          }
+          final String attemptSeedStr = attempt == 1
+              ? seed.seedStr
+              : '${seed.seedStr}#attempt$attempt';
+          final int attemptSeed64 = Seed.fromString(attemptSeedStr);
+          try {
+            return await generatePuzzleIsolated(
+              engineId: puzzleTypeKey,
+              seedStr: attemptSeedStr,
+              seed64: attemptSeed64,
+              size: size,
+              difficulty: difficulty,
+            ).timeout(remaining);
+          } catch (error, stackTrace) {
+            lastError = error;
+            lastStackTrace = stackTrace;
+          }
+        }
+        if (lastError != null) {
+          Error.throwWithStackTrace(
+            lastError,
+            lastStackTrace ?? StackTrace.current,
+          );
+        }
+        throw TimeoutException(
+          'Daily kakuro generation budget exceeded for $puzzleTypeKey',
+          cap,
+        );
+      }
 
-      final Duration timeout = puzzleTypeKey == 'kakuro_classic'
-          ? const Duration(seconds: 3)
-          : const Duration(seconds: 2);
       return generatePuzzleIsolated(
         engineId: puzzleTypeKey,
         seedStr: seed.seedStr,
         seed64: seed.seed64,
         size: size,
         difficulty: difficulty,
-      ).timeout(timeout);
+      ).timeout(const Duration(seconds: 2));
     });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {

@@ -1,5 +1,6 @@
 import 'package:puzzle_core/src/api_types.dart';
 import 'package:puzzle_core/src/generators/generator.dart';
+import 'package:puzzle_core/src/generators/kakuro/models.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_board.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_solver.dart';
@@ -97,7 +98,10 @@ void main() {
       difficulty: const DifficultyRequest(level: 'auto'),
     );
 
-    expect(() => generator.generate(context), throwsA(isA<StateError>()));
+    expect(
+      () => generator.generate(context),
+      throwsA(isA<GenerationFailure>()),
+    );
   });
 
   test('generator rejects unsupported 13x13 size', () {

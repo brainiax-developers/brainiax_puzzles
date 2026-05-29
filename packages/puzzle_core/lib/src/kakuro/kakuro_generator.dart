@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../difficulty/difficulty_config.dart';
 import '../difficulty/telemetry.dart';
 import '../generators/generator.dart';
+import '../generators/kakuro/models.dart';
 import '../solver/solver.dart';
 import '../util/determinism.dart';
 import '../util/kakuro_dictionary.dart';
@@ -73,7 +74,6 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
   @override
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
-    final DateTime startedAt = DateTime.now();
     final Stopwatch stopwatch = Stopwatch()..start();
     final String requestedLevelRaw = context.difficulty.level
         .trim()
@@ -102,18 +102,80 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     layoutWatch.stop();
 
     int attempts = 0;
+    int fallbackAttempts = 0;
     int nullSolutionCount = 0;
     int nonUniqueCount = 0;
+    int unknownStatusCount = 0;
     int logicRejectCount = 0;
     int comboRejectCount = 0;
+    int attemptBudgetExceededCount = 0;
+    int hardBudgetExceededCount = 0;
+    final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
+    String? terminalFailureReason;
 
     final int attemptLimit = maxTemplateAttempts * template.attemptMultiplier;
     final int hardTimeBudgetMs = _effectiveTimeBudgetMs(requestedLevel);
     final int perAttemptBudgetMs = perAttemptTimeLimit.inMilliseconds;
 
+    bool overHardBudget() => stopwatch.elapsedMilliseconds >= hardTimeBudgetMs;
+
+    void recordAttempt({
+      required int attempt,
+      required int durationMs,
+      required String outcome,
+      String? rejectReason,
+      String? solverStatus,
+      String? mode,
+    }) {
+      attemptLog.add(<String, Object?>{
+        'attempt': attempt,
+        'durationMs': durationMs,
+        'outcome': outcome,
+        if (rejectReason != null) 'rejectReason': rejectReason,
+        if (solverStatus != null) 'solverStatus': solverStatus,
+        if (mode != null) 'mode': mode,
+      });
+    }
+
+    GenerationFailure generationFailure({
+      required String message,
+      required String reason,
+    }) {
+      stopwatch.stop();
+      return GenerationFailure(
+        message: message,
+        attempts: attempts + fallbackAttempts,
+        elapsed: stopwatch.elapsed,
+        baseSeed: context.seed64,
+        context: <String, Object?>{
+          'failureReason': reason,
+          'requestedDifficulty': requestedLevel,
+          'selectedSize': '${targetWidth}x$targetHeight',
+          'attemptLimit': attemptLimit,
+          'hardBudgetMs': hardTimeBudgetMs,
+          'perAttemptBudgetMs': perAttemptBudgetMs,
+          'rejectCounters': <String, int>{
+            'nullCandidate': nullSolutionCount,
+            'nonUnique': nonUniqueCount,
+            'unknownStatus': unknownStatusCount,
+            'logicGate': logicRejectCount,
+            'comboGate': comboRejectCount,
+            'attemptBudget': attemptBudgetExceededCount,
+            'hardBudget': hardBudgetExceededCount,
+          },
+          'attemptsLog': attemptLog,
+        },
+      );
+    }
+
     while (attempts < attemptLimit) {
+      if (overHardBudget()) {
+        hardBudgetExceededCount++;
+        terminalFailureReason = 'hard_budget_exceeded';
+        break;
+      }
       attempts++;
       final Stopwatch attemptWatch = Stopwatch()..start();
       int solverStage = 0;
@@ -141,6 +203,25 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       candidateBuildWatch.stop();
       if (solution == null) {
         nullSolutionCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptWatch.elapsedMilliseconds,
+          outcome: 'rejected',
+          rejectReason: 'null_candidate',
+          mode: 'primary',
+        );
+        continue;
+      }
+
+      if (attemptWatch.elapsedMilliseconds > perAttemptBudgetMs) {
+        attemptBudgetExceededCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptWatch.elapsedMilliseconds,
+          outcome: 'rejected',
+          rejectReason: 'attempt_budget_exceeded_after_candidate',
+          mode: 'primary',
+        );
         continue;
       }
 
@@ -173,14 +254,67 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       solverWatch.stop();
 
       final int attemptMs = attemptWatch.elapsedMilliseconds;
+      if (overHardBudget()) {
+        hardBudgetExceededCount++;
+        terminalFailureReason = 'hard_budget_exceeded';
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'hard_budget_exceeded',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
+        break;
+      }
+      if (attemptMs > perAttemptBudgetMs) {
+        attemptBudgetExceededCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'attempt_budget_exceeded_after_solver',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
+        continue;
+      }
+      if (uniqueness.solutionStatus == SolverStatus.unknown) {
+        unknownStatusCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'solver_status_unknown',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
+        continue;
+      }
       if (uniqueness.solutionStatus != SolverStatus.unique) {
         nonUniqueCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'non_unique',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
         continue;
       }
 
       // Gate by backtrack/logic thresholds per difficulty.
       if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
         logicRejectCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'logic_gate',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
         continue;
       }
 
@@ -192,6 +326,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         requestedLevel,
       )) {
         comboRejectCount++;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'rejected',
+          rejectReason: 'combo_gate',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+        );
         continue;
       }
 
@@ -222,8 +364,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           });
 
       puzzle = candidateBoard;
+      recordAttempt(
+        attempt: attempts,
+        durationMs: attemptMs,
+        outcome: 'accepted',
+        solverStatus: uniqueness.solutionStatus.name,
+        mode: 'primary',
+      );
       telemetry = <String, Object?>{
-        'attempts': attempts,
+        'attempts': attempts + fallbackAttempts,
         'attemptLimit': attemptLimit,
         'generationDurationMs': stopwatch.elapsedMilliseconds,
         'attemptDurationMs': attemptMs,
@@ -236,6 +385,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'requestedDifficulty': requestedLevel,
         'difficultyMatchedRequest': bucket == requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
+        'selectedSize': '${template.width}x${template.height}',
         'valueCellCount': template.valueCellCount,
         'givensCount': givenCells.length,
         'givenRatioMilli': template.valueCellCount == 0
@@ -245,23 +395,33 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'height': template.height,
         'perAttemptBudgetMs': perAttemptBudgetMs,
         'hardBudgetMs': hardTimeBudgetMs,
-        'startedAt': startedAt.toIso8601String(),
+        'hardCapExceeded': false,
+        'attemptsLog': attemptLog,
         'rejectCounters': <String, int>{
           'nullCandidate': nullSolutionCount,
           'nonUnique': nonUniqueCount,
+          'unknownStatus': unknownStatusCount,
           'logicGate': logicRejectCount,
           'comboGate': comboRejectCount,
+          'attemptBudget': attemptBudgetExceededCount,
+          'hardBudget': hardBudgetExceededCount,
         },
       };
       break;
     }
 
-    stopwatch.stop();
-
     if (puzzle == null) {
       // Deterministic fallback: try a few alternative layouts and candidate
       // seeds before failing the request.
       for (int alt = 0; alt < 8 && puzzle == null; alt++) {
+        if (overHardBudget()) {
+          hardBudgetExceededCount++;
+          terminalFailureReason = 'hard_budget_exceeded';
+          break;
+        }
+        fallbackAttempts++;
+        final int attemptNumber = attempts + fallbackAttempts;
+        final Stopwatch attemptWatch = Stopwatch()..start();
         final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
           rng: SeededRng(_deriveSolverSeed(context.seed64, 1234, alt + 1)),
           width: targetWidth,
@@ -276,7 +436,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           altTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 101)),
         );
-        if (sol == null) continue;
+        if (sol == null) {
+          nullSolutionCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'null_candidate',
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
         final Set<int> altGivens = _selectGivenCells(
           altTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, 3234, alt + 1)),
@@ -305,9 +475,81 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             ),
           );
         }
-        if (uniqueness.solutionStatus == SolverStatus.unique &&
-            _meetsLogicThresholds(requestedLevel, uniqueness.telemetry) &&
-            _meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
+        final int attemptMs = attemptWatch.elapsedMilliseconds;
+        if (overHardBudget()) {
+          hardBudgetExceededCount++;
+          terminalFailureReason = 'hard_budget_exceeded';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'hard_budget_exceeded',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          break;
+        }
+        if (attemptMs > perAttemptBudgetMs) {
+          attemptBudgetExceededCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'attempt_budget_exceeded_after_solver',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        if (uniqueness.solutionStatus == SolverStatus.unknown) {
+          unknownStatusCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'solver_status_unknown',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        if (uniqueness.solutionStatus != SolverStatus.unique) {
+          nonUniqueCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'non_unique',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
+          logicRejectCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'logic_gate',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        if (!_meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
+          comboRejectCount++;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'combo_gate',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        if (uniqueness.solutionStatus == SolverStatus.unique) {
           final DifficultyTelemetry difficultyTelemetry = _difficultyScorer
               .score(
                 puzzle: board,
@@ -325,17 +567,26 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             difficultyTelemetry.rawScore,
           );
           puzzle = board;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'accepted',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_strict',
+          );
           telemetry = <String, Object?>{
-            'attempts': attempts,
+            'attempts': attempts + fallbackAttempts,
             'attemptLimit': attemptLimit,
             'generationDurationMs': stopwatch.elapsedMilliseconds,
             'fallback': true,
+            'fallbackMode': 'strict',
             'measuredDifficultyBucket': bucket,
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
             'difficultyMatchedRequest': bucket == requestedLevel,
             'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
                 .round(),
+            'selectedSize': '${altTemplate.width}x${altTemplate.height}',
             'valueCellCount': altTemplate.valueCellCount,
             'givensCount': altGivens.length,
             'givenRatioMilli': altTemplate.valueCellCount == 0
@@ -343,11 +594,18 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            'perAttemptBudgetMs': perAttemptBudgetMs,
+            'hardBudgetMs': hardTimeBudgetMs,
+            'hardCapExceeded': false,
+            'attemptsLog': attemptLog,
             'rejectCounters': <String, int>{
               'nullCandidate': nullSolutionCount,
               'nonUnique': nonUniqueCount,
+              'unknownStatus': unknownStatusCount,
               'logicGate': logicRejectCount,
               'comboGate': comboRejectCount,
+              'attemptBudget': attemptBudgetExceededCount,
+              'hardBudget': hardBudgetExceededCount,
             },
           };
         }
@@ -356,6 +614,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         // Last-resort deterministic fallback: accept any unique puzzle if
         // calibrated gates cannot be satisfied within budget.
         for (int alt = 0; alt < 24 && puzzle == null; alt++) {
+          if (overHardBudget()) {
+            hardBudgetExceededCount++;
+            terminalFailureReason = 'hard_budget_exceeded';
+            break;
+          }
+          fallbackAttempts++;
+          final int attemptNumber = attempts + fallbackAttempts;
+          final Stopwatch attemptWatch = Stopwatch()..start();
           final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
             rng: SeededRng(_deriveSolverSeed(context.seed64, 8128, alt + 1)),
             width: targetWidth,
@@ -370,7 +636,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             altTemplate,
             SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 101)),
           );
-          if (sol == null) continue;
+          if (sol == null) {
+            nullSolutionCount++;
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptWatch.elapsedMilliseconds,
+              outcome: 'rejected',
+              rejectReason: 'null_candidate',
+              mode: 'fallback_relaxed',
+            );
+            continue;
+          }
 
           final Set<int> altGivens = _selectGivenCells(
             altTemplate,
@@ -400,7 +676,54 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
               ),
             );
           }
+          final int attemptMs = attemptWatch.elapsedMilliseconds;
+          if (overHardBudget()) {
+            hardBudgetExceededCount++;
+            terminalFailureReason = 'hard_budget_exceeded';
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'rejected',
+              rejectReason: 'hard_budget_exceeded',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_relaxed',
+            );
+            break;
+          }
+          if (attemptMs > perAttemptBudgetMs) {
+            attemptBudgetExceededCount++;
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'rejected',
+              rejectReason: 'attempt_budget_exceeded_after_solver',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_relaxed',
+            );
+            continue;
+          }
+          if (uniqueness.solutionStatus == SolverStatus.unknown) {
+            unknownStatusCount++;
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'rejected',
+              rejectReason: 'solver_status_unknown',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_relaxed',
+            );
+            continue;
+          }
           if (uniqueness.solutionStatus != SolverStatus.unique) {
+            nonUniqueCount++;
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'rejected',
+              rejectReason: 'non_unique',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_relaxed',
+            );
             continue;
           }
 
@@ -421,18 +744,27 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             difficultyTelemetry.rawScore,
           );
           puzzle = board;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptMs,
+            outcome: 'accepted',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'fallback_relaxed',
+          );
           telemetry = <String, Object?>{
-            'attempts': attempts,
+            'attempts': attempts + fallbackAttempts,
             'attemptLimit': attemptLimit,
             'generationDurationMs': stopwatch.elapsedMilliseconds,
             'fallback': true,
             'relaxedFallback': true,
+            'fallbackMode': 'relaxed',
             'measuredDifficultyBucket': bucket,
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
             'difficultyMatchedRequest': bucket == requestedLevel,
             'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
                 .round(),
+            'selectedSize': '${altTemplate.width}x${altTemplate.height}',
             'valueCellCount': altTemplate.valueCellCount,
             'givensCount': altGivens.length,
             'givenRatioMilli': altTemplate.valueCellCount == 0
@@ -440,22 +772,31 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            'perAttemptBudgetMs': perAttemptBudgetMs,
+            'hardBudgetMs': hardTimeBudgetMs,
+            'hardCapExceeded': false,
+            'attemptsLog': attemptLog,
             'rejectCounters': <String, int>{
               'nullCandidate': nullSolutionCount,
               'nonUnique': nonUniqueCount,
+              'unknownStatus': unknownStatusCount,
               'logicGate': logicRejectCount,
               'comboGate': comboRejectCount,
+              'attemptBudget': attemptBudgetExceededCount,
+              'hardBudget': hardBudgetExceededCount,
             },
           };
         }
       }
       if (puzzle == null) {
-        throw StateError(
-          'Unable to generate unique Kakuro for seed ${context.seedStr}',
+        throw generationFailure(
+          message: 'Unable to generate unique Kakuro within hard budget',
+          reason: terminalFailureReason ?? 'attempts_exhausted',
         );
       }
     }
 
+    stopwatch.stop();
     DeterminismGuard.assertNoFloatsOrDateTimes(telemetry);
 
     return PuzzleGenerationResult<KakuroBoard>(
@@ -530,7 +871,7 @@ int _defaultSizeForLevel(String level) {
     case 'hard':
       return 9;
     case 'expert':
-      return 11;
+      return 9;
     default:
       return 9;
   }
@@ -582,7 +923,7 @@ int _timeBudgetMillis(String level) {
     case 'hard':
       return 5200;
     case 'expert':
-      return 6500;
+      return 8000;
     default:
       return 4200;
   }

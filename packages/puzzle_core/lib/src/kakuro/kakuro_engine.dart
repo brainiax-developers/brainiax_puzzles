@@ -13,28 +13,29 @@ import 'kakuro_solver.dart';
 import 'kakuro_validator.dart';
 
 DifficultyBucketConfig _loadKakuroDifficultyConfig() {
-  return const DifficultyConfigLoader()
-      .loadSync('assets/kakuro_difficulty_thresholds.json');
+  return const DifficultyConfigLoader().loadSync(
+    'assets/kakuro_difficulty_thresholds.json',
+  );
 }
 
 class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
-  KakuroEngine({DifficultyBucketConfig? config})
-      : super(
-          engineId: 'kakuro_classic',
-          engineName: 'Classic Kakuro',
-          engineVersion: '1.2.0',
-          generator: const KakuroGenerator(),
-          solver: const KakuroSolver(),
-          validator: const KakuroValidator(),
-          difficultyScorer: const KakuroDifficultyScorer(),
-          difficultyConfig: config ?? _loadKakuroDifficultyConfig(),
-          enforceDifficulty: false, // Disable strict difficulty enforcement for Kakuro
-        );
+  KakuroEngine({DifficultyBucketConfig? config, KakuroGenerator? generator})
+    : super(
+        engineId: 'kakuro_classic',
+        engineName: 'Classic Kakuro',
+        engineVersion: '1.2.0',
+        generator: generator ?? const KakuroGenerator(),
+        solver: const KakuroSolver(),
+        validator: const KakuroValidator(),
+        difficultyScorer: const KakuroDifficultyScorer(),
+        difficultyConfig: config ?? _loadKakuroDifficultyConfig(),
+        enforceDifficulty:
+            false, // Disable strict difficulty enforcement for Kakuro
+      );
 
   @override
-  PuzzleCapabilities get capabilities => const PuzzleCapabilities(
-        supportsHints: true,
-      );
+  PuzzleCapabilities get capabilities =>
+      const PuzzleCapabilities(supportsHints: true);
 
   @override
   MoveResult<KakuroBoard> validateMove({
@@ -93,7 +94,10 @@ class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
       rng: SeededRng(seed),
       maxSolutions: 1,
     );
-    final SolverResult<KakuroBoard> result = solver.solve(currentState, context);
+    final SolverResult<KakuroBoard> result = solver.solve(
+      currentState,
+      context,
+    );
     if (!result.hasSolution) {
       return null;
     }

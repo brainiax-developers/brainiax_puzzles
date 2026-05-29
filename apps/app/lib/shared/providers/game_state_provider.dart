@@ -37,11 +37,12 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Parse parameters
     final difficultyScore = _parseDifficulty(difficulty);
     final sizeOpt = _parseSize(size);
-    final seed64 = seed.hashCode;
+    final seed64 = Seed.fromString(seed);
 
     // Generate puzzle on a background isolate to keep UI responsive.
-    final Duration timeout =
-        engineId == 'kakuro_classic' ? const Duration(seconds: 3) : const Duration(seconds: 2);
+    final Duration timeout = engineId == 'kakuro_classic'
+        ? const Duration(seconds: 8)
+        : const Duration(seconds: 2);
     final puzzle = await generatePuzzleIsolated(
       engineId: engineId,
       seedStr: seed,
@@ -146,7 +147,10 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     // Add to history (remove any actions after current index)
     if (_currentActionIndex < _actionHistory.length - 1) {
-      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+      _actionHistory.removeRange(
+        _currentActionIndex + 1,
+        _actionHistory.length,
+      );
     }
     _actionHistory.add(gameMoveAction);
     _currentActionIndex = _actionHistory.length - 1;
@@ -176,11 +180,11 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Apply move directly without validation (create new board state)
     final currentBoard = state!.puzzle.state as KillerQueensBoard;
     final int index = currentBoard.indexFor(move.row, move.col);
-    
+
     final List<int> updatedCells = List<int>.from(currentBoard.cells);
     final List<bool> updatedFixed = List<bool>.from(currentBoard.fixed);
     updatedCells[index] = move.value;
-    
+
     final KillerQueensBoard updatedBoard = KillerQueensBoard(
       size: currentBoard.size,
       cells: updatedCells,
@@ -197,7 +201,10 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     // Add to history
     if (_currentActionIndex < _actionHistory.length - 1) {
-      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+      _actionHistory.removeRange(
+        _currentActionIndex + 1,
+        _actionHistory.length,
+      );
     }
     _actionHistory.add(gameMoveAction);
     _currentActionIndex = _actionHistory.length - 1;
@@ -281,7 +288,8 @@ class GameStateNotifier extends Notifier<GameState?> {
             col1 == col2 || // Same column
             cage1 == cage2 || // Same cage
             (row2 - row1).abs() == (col2 - col1).abs() && // Diagonal
-                (row2 - row1).abs() == 1) { // Adjacent diagonal
+                (row2 - row1).abs() == 1) {
+          // Adjacent diagonal
           conflicts.add(pos1);
           conflicts.add(pos2);
         }
@@ -308,7 +316,7 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     _currentActionIndex--;
     _reconstructState();
-    
+
     // Cancel conflict timer and clear conflicts on undo
     _conflictCheckTimer?.cancel();
     if (state != null && state!.engineId == 'killer_queens') {
@@ -321,7 +329,8 @@ class GameStateNotifier extends Notifier<GameState?> {
 
   /// Redo the next action.
   void redo() {
-    if (state == null || _currentActionIndex >= _actionHistory.length - 1) return;
+    if (state == null || _currentActionIndex >= _actionHistory.length - 1)
+      return;
 
     _currentActionIndex++;
     _reconstructState();
@@ -331,7 +340,8 @@ class GameStateNotifier extends Notifier<GameState?> {
   bool get canUndo => state != null && _currentActionIndex >= 0;
 
   /// Check if redo is possible.
-  bool get canRedo => state != null && _currentActionIndex < _actionHistory.length - 1;
+  bool get canRedo =>
+      state != null && _currentActionIndex < _actionHistory.length - 1;
 
   /// Get current action index.
   int get currentActionIndex => _currentActionIndex;
@@ -353,7 +363,10 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     // Add to history (remove any actions after current index)
     if (_currentActionIndex < _actionHistory.length - 1) {
-      _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+      _actionHistory.removeRange(
+        _currentActionIndex + 1,
+        _actionHistory.length,
+      );
     }
     _actionHistory.add(noteAction);
     _currentActionIndex = _actionHistory.length - 1;
@@ -394,7 +407,10 @@ class GameStateNotifier extends Notifier<GameState?> {
 
       // Add to history (remove any actions after current index)
       if (_currentActionIndex < _actionHistory.length - 1) {
-        _actionHistory.removeRange(_currentActionIndex + 1, _actionHistory.length);
+        _actionHistory.removeRange(
+          _currentActionIndex + 1,
+          _actionHistory.length,
+        );
       }
       _actionHistory.add(noteAction);
       _currentActionIndex = _actionHistory.length - 1;
@@ -421,7 +437,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Apply actions up to current index
     for (int i = 0; i <= _currentActionIndex; i++) {
       final action = _actionHistory[i];
-      
+
       if (action is GameMoveAction) {
         final result = engine.validateMove(
           currentState: currentPuzzle.state,
@@ -435,7 +451,7 @@ class GameStateNotifier extends Notifier<GameState?> {
             telemetry: currentPuzzle.telemetry,
           );
           isSolved = engine.isSolved(result.newState!);
-          
+
           // Clear notes for the cell that was filled
           if (action.move is Map<String, dynamic>) {
             final moveMap = action.move as Map<String, dynamic>;
@@ -443,7 +459,11 @@ class GameStateNotifier extends Notifier<GameState?> {
               final row = moveMap['row'] as int;
               final col = moveMap['col'] as int;
               // Calculate cell index based on puzzle type
-              final cellIndex = _calculateCellIndex(currentPuzzle.state, row, col);
+              final cellIndex = _calculateCellIndex(
+                currentPuzzle.state,
+                row,
+                col,
+              );
               if (cellIndex != null) {
                 currentNotes.remove(cellIndex);
               }
@@ -452,7 +472,9 @@ class GameStateNotifier extends Notifier<GameState?> {
         }
       } else if (action is NoteAction) {
         // Apply note change
-        final notes = Set<int>.from(currentNotes[action.cellIndex] ?? const <int>{});
+        final notes = Set<int>.from(
+          currentNotes[action.cellIndex] ?? const <int>{},
+        );
         if (action.isAdding) {
           notes.add(action.digit);
         } else {
@@ -521,9 +543,11 @@ class GameStateNotifier extends Notifier<GameState?> {
     if (!json.containsKey('gameState')) return;
 
     final gameState = GameState.fromJson(json['gameState']);
-    final actionHistory = (json['actionHistory'] as List?)
-        ?.map((actionJson) => GameAction.fromJson(actionJson))
-        .toList() ?? [];
+    final actionHistory =
+        (json['actionHistory'] as List?)
+            ?.map((actionJson) => GameAction.fromJson(actionJson))
+            .toList() ??
+        [];
     final currentActionIndex = json['currentActionIndex'] as int? ?? -1;
 
     _actionHistory.clear();
@@ -559,12 +583,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     final width = int.parse(parts[0]);
     final height = int.parse(parts[1]);
 
-    return SizeOpt(
-      id: size,
-      description: size,
-      width: width,
-      height: height,
-    );
+    return SizeOpt(id: size, description: size, width: width, height: height);
   }
 
   /// Request a gameplay hint from the engine for the current game state.
@@ -593,7 +612,6 @@ class GameStateNotifier extends Notifier<GameState?> {
       return null;
     }
   }
-
 }
 
 /// Game state containing puzzle and game information.
@@ -661,7 +679,9 @@ class GameState {
     'isSolved': isSolved,
     'startTime': startTime.toIso8601String(),
     'lastMoveTime': lastMoveTime?.toIso8601String(),
-    'notes': notes.map((key, value) => MapEntry(key.toString(), value.toList())),
+    'notes': notes.map(
+      (key, value) => MapEntry(key.toString(), value.toList()),
+    ),
   };
 
   factory GameState.fromJson(Map<String, dynamic> json) {
@@ -676,10 +696,7 @@ abstract class GameAction {
   final DateTime timestamp;
   final int actionIndex;
 
-  const GameAction({
-    required this.timestamp,
-    required this.actionIndex,
-  });
+  const GameAction({required this.timestamp, required this.actionIndex});
 
   Map<String, dynamic> toJson();
   factory GameAction.fromJson(Map<String, dynamic> json) {

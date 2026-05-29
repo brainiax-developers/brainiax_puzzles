@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:isolate';
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
 import 'package:puzzle_core/src/mathdoku/mathdoku_solver.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
 
 /// Standalone benchmark runner for puzzle engines.
 ///
@@ -11,7 +13,7 @@ import 'package:puzzle_core/src/util/seeded_rng.dart';
 void main(List<String> arguments) async {
   if (arguments.length < 4) {
     print(
-      'Usage: dart benchmark_runner.dart <engineId> <count> <difficulty> <size>',
+      'Usage: dart benchmark_runner.dart <engineId> <count> <difficulty> <size> [iterationCapMs]',
     );
     exit(1);
   }
@@ -20,6 +22,9 @@ void main(List<String> arguments) async {
   final count = int.parse(arguments[1]);
   final difficulty = arguments[2];
   final size = arguments[3];
+  final int iterationCapMs = arguments.length >= 5
+      ? int.parse(arguments[4])
+      : 8000;
 
   try {
     // Initialize engines
@@ -31,10 +36,14 @@ void main(List<String> arguments) async {
       count: count,
       difficulty: difficulty,
       size: size,
+      iterationCapMs: iterationCapMs,
     );
 
     // Output result as JSON
     print(jsonEncode(result.toJson()));
+    if (!result.success) {
+      exit(1);
+    }
   } catch (e) {
     final errorResult = EngineBenchmarkResult(
       engineId: engineId,
@@ -103,21 +112,46 @@ Future<void> _initializeEngines() async {
   }
 }
 
+PuzzleEngine<dynamic, dynamic> _createBenchmarkEngine({
+  required String engineId,
+  required int iterationCapMs,
+}) {
+  switch (engineId) {
+    case 'sudoku_classic':
+      return SudokuEngine();
+    case 'nonogram_mono':
+      return NonogramEngine();
+    case 'kakuro_classic':
+      return KakuroEngine(
+        generator: KakuroGenerator(
+          hardTimeLimitOverride: Duration(milliseconds: iterationCapMs),
+        ),
+      );
+    case 'slitherlink_loop':
+      return SlitherlinkEngine();
+    case 'mathdoku_classic':
+      return MathdokuEngine();
+    case 'killer_queens':
+      return KillerQueensEngine();
+    case 'takuzu_binary':
+      return TakuzuEngine();
+    default:
+      return StubPuzzleEngine(engineId: engineId);
+  }
+}
+
 /// Benchmark a single engine.
 Future<EngineBenchmarkResult> _benchmarkEngine({
   required String engineId,
   required int count,
   required String difficulty,
   required String size,
+  required int iterationCapMs,
 }) async {
   final registry = EngineRegistry();
-  final engine = registry.getEngine(engineId);
+  PuzzleEngine<dynamic, dynamic>? engine = registry.getEngine(engineId);
   const KakuroSolver kakuroSolver = KakuroSolver();
   final bool measureKakuroUniqueness = engineId == 'kakuro_classic';
-
-  if (engine == null) {
-    throw Exception('Engine not found: $engineId');
-  }
 
   // Parse size
   final sizeParts = size.split('x');
@@ -133,6 +167,18 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'Unsupported Kakuro benchmark size ${width}x$height. '
       'Phone V1 supports only 5x5, 7x7, 9x9, and 11x11.',
     );
+  }
+
+  if (measureKakuroUniqueness) {
+    engine = KakuroEngine(
+      generator: KakuroGenerator(
+        hardTimeLimitOverride: Duration(milliseconds: iterationCapMs),
+      ),
+    );
+  }
+
+  if (engine == null) {
+    throw Exception('Engine not found: $engineId');
   }
 
   if (engineId == 'mathdoku_classic' && width == 9 && height == 9) {
@@ -151,42 +197,160 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
   final times = <int>[];
   final List<int> uniquenessSolveTimes = <int>[];
+  final List<Map<String, Object?>> iterationDetails = <Map<String, Object?>>[];
+  Map<String, Object?>? slowestIteration;
   final totalStopwatch = Stopwatch()..start();
+  double percentileMsOrZero(double percentile) {
+    if (times.isEmpty) {
+      return 0;
+    }
+    final List<int> sorted = List<int>.from(times)..sort();
+    return _percentile(sorted, percentile) / 1000.0;
+  }
 
   for (int i = 0; i < count; i++) {
     final seedStr = 'bench:$engineId:$i';
     final seed64 = Seed.fromString(seedStr);
 
     final stopwatch = Stopwatch()..start();
-    late final GeneratedPuzzle<dynamic> puzzle;
+    GeneratedPuzzle<dynamic>? puzzle;
+    Object? generationError;
 
     try {
-      puzzle = engine.generate(
-        seedStr: seedStr,
-        seed64: seed64,
-        size: SizeOpt(
-          id: '${width}x$height',
-          description: '${width}x$height',
-          width: width,
-          height: height,
-        ),
-        difficulty: difficultyScore,
+      final SizeOpt benchmarkSize = SizeOpt(
+        id: '${width}x$height',
+        description: '${width}x$height',
+        width: width,
+        height: height,
       );
+      if (measureKakuroUniqueness) {
+        puzzle = await Isolate.run(() {
+          final PuzzleEngine<dynamic, dynamic> isolatedEngine =
+              _createBenchmarkEngine(
+                engineId: engineId,
+                iterationCapMs: iterationCapMs,
+              );
+          return isolatedEngine.generate(
+            seedStr: seedStr,
+            seed64: seed64,
+            size: benchmarkSize,
+            difficulty: difficultyScore,
+          );
+        }).timeout(Duration(milliseconds: iterationCapMs));
+      } else {
+        puzzle = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: benchmarkSize,
+          difficulty: difficultyScore,
+        );
+      }
 
       // Basic validation
       if (puzzle.meta.engineVersion.isEmpty) {
         throw Exception('Invalid puzzle generated');
       }
+    } on TimeoutException catch (e) {
+      generationError = GenerationFailure(
+        message:
+            'Benchmark iteration exceeded cap of ${iterationCapMs}ms '
+            'for seed $seedStr',
+        attempts: 1,
+        elapsed: Duration(milliseconds: iterationCapMs),
+        baseSeed: seed64,
+        lastError: e,
+        context: <String, Object?>{
+          'failureReason': 'benchmark_iteration_timeout',
+          'iterationCapMs': iterationCapMs,
+          'seed': seedStr,
+          'size': '${width}x$height',
+          'difficulty': difficulty,
+        },
+      );
     } catch (e) {
-      throw Exception('Puzzle generation failed: $e');
+      generationError = e;
     }
 
     stopwatch.stop();
-    times.add(stopwatch.elapsedMicroseconds);
+    final int generationMicros = stopwatch.elapsedMicroseconds;
+    final double generationMs = generationMicros / 1000.0;
+    final Map<String, Object?> generatorTelemetry = _asObjectMap(
+      puzzle?.telemetry?.extras['generator'],
+    );
+    final String? measuredBucket =
+        generatorTelemetry['measuredDifficultyBucket'] as String? ??
+        generatorTelemetry['difficultyBucket'] as String?;
+    final Object? attemptCount = generatorTelemetry['attempts'];
+    final Object? rejectCounters = generatorTelemetry['rejectCounters'];
+    final Object? hardCapExceeded = generatorTelemetry['hardCapExceeded'];
+    final Map<String, Object?> detail = <String, Object?>{
+      'iteration': i,
+      'seed': seedStr,
+      'generationMs': generationMs,
+      'selectedSize': generatorTelemetry['selectedSize'] ?? '${width}x$height',
+      if (measuredBucket != null) 'measuredBucket': measuredBucket,
+      if (attemptCount != null) 'attempts': attemptCount,
+      if (rejectCounters != null) 'rejectCounters': rejectCounters,
+      if (hardCapExceeded != null) 'hardCapExceeded': hardCapExceeded,
+    };
+
+    if (generationError != null) {
+      if (generationError is GenerationFailure) {
+        final GenerationFailure failure = generationError;
+        detail['generationFailureContext'] = failure.context;
+      }
+      detail['status'] = 'generation_failed';
+      detail['error'] = generationError.toString();
+      iterationDetails.add(detail);
+      totalStopwatch.stop();
+      return EngineBenchmarkResult(
+        engineId: engineId,
+        success: false,
+        error:
+            'Generation failed at iteration $i seed=$seedStr: $generationError',
+        p50Ms: percentileMsOrZero(0.50),
+        p95Ms: percentileMsOrZero(0.95),
+        p99Ms: percentileMsOrZero(0.99),
+        totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+        iterations: times.length,
+        extras: <String, Object?>{
+          'size': '${width}x$height',
+          'requestedDifficulty': difficulty,
+          'iterationCapMs': iterationCapMs,
+          'failedIteration': i,
+          'failedSeed': seedStr,
+          'iterationDetails': iterationDetails,
+        },
+      );
+    }
+
+    times.add(generationMicros);
+    detail['status'] = 'generated';
 
     if (measureKakuroUniqueness) {
-      if (puzzle.state is! KakuroBoard) {
-        throw Exception('Kakuro benchmark expected KakuroBoard state');
+      if (puzzle == null || puzzle.state is! KakuroBoard) {
+        detail['status'] = 'generation_failed';
+        detail['error'] = 'Kakuro benchmark expected KakuroBoard state';
+        iterationDetails.add(detail);
+        totalStopwatch.stop();
+        return EngineBenchmarkResult(
+          engineId: engineId,
+          success: false,
+          error: 'Kakuro benchmark expected KakuroBoard state at iteration $i',
+          p50Ms: percentileMsOrZero(0.50),
+          p95Ms: percentileMsOrZero(0.95),
+          p99Ms: percentileMsOrZero(0.99),
+          totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+          iterations: times.length,
+          extras: <String, Object?>{
+            'size': '${width}x$height',
+            'requestedDifficulty': difficulty,
+            'iterationCapMs': iterationCapMs,
+            'failedIteration': i,
+            'failedSeed': seedStr,
+            'iterationDetails': iterationDetails,
+          },
+        );
       }
       final Stopwatch solveWatch = Stopwatch()..start();
       final SolverResult<KakuroBoard> solved = kakuroSolver.solve(
@@ -194,31 +358,72 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         SolverContext(rng: SeededRng(seed64 ^ 0x7f4a7c15), maxSolutions: 2),
       );
       solveWatch.stop();
+      final int solveMicros = solveWatch.elapsedMicroseconds;
+      detail['uniquenessSolveMs'] = solveMicros / 1000.0;
       if (!solved.hasSolution || !solved.isUnique) {
-        throw Exception(
-          'Kakuro uniqueness solve failed for seed $seedStr: ${solved.solutionStatus.name}',
+        detail['status'] = 'uniqueness_failed';
+        detail['solverStatus'] = solved.solutionStatus.name;
+        detail['error'] =
+            'Kakuro uniqueness solve failed for seed $seedStr: ${solved.solutionStatus.name}';
+        iterationDetails.add(detail);
+        totalStopwatch.stop();
+        return EngineBenchmarkResult(
+          engineId: engineId,
+          success: false,
+          error:
+              'Kakuro uniqueness solve failed at iteration $i seed=$seedStr: ${solved.solutionStatus.name}',
+          p50Ms: percentileMsOrZero(0.50),
+          p95Ms: percentileMsOrZero(0.95),
+          p99Ms: percentileMsOrZero(0.99),
+          totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+          iterations: times.length,
+          extras: <String, Object?>{
+            'size': '${width}x$height',
+            'requestedDifficulty': difficulty,
+            'iterationCapMs': iterationCapMs,
+            'failedIteration': i,
+            'failedSeed': seedStr,
+            'iterationDetails': iterationDetails,
+          },
         );
       }
-      uniquenessSolveTimes.add(solveWatch.elapsedMicroseconds);
+      uniquenessSolveTimes.add(solveMicros);
+      detail['solverStatus'] = solved.solutionStatus.name;
+    }
+    detail['status'] = 'success';
+    iterationDetails.add(detail);
+    final double previousSlowestMs =
+        (slowestIteration?['generationMs'] as double?) ?? -1.0;
+    if (generationMs > previousSlowestMs) {
+      slowestIteration = detail;
     }
   }
 
   totalStopwatch.stop();
 
   // Calculate percentiles
-  times.sort();
-  final p50 = _percentile(times, 0.50);
-  final p95 = _percentile(times, 0.95);
-  final p99 = _percentile(times, 0.99);
-  final Map<String, Object?> extras = <String, Object?>{};
+  final List<int> sortedTimes = List<int>.from(times)..sort();
+  final p50 = _percentile(sortedTimes, 0.50);
+  final p95 = _percentile(sortedTimes, 0.95);
+  final p99 = _percentile(sortedTimes, 0.99);
+  final Map<String, Object?> extras = <String, Object?>{
+    'size': '${width}x$height',
+    'requestedDifficulty': difficulty,
+    'iterationCapMs': iterationCapMs,
+    'iterationDurationsMs': iterationDetails
+        .map((Map<String, Object?> detail) => detail['generationMs'] as double)
+        .toList(growable: false),
+    if (slowestIteration != null) 'slowestIteration': slowestIteration,
+    'iterationDetails': iterationDetails,
+  };
   if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
-    uniquenessSolveTimes.sort();
+    final List<int> sortedUniqueness = List<int>.from(uniquenessSolveTimes)
+      ..sort();
     extras['benchmarkMode'] = 'kakuro_phone_v1_calibration';
-    extras['size'] = '${width}x$height';
     extras['uniquenessSolveMs'] = <String, double>{
-      'p50': _percentile(uniquenessSolveTimes, 0.50) / 1000.0,
-      'p95': _percentile(uniquenessSolveTimes, 0.95) / 1000.0,
-      'p99': _percentile(uniquenessSolveTimes, 0.99) / 1000.0,
+      'p50': _percentile(sortedUniqueness, 0.50) / 1000.0,
+      'p95': _percentile(sortedUniqueness, 0.95) / 1000.0,
+      'p99': _percentile(sortedUniqueness, 0.99) / 1000.0,
     };
   }
 
@@ -628,7 +833,7 @@ Map<String, Object?> _histogram(List<double> sortedValues, {int bins = 12}) {
 
 Map<String, Object?> _asObjectMap(Object? value) {
   if (value is Map) {
-    return Map<String, Object?>.from(value as Map);
+    return Map<String, Object?>.from(value);
   }
   return const <String, Object?>{};
 }

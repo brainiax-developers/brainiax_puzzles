@@ -15,7 +15,7 @@ class KakuroOnDemandService {
 
   Future<core.GeneratedPuzzle<dynamic>> nextPuzzle({
     required String difficulty,
-    Duration timeBudget = const Duration(milliseconds: 2200),
+    Duration timeBudget = const Duration(seconds: 8),
     int maxAttempts = 4,
     int? seed,
     int width = 9,
