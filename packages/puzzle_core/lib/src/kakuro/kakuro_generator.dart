@@ -288,20 +288,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         continue;
       }
 
-      // Add a handful of digit givens (tuned per difficulty) to improve
-      // uniqueness rates without reducing challenge.
       final Stopwatch clueBuildWatch = Stopwatch()..start();
-      final Set<int> givenCells = _selectGivenCells(
-        selectedTemplate,
-        SeededRng(_deriveSolverSeed(context.seed64, attempts, 1003)),
-        requestedLevel,
-      );
-
-      // Build a puzzle board with sums and optional givens; verify uniqueness and logic thresholds.
+      // Production Kakuro starts with empty playable cells. Uniqueness must
+      // come from layout and clue constraints, not hidden answer givens.
       final KakuroBoard candidateBoard = selectedTemplate.buildBoard(
         solution.entrySums,
-        givenCells,
-        solution.values,
       );
       clueBuildWatch.stop();
 
@@ -465,10 +456,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
         'selectedSize': '${selectedTemplate.width}x${selectedTemplate.height}',
         'valueCellCount': selectedTemplate.valueCellCount,
-        'givensCount': givenCells.length,
-        'givenRatioMilli': selectedTemplate.valueCellCount == 0
-            ? 0
-            : givenCells.length * 1000 ~/ selectedTemplate.valueCellCount,
+        // Kept for telemetry compatibility; generated starts no longer include
+        // digit givens.
+        'givensCount': 0,
+        'givenRatioMilli': 0,
         'width': selectedTemplate.width,
         'height': selectedTemplate.height,
         'layoutScoreMilli': layoutScoreMilli,
@@ -551,16 +542,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           );
           continue;
         }
-        final Set<int> altGivens = _selectGivenCells(
-          altTemplate,
-          SeededRng(_deriveSolverSeed(context.seed64, 3234, alt + 1)),
-          requestedLevel,
-        );
-        final KakuroBoard board = altTemplate.buildBoard(
-          sol.entrySums,
-          altGivens,
-          sol.values,
-        );
+        final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
         SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
           SolverContext(
@@ -705,10 +687,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 .round(),
             'selectedSize': '${altTemplate.width}x${altTemplate.height}',
             'valueCellCount': altTemplate.valueCellCount,
-            'givensCount': altGivens.length,
-            'givenRatioMilli': altTemplate.valueCellCount == 0
-                ? 0
-                : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
+            // Kept for telemetry compatibility; generated starts no longer
+            // include digit givens.
+            'givensCount': 0,
+            'givenRatioMilli': 0,
             'width': altTemplate.width,
             'height': altTemplate.height,
             'layoutScoreMilli': layoutScoreMilli,
@@ -791,16 +773,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             continue;
           }
 
-          final Set<int> altGivens = _selectGivenCells(
-            altTemplate,
-            SeededRng(_deriveSolverSeed(context.seed64, 10128, alt + 1)),
-            requestedLevel,
-          );
-          final KakuroBoard board = altTemplate.buildBoard(
-            sol.entrySums,
-            altGivens,
-            sol.values,
-          );
+          final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
           SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
             board,
             SolverContext(
@@ -922,10 +895,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 .round(),
             'selectedSize': '${altTemplate.width}x${altTemplate.height}',
             'valueCellCount': altTemplate.valueCellCount,
-            'givensCount': altGivens.length,
-            'givenRatioMilli': altTemplate.valueCellCount == 0
-                ? 0
-                : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
+            // Kept for telemetry compatibility; generated starts no longer
+            // include digit givens.
+            'givensCount': 0,
+            'givenRatioMilli': 0,
             'width': altTemplate.width,
             'height': altTemplate.height,
             'layoutScoreMilli': layoutScoreMilli,
@@ -1037,43 +1010,6 @@ int _defaultSizeForLevel(String level) {
     default:
       return 9;
   }
-}
-
-Set<int> _selectGivenCells(KakuroLayout template, SeededRng rng, String level) {
-  int minGivens;
-  int maxGivens;
-  switch (level) {
-    case 'easy':
-      minGivens = 2;
-      maxGivens = 4;
-      break;
-    case 'medium':
-      minGivens = 1;
-      maxGivens = 3;
-      break;
-    case 'hard':
-      minGivens = 0;
-      maxGivens = 1;
-      break;
-    case 'expert':
-      minGivens = 0;
-      maxGivens = 0;
-      break;
-    default:
-      minGivens = 1;
-      maxGivens = 2;
-  }
-  final int valueCount = template.valueCells.length;
-  final int span = math.max(0, maxGivens - minGivens + 1);
-  final int target = math.min(
-    valueCount,
-    minGivens + (span == 0 ? 0 : rng.nextIntInRange(span)),
-  );
-  if (target <= 0) {
-    return const <int>{};
-  }
-  final List<int> order = rng.permute(template.valueCells);
-  return order.take(target).toSet();
 }
 
 int _timeBudgetMillis(String level) {
