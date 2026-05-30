@@ -171,6 +171,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       String? solverStatus,
       String? mode,
       Map<String, Object?>? constructionTelemetry,
+      int? disagreementCellCount,
+      int? disagreementRunCount,
+      int? disagreementMaxRunLength,
     }) {
       attemptLog.add(<String, Object?>{
         'attempt': attempt,
@@ -179,6 +182,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         if (rejectReason != null) 'rejectReason': rejectReason,
         if (solverStatus != null) 'solverStatus': solverStatus,
         if (mode != null) 'mode': mode,
+        if (disagreementCellCount != null)
+          'disagreementCellCount': disagreementCellCount,
+        if (disagreementRunCount != null)
+          'disagreementRunCount': disagreementRunCount,
+        if (disagreementMaxRunLength != null)
+          'disagreementMaxRunLength': disagreementMaxRunLength,
         if (constructionTelemetry != null)
           'constructionTelemetry': constructionTelemetry,
       });
@@ -437,6 +446,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
       if (uniqueness.solutionStatus != SolverStatus.unique) {
         nonUniqueCount++;
+        final Map<String, int>? disagreementMetrics =
+            _nonUniqueDisagreementMetrics(uniqueness.telemetry);
         recordAttempt(
           attempt: attempts,
           durationMs: attemptMs,
@@ -444,6 +455,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           rejectReason: 'non_unique',
           solverStatus: uniqueness.solutionStatus.name,
           mode: 'primary',
+          disagreementCellCount: disagreementMetrics?['disagreementCellCount'],
+          disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
+          disagreementMaxRunLength:
+              disagreementMetrics?['disagreementMaxRunLength'],
           constructionTelemetry: constructionTelemetry,
         );
         continue;
@@ -705,6 +720,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         }
         if (uniqueness.solutionStatus != SolverStatus.unique) {
           nonUniqueCount++;
+          final Map<String, int>? disagreementMetrics =
+              _nonUniqueDisagreementMetrics(uniqueness.telemetry);
           recordAttempt(
             attempt: attemptNumber,
             durationMs: attemptMs,
@@ -712,6 +729,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             rejectReason: 'non_unique',
             solverStatus: uniqueness.solutionStatus.name,
             mode: 'fallback_strict',
+            disagreementCellCount:
+                disagreementMetrics?['disagreementCellCount'],
+            disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
+            disagreementMaxRunLength:
+                disagreementMetrics?['disagreementMaxRunLength'],
             constructionTelemetry: constructionTelemetry,
           );
           continue;
@@ -952,6 +974,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           }
           if (uniqueness.solutionStatus != SolverStatus.unique) {
             nonUniqueCount++;
+            final Map<String, int>? disagreementMetrics =
+                _nonUniqueDisagreementMetrics(uniqueness.telemetry);
             recordAttempt(
               attempt: attemptNumber,
               durationMs: attemptMs,
@@ -959,6 +983,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
               rejectReason: 'non_unique',
               solverStatus: uniqueness.solutionStatus.name,
               mode: 'fallback_relaxed',
+              disagreementCellCount:
+                  disagreementMetrics?['disagreementCellCount'],
+              disagreementRunCount:
+                  disagreementMetrics?['disagreementRunCount'],
+              disagreementMaxRunLength:
+                  disagreementMetrics?['disagreementMaxRunLength'],
               constructionTelemetry: constructionTelemetry,
             );
             continue;
@@ -1192,6 +1222,37 @@ int _layoutEarlyAcceptScoreThreshold({
     return 780;
   }
   return 1000;
+}
+
+Map<String, int>? _nonUniqueDisagreementMetrics(
+  Map<String, Object?> telemetry,
+) {
+  final Object? summaryRaw = telemetry['disagreementSummary'];
+  if (summaryRaw is! Map) {
+    return null;
+  }
+  final Map<String, Object?> summary = Map<String, Object?>.from(summaryRaw);
+  final int disagreementCellCount =
+      (summary['disagreementCellCount'] as num?)?.toInt() ?? -1;
+  final int disagreementMaxRunLength =
+      (summary['disagreementMaxRunLength'] as num?)?.toInt() ?? -1;
+  final int acrossRunCount =
+      (summary['disagreementAcrossRunCount'] as num?)?.toInt() ?? 0;
+  final int downRunCount =
+      (summary['disagreementDownRunCount'] as num?)?.toInt() ?? 0;
+  final int disagreementRunCount =
+      (summary['disagreementRunCount'] as num?)?.toInt() ??
+      (acrossRunCount + downRunCount);
+  if (disagreementCellCount < 0 ||
+      disagreementRunCount < 0 ||
+      disagreementMaxRunLength < 0) {
+    return null;
+  }
+  return <String, int>{
+    'disagreementCellCount': disagreementCellCount,
+    'disagreementRunCount': disagreementRunCount,
+    'disagreementMaxRunLength': disagreementMaxRunLength,
+  };
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {

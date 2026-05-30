@@ -148,6 +148,74 @@ void main() {
   });
 
   test(
+    'non-unique attempts include disagreement diagnostics in attempt log',
+    () {
+      const KakuroGenerator generator = KakuroGenerator(
+        maxTemplateAttempts: 3,
+        maxBacktrackNodes: 200,
+      );
+      final int seed64 = Seed.fromString('diag_easy_5_0');
+      final GeneratorContext context = GeneratorContext(
+        rng: SeededRng(seed64),
+        seedStr: 'diag_easy_5_0',
+        seed64: seed64,
+        size: const SizeOpt(
+          id: 'template5x5',
+          description: 'Template 5x5',
+          width: 5,
+          height: 5,
+        ),
+        difficulty: const DifficultyRequest(level: 'easy'),
+      );
+
+      List<Map<String, Object?>> attemptsLog = <Map<String, Object?>>[];
+      try {
+        final PuzzleGenerationResult<KakuroBoard> result = generator.generate(
+          context,
+        );
+        attemptsLog =
+            (result.snapshot.telemetry['attemptsLog'] as List? ??
+                    const <Object?>[])
+                .whereType<Map>()
+                .map((Map raw) => Map<String, Object?>.from(raw))
+                .toList(growable: false);
+      } on GenerationFailure catch (failure) {
+        attemptsLog =
+            (failure.context['attemptsLog'] as List? ?? const <Object?>[])
+                .whereType<Map>()
+                .map((Map raw) => Map<String, Object?>.from(raw))
+                .toList(growable: false);
+      }
+
+      final List<Map<String, Object?>> nonUniqueMultipleAttempts = attemptsLog
+          .where(
+            (Map<String, Object?> attempt) =>
+                attempt['rejectReason'] == 'non_unique' &&
+                attempt['solverStatus'] == SolverStatus.multiple.name,
+          )
+          .toList(growable: false);
+
+      expect(nonUniqueMultipleAttempts, isNotEmpty);
+      for (final Map<String, Object?> attempt in nonUniqueMultipleAttempts) {
+        final int disagreementCellCount =
+            (attempt['disagreementCellCount'] as num?)?.toInt() ?? -1;
+        final int disagreementRunCount =
+            (attempt['disagreementRunCount'] as num?)?.toInt() ?? -1;
+        final int disagreementMaxRunLength =
+            (attempt['disagreementMaxRunLength'] as num?)?.toInt() ?? -1;
+
+        expect(disagreementCellCount, greaterThanOrEqualTo(1));
+        expect(disagreementRunCount, greaterThanOrEqualTo(1));
+        expect(disagreementMaxRunLength, greaterThanOrEqualTo(2));
+
+        final String attemptText = attempt.toString().toLowerCase();
+        expect(attemptText.contains('values'), isFalse);
+        expect(attemptText.contains('solution'), isFalse);
+      }
+    },
+  );
+
+  test(
     '9x9 family selection is deterministic and attempt index changes topology',
     () {
       final int seed64 = Seed.fromString('kakuro_layout_family_selection_seed');

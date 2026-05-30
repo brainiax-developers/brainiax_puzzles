@@ -37,6 +37,123 @@ List<int> _digitsFromMask(int mask) {
   return digits;
 }
 
+List<int> _sortedIntList(Iterable<int> values) {
+  final List<int> sorted = values.toList(growable: false)..sort();
+  return sorted;
+}
+
+Map<String, Object?>? _buildDisagreementSummary({
+  required KakuroBoard board,
+  required int maxSolutions,
+  required List<List<int>> solutions,
+}) {
+  if (maxSolutions < 2 || solutions.length < 2) {
+    return null;
+  }
+  final List<int> first = solutions[0];
+  final List<int> second = solutions[1];
+  if (first.length != board.cellCount || second.length != board.cellCount) {
+    return null;
+  }
+
+  final Set<int> acrossRunIds = <int>{};
+  final Set<int> downRunIds = <int>{};
+
+  int disagreementCellCount = 0;
+  int minRow = board.height;
+  int maxRow = -1;
+  int minCol = board.width;
+  int maxCol = -1;
+
+  for (int i = 0; i < board.cellCount; i++) {
+    if (!board.isPlayableIndex(i)) {
+      continue;
+    }
+    if (first[i] == second[i]) {
+      continue;
+    }
+
+    disagreementCellCount++;
+    final int row = i ~/ board.width;
+    final int col = i % board.width;
+    if (row < minRow) {
+      minRow = row;
+    }
+    if (row > maxRow) {
+      maxRow = row;
+    }
+    if (col < minCol) {
+      minCol = col;
+    }
+    if (col > maxCol) {
+      maxCol = col;
+    }
+
+    final int acrossId = board.acrossEntryForCell[i];
+    if (acrossId >= 0) {
+      acrossRunIds.add(acrossId);
+    }
+    final int downId = board.downEntryForCell[i];
+    if (downId >= 0) {
+      downRunIds.add(downId);
+    }
+  }
+
+  final List<int> acrossIds = _sortedIntList(acrossRunIds);
+  final List<int> downIds = _sortedIntList(downRunIds);
+  final Map<int, int> runLengthById = <int, int>{};
+  for (final KakuroEntry entry in board.entries) {
+    runLengthById[entry.id] = entry.cells.length;
+  }
+
+  int disagreementMaxRunLength = 0;
+  bool disagreementTouchesLongRun = false;
+  for (final int runId in <int>{...acrossRunIds, ...downRunIds}) {
+    final int length = runLengthById[runId] ?? 0;
+    if (length > disagreementMaxRunLength) {
+      disagreementMaxRunLength = length;
+    }
+    if (length >= 5) {
+      disagreementTouchesLongRun = true;
+    }
+  }
+
+  final Map<String, int> boundingBox;
+  if (disagreementCellCount == 0) {
+    boundingBox = const <String, int>{
+      'minRow': -1,
+      'maxRow': -1,
+      'minCol': -1,
+      'maxCol': -1,
+      'height': 0,
+      'width': 0,
+    };
+  } else {
+    boundingBox = <String, int>{
+      'minRow': minRow,
+      'maxRow': maxRow,
+      'minCol': minCol,
+      'maxCol': maxCol,
+      'height': maxRow - minRow + 1,
+      'width': maxCol - minCol + 1,
+    };
+  }
+
+  return <String, Object?>{
+    'disagreementCellCount': disagreementCellCount,
+    'disagreementRunIds': <String, List<int>>{
+      'across': acrossIds,
+      'down': downIds,
+    },
+    'disagreementBoundingBox': boundingBox,
+    'disagreementAcrossRunCount': acrossIds.length,
+    'disagreementDownRunCount': downIds.length,
+    'disagreementRunCount': acrossIds.length + downIds.length,
+    'disagreementTouchesLongRun': disagreementTouchesLongRun,
+    'disagreementMaxRunLength': disagreementMaxRunLength,
+  };
+}
+
 class KakuroSolver extends PuzzleSolver<KakuroBoard> {
   const KakuroSolver({this.maxSearchDepth = 16, this.maxBacktrackNodes});
 
@@ -79,6 +196,14 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
       'searchBudgetExceeded': search.searchBudgetExceeded,
       'solverStatus': status.name,
     };
+    final Map<String, Object?>? disagreementSummary = _buildDisagreementSummary(
+      board: board,
+      maxSolutions: context.maxSolutions,
+      solutions: search.solutions,
+    );
+    if (disagreementSummary != null) {
+      telemetry['disagreementSummary'] = disagreementSummary;
+    }
 
     return SolverResult<KakuroBoard>(
       solutions: solutions,
@@ -90,10 +215,8 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
 }
 
 class _EntryState {
-  _EntryState({
-    required this.entry,
-    required List<int> combos,
-  }) : combos = List<int>.from(combos);
+  _EntryState({required this.entry, required List<int> combos})
+    : combos = List<int>.from(combos);
 
   final KakuroEntry entry;
   List<int> combos;
@@ -115,14 +238,14 @@ class _Snapshot {
   final int propagationRounds;
 
   static _Snapshot capture(_KakuroSearch search) => _Snapshot(
-        values: List<int>.from(search.values),
-        candidates: List<int>.from(search.candidates),
-        entryCombos: search.entryStates
-            .map(( _EntryState state) => List<int>.from(state.combos))
-            .toList(growable: false),
-        unsatisfiable: search._unsatisfiable,
-        propagationRounds: search.propagationRounds,
-      );
+    values: List<int>.from(search.values),
+    candidates: List<int>.from(search.candidates),
+    entryCombos: search.entryStates
+        .map((_EntryState state) => List<int>.from(state.combos))
+        .toList(growable: false),
+    unsatisfiable: search._unsatisfiable,
+    propagationRounds: search.propagationRounds,
+  );
 
   void restore(_KakuroSearch search) {
     for (int i = 0; i < search.values.length; i++) {
@@ -143,13 +266,13 @@ class _KakuroSearch {
     required this.maxSolutions,
     required this.maxSearchDepth,
     this.maxBacktrackNodes,
-  })  : cellCount = board.cellCount,
-        values = List<int>.from(board.values),
-        candidates = List<int>.filled(board.cellCount, _allDigitsMask),
-        entryStates = <_EntryState>[],
-        valueCellCount = board.kinds
-            .where((KakuroCellKind kind) => kind == KakuroCellKind.value)
-            .length {
+  }) : cellCount = board.cellCount,
+       values = List<int>.from(board.values),
+       candidates = List<int>.filled(board.cellCount, _allDigitsMask),
+       entryStates = <_EntryState>[],
+       valueCellCount = board.kinds
+           .where((KakuroCellKind kind) => kind == KakuroCellKind.value)
+           .length {
     _initialise();
   }
 
@@ -226,24 +349,28 @@ class _KakuroSearch {
 
   void _initialise() {
     for (final KakuroEntry entry in board.entries) {
-      final Set<int>? combos =
-          KakuroDictionary.getCombinations(entry.cells.length, entry.sum);
+      final Set<int>? combos = KakuroDictionary.getCombinations(
+        entry.cells.length,
+        entry.sum,
+      );
       if (combos == null || combos.isEmpty) {
         _unsatisfiable = true;
         return;
       }
-      final List<int> filtered = combos.where((int combo) {
-        for (final int cellIndex in entry.cells) {
-          final int value = values[cellIndex];
-          if (value == 0) {
-            continue;
-          }
-          if ((combo & _bitFor(value)) == 0) {
-            return false;
-          }
-        }
-        return true;
-      }).toList(growable: false);
+      final List<int> filtered = combos
+          .where((int combo) {
+            for (final int cellIndex in entry.cells) {
+              final int value = values[cellIndex];
+              if (value == 0) {
+                continue;
+              }
+              if ((combo & _bitFor(value)) == 0) {
+                return false;
+              }
+            }
+            return true;
+          })
+          .toList(growable: false);
       if (filtered.isEmpty) {
         _unsatisfiable = true;
         return;
@@ -363,8 +490,7 @@ class _KakuroSearch {
       candidates[cellIndex] = _bitFor(digit);
       _search(depth + 1);
       final bool foundNewSolution = solutions.length > solutionsBefore;
-      if (!foundNewSolution &&
-          !(searchBudgetExceeded && !budgetBeforeBranch)) {
+      if (!foundNewSolution && !(searchBudgetExceeded && !budgetBeforeBranch)) {
         backtracks++;
       }
       snapshot.restore(this);
@@ -510,7 +636,13 @@ class _KakuroSearch {
         return false;
       }
       chosen[depth] = assigned;
-      final bool result = _exploreAssignments(state, depth + 1, available, chosen, maskAccum);
+      final bool result = _exploreAssignments(
+        state,
+        depth + 1,
+        available,
+        chosen,
+        maskAccum,
+      );
       chosen[depth] = null;
       available.add(assigned);
       return result;
