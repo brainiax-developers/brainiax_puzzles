@@ -293,6 +293,33 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       if (rejectCounters != null) 'rejectCounters': rejectCounters,
       if (hardCapExceeded != null) 'hardCapExceeded': hardCapExceeded,
     };
+    const List<String> kakuroTelemetryFields = <String>[
+      'layoutHash',
+      'layoutFamilyId',
+      'whiteCellCount',
+      'blockCellCount',
+      'clueCellCount',
+      'blackOrClueCellCount',
+      'acrossRunCount',
+      'downRunCount',
+      'totalRunCount',
+      'runLengthHistogram',
+      'maxRunLength',
+      'averageRunLengthMilli',
+      'runGraphNodeCount',
+      'runGraphEdgeCount',
+      'minRunGraphDegree',
+      'articulationPointCount',
+      'averageRunCombinationCountMilli',
+      'singleCombinationRunRatioMilli',
+      'stageTimingMs',
+    ];
+    for (final String field in kakuroTelemetryFields) {
+      final Object? value = generatorTelemetry[field];
+      if (value != null) {
+        detail[field] = value;
+      }
+    }
 
     if (generationError != null) {
       if (generationError is GenerationFailure) {

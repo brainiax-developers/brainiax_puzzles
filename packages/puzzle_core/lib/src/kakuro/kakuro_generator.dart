@@ -100,6 +100,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       difficulty: requestedLevel,
     );
     layoutWatch.stop();
+    const int layoutScoreMs = 0;
 
     int attempts = 0;
     int fallbackAttempts = 0;
@@ -187,7 +188,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
 
       // Build a fully solved board using the fast solution-first generator.
-      final Stopwatch candidateBuildWatch = Stopwatch()..start();
+      final Stopwatch fillWatch = Stopwatch()..start();
       KakuroSolution? solution = buildSolutionFirst(
         template,
         SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
@@ -200,7 +201,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           SeededRng(_deriveSolverSeed(context.seed64, attempts, 1002)),
         );
       }
-      candidateBuildWatch.stop();
+      fillWatch.stop();
       if (solution == null) {
         nullSolutionCount++;
         recordAttempt(
@@ -227,6 +228,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Add a handful of digit givens (tuned per difficulty) to improve
       // uniqueness rates without reducing challenge.
+      final Stopwatch clueBuildWatch = Stopwatch()..start();
       final Set<int> givenCells = _selectGivenCells(
         template,
         SeededRng(_deriveSolverSeed(context.seed64, attempts, 1003)),
@@ -239,8 +241,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         givenCells,
         solution.values,
       );
+      clueBuildWatch.stop();
 
-      final Stopwatch solverWatch = Stopwatch()..start();
+      final Stopwatch uniquenessSolveWatch = Stopwatch()..start();
       SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
         candidateBoard,
         SolverContext(rng: nextSolverRng(), maxSolutions: 2),
@@ -251,7 +254,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           SolverContext(rng: nextSolverRng(), maxSolutions: 2),
         );
       }
-      solverWatch.stop();
+      uniquenessSolveWatch.stop();
 
       final int attemptMs = attemptWatch.elapsedMilliseconds;
       if (overHardBudget()) {
@@ -338,6 +341,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
 
       // Score difficulty using the fast solver telemetry; engine will re-score later.
+      final Stopwatch difficultyScoreWatch = Stopwatch()..start();
       final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
         puzzle: candidateBoard,
         solution: candidateBoard, // unused by scorer logic
@@ -351,9 +355,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           solverTelemetry: uniqueness.telemetry,
         ),
       );
+      difficultyScoreWatch.stop();
       final String bucket = _difficultyConfig.bucketFor(
         difficultyTelemetry.rawScore,
       );
+      final Map<String, Object?> structuralTelemetry = template
+          .buildStructuralTelemetry(entrySums: solution.entrySums);
 
       final Map<String, Object?> sanitizedSolverTelemetry = uniqueness.telemetry
           .map((String key, Object? value) {
@@ -375,10 +382,19 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'attempts': attempts + fallbackAttempts,
         'attemptLimit': attemptLimit,
         'generationDurationMs': stopwatch.elapsedMilliseconds,
+        'stageTimingMs': <String, int>{
+          'layout': layoutWatch.elapsedMilliseconds,
+          'layoutScore': layoutScoreMs,
+          'fill': fillWatch.elapsedMilliseconds,
+          'clueBuild': clueBuildWatch.elapsedMilliseconds,
+          'uniquenessSolve': uniquenessSolveWatch.elapsedMilliseconds,
+          'difficultyScore': difficultyScoreWatch.elapsedMilliseconds,
+          'total': stopwatch.elapsedMilliseconds,
+        },
         'attemptDurationMs': attemptMs,
         'layoutMs': layoutWatch.elapsedMilliseconds,
-        'candidateBuildMs': candidateBuildWatch.elapsedMilliseconds,
-        'solverMs': solverWatch.elapsedMilliseconds,
+        'candidateBuildMs': fillWatch.elapsedMilliseconds,
+        'solverMs': uniquenessSolveWatch.elapsedMilliseconds,
         'solverTelemetry': sanitizedSolverTelemetry,
         'measuredDifficultyBucket': bucket,
         'difficultyBucket': bucket,
@@ -393,6 +409,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             : givenCells.length * 1000 ~/ template.valueCellCount,
         'width': template.width,
         'height': template.height,
+        ...structuralTelemetry,
         'perAttemptBudgetMs': perAttemptBudgetMs,
         'hardBudgetMs': hardTimeBudgetMs,
         'hardCapExceeded': false,
@@ -550,6 +567,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           continue;
         }
         if (uniqueness.solutionStatus == SolverStatus.unique) {
+          final Stopwatch difficultyScoreWatch = Stopwatch()..start();
           final DifficultyTelemetry difficultyTelemetry = _difficultyScorer
               .score(
                 puzzle: board,
@@ -563,9 +581,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                   solverTelemetry: uniqueness.telemetry,
                 ),
               );
+          difficultyScoreWatch.stop();
           final String bucket = _difficultyConfig.bucketFor(
             difficultyTelemetry.rawScore,
           );
+          final Map<String, Object?> structuralTelemetry = altTemplate
+              .buildStructuralTelemetry(entrySums: sol.entrySums);
           puzzle = board;
           recordAttempt(
             attempt: attemptNumber,
@@ -580,6 +601,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'generationDurationMs': stopwatch.elapsedMilliseconds,
             'fallback': true,
             'fallbackMode': 'strict',
+            'stageTimingMs': <String, int>{
+              'layout': layoutWatch.elapsedMilliseconds,
+              'layoutScore': layoutScoreMs,
+              'fill': attemptMs,
+              'clueBuild': 0,
+              'uniquenessSolve': 0,
+              'difficultyScore': difficultyScoreWatch.elapsedMilliseconds,
+              'total': stopwatch.elapsedMilliseconds,
+            },
             'measuredDifficultyBucket': bucket,
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
@@ -594,6 +624,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            ...structuralTelemetry,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
             'hardCapExceeded': false,
@@ -727,6 +758,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             continue;
           }
 
+          final Stopwatch difficultyScoreWatch = Stopwatch()..start();
           final DifficultyTelemetry difficultyTelemetry = _difficultyScorer
               .score(
                 puzzle: board,
@@ -740,9 +772,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                   solverTelemetry: uniqueness.telemetry,
                 ),
               );
+          difficultyScoreWatch.stop();
           final String bucket = _difficultyConfig.bucketFor(
             difficultyTelemetry.rawScore,
           );
+          final Map<String, Object?> structuralTelemetry = altTemplate
+              .buildStructuralTelemetry(entrySums: sol.entrySums);
           puzzle = board;
           recordAttempt(
             attempt: attemptNumber,
@@ -758,6 +793,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'fallback': true,
             'relaxedFallback': true,
             'fallbackMode': 'relaxed',
+            'stageTimingMs': <String, int>{
+              'layout': layoutWatch.elapsedMilliseconds,
+              'layoutScore': layoutScoreMs,
+              'fill': attemptMs,
+              'clueBuild': 0,
+              'uniquenessSolve': 0,
+              'difficultyScore': difficultyScoreWatch.elapsedMilliseconds,
+              'total': stopwatch.elapsedMilliseconds,
+            },
             'measuredDifficultyBucket': bucket,
             'difficultyBucket': bucket,
             'requestedDifficulty': requestedLevel,
@@ -772,6 +816,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            ...structuralTelemetry,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
             'hardCapExceeded': false,

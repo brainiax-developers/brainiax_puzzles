@@ -1,5 +1,7 @@
 part of puzzle_core_kakuro_generator;
 
+const String _kakuroLayoutFamilyId = 'newspaper_random_v1';
+
 class KakuroLayoutEntry {
   KakuroLayoutEntry({
     required this.id,
@@ -270,6 +272,150 @@ class KakuroLayout {
       downEntryForCell: downEntryForCell,
     );
   }
+
+  Map<String, Object?> buildStructuralTelemetry({
+    Map<int, int>? entrySums,
+  }) {
+    final int totalCells = width * height;
+    final int whiteCellCount = valueCellCount;
+    final int blackOrClueCellCount = totalCells - whiteCellCount;
+    int acrossRunCount = 0;
+    int downRunCount = 0;
+    final Set<int> clueCells = <int>{};
+    final Map<String, int> runLengthHistogram = <String, int>{};
+    int maxRunLength = 0;
+    int runLengthTotal = 0;
+    for (final KakuroLayoutEntry entry in entries) {
+      if (entry.direction == KakuroDirection.across) {
+        acrossRunCount++;
+        if (entry.cells.isNotEmpty) {
+          final int first = entry.cells.first;
+          final int row = first ~/ width;
+          final int col = first % width;
+          if (col > 0) {
+            clueCells.add(row * width + (col - 1));
+          }
+        }
+      } else {
+        downRunCount++;
+        if (entry.cells.isNotEmpty) {
+          final int first = entry.cells.first;
+          final int row = first ~/ width;
+          final int col = first % width;
+          if (row > 0) {
+            clueCells.add((row - 1) * width + col);
+          }
+        }
+      }
+      final int length = entry.length;
+      runLengthTotal += length;
+      if (length > maxRunLength) {
+        maxRunLength = length;
+      }
+      final String key = length.toString();
+      runLengthHistogram[key] = (runLengthHistogram[key] ?? 0) + 1;
+    }
+    final int totalRunCount = entries.length;
+    final int averageRunLengthMilli = totalRunCount == 0
+        ? 0
+        : (runLengthTotal * 1000) ~/ totalRunCount;
+
+    final Map<int, int> runDegree = <int, int>{};
+    int runGraphEdgeCount = 0;
+    for (final int cell in valueCells) {
+      final int acrossId = acrossEntryForCell[cell];
+      final int downId = downEntryForCell[cell];
+      if (acrossId >= 0 && downId >= 0) {
+        runGraphEdgeCount++;
+        runDegree[acrossId] = (runDegree[acrossId] ?? 0) + 1;
+        runDegree[downId] = (runDegree[downId] ?? 0) + 1;
+      }
+    }
+    int minRunGraphDegree = 0;
+    if (entries.isNotEmpty) {
+      minRunGraphDegree = 1 << 30;
+      for (final KakuroLayoutEntry entry in entries) {
+        final int degree = runDegree[entry.id] ?? 0;
+        if (degree < minRunGraphDegree) {
+          minRunGraphDegree = degree;
+        }
+      }
+      if (minRunGraphDegree == 1 << 30) {
+        minRunGraphDegree = 0;
+      }
+    }
+
+    int averageRunCombinationCountMilli = 0;
+    int singleCombinationRunRatioMilli = 0;
+    if (entrySums != null && entries.isNotEmpty) {
+      int comboTotal = 0;
+      int singleComboRuns = 0;
+      for (final KakuroLayoutEntry entry in entries) {
+        final int sum = entrySums[entry.id] ?? 0;
+        final Set<int>? combos = KakuroDictionary.getCombinations(
+          entry.length,
+          sum,
+        );
+        final int comboCount = combos?.length ?? 0;
+        comboTotal += comboCount;
+        if (comboCount == 1) {
+          singleComboRuns++;
+        }
+      }
+      averageRunCombinationCountMilli = (comboTotal * 1000) ~/ entries.length;
+      singleCombinationRunRatioMilli = (singleComboRuns * 1000) ~/ entries.length;
+    }
+
+    final List<String> sortedRunLengths = runLengthHistogram.keys.toList()
+      ..sort((String a, String b) => int.parse(a).compareTo(int.parse(b)));
+    final Map<String, int> stableHistogram = <String, int>{};
+    for (final String key in sortedRunLengths) {
+      stableHistogram[key] = runLengthHistogram[key]!;
+    }
+
+    return <String, Object?>{
+      'layoutHash': _computeLayoutHash(layout),
+      'layoutFamilyId': _kakuroLayoutFamilyId,
+      'whiteCellCount': whiteCellCount,
+      'blockCellCount': blackOrClueCellCount,
+      'clueCellCount': clueCells.length,
+      'blackOrClueCellCount': blackOrClueCellCount,
+      'acrossRunCount': acrossRunCount,
+      'downRunCount': downRunCount,
+      'totalRunCount': totalRunCount,
+      'runLengthHistogram': stableHistogram,
+      'maxRunLength': maxRunLength,
+      'averageRunLengthMilli': averageRunLengthMilli,
+      'runGraphNodeCount': totalRunCount,
+      'runGraphEdgeCount': runGraphEdgeCount,
+      'minRunGraphDegree': minRunGraphDegree,
+      // TODO: Add articulationPointCount when a lightweight deterministic
+      // algorithm is introduced for the run graph.
+      if (entrySums != null)
+        'averageRunCombinationCountMilli': averageRunCombinationCountMilli,
+      if (entrySums != null)
+        'singleCombinationRunRatioMilli': singleCombinationRunRatioMilli,
+    };
+  }
+}
+
+String _computeLayoutHash(List<String> layout) {
+  // Stable, deterministic FNV-1a 64-bit hash over block/value topology.
+  const int offset = 0xcbf29ce484222325;
+  const int prime = 0x100000001b3;
+  const int mask = 0xffffffffffffffff;
+  int hash = offset;
+  for (final String row in layout) {
+    for (int i = 0; i < row.length; i++) {
+      final int code = row.codeUnitAt(i);
+      final int normalized = code == 35 ? 35 : 46; // '#' or '.'
+      hash ^= normalized;
+      hash = (hash * prime) & mask;
+    }
+    hash ^= 124; // row separator '|'
+    hash = (hash * prime) & mask;
+  }
+  return hash.toRadixString(16).padLeft(16, '0');
 }
 
 bool _runsValid(List<List<int>> grid, int minRun, int maxRun) {

@@ -27,9 +27,17 @@ void main() {
 
     final puzzleResult = generator.generate(context);
     final KakuroBoard puzzle = puzzleResult.board;
+    final Map<String, Object?> telemetry = Map<String, Object?>.from(
+      puzzleResult.snapshot.telemetry,
+    );
 
     expect(puzzle.width, equals(9));
     expect(puzzle.height, equals(9));
+    expect(telemetry['layoutHash'], equals('57539225835b19aa'));
+    expect(
+      telemetry['runLengthHistogram'],
+      equals(<String, int>{'2': 14, '3': 2, '4': 2, '6': 2, '7': 2}),
+    );
 
     int clueCount = 0;
     for (final int? clue in puzzle.acrossClues) {
