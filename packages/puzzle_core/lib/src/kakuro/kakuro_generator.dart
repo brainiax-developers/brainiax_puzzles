@@ -23,6 +23,7 @@ part '../generators/kakuro/generator_bottom_up.dart';
 const int _solverSalt = 0x6f95c2c1ab7342ed;
 const int _mixMultiplier = 0x9e3779b97f4a7c15;
 const int _mask64 = 0xffffffffffffffff;
+const int _maxDeterministicRepairPasses = 3;
 
 int _deriveSolverSeed(int baseSeed, int attempt, int stage) {
   final int attemptSalt = (attempt * _mixMultiplier) & _mask64;
@@ -146,6 +147,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     int comboRejectCount = 0;
     int attemptBudgetExceededCount = 0;
     int hardBudgetExceededCount = 0;
+    int repairAttemptCount = 0;
+    int repairedRejectCount = 0;
+    String repairOutcome = 'not_attempted';
+    String repairReason = 'not_attempted';
+    bool repairedFromNonUnique = false;
+    String finalLayoutHash = 'unknown';
     final Map<String, int> layoutGateReasonCounts = <String, int>{};
     String layoutGateReason = 'not_scored';
     int layoutScoreMilli = 0;
@@ -174,6 +181,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       int? disagreementCellCount,
       int? disagreementRunCount,
       int? disagreementMaxRunLength,
+      int? repairPass,
+      String? repairStrategy,
+      String? repairOutcome,
+      String? repairReason,
+      bool? repairedFromNonUnique,
+      String? layoutHash,
     }) {
       attemptLog.add(<String, Object?>{
         'attempt': attempt,
@@ -188,9 +201,30 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           'disagreementRunCount': disagreementRunCount,
         if (disagreementMaxRunLength != null)
           'disagreementMaxRunLength': disagreementMaxRunLength,
+        if (repairPass != null) 'repairPass': repairPass,
+        if (repairStrategy != null) 'repairStrategy': repairStrategy,
+        if (repairOutcome != null) 'repairOutcome': repairOutcome,
+        if (repairReason != null) 'repairReason': repairReason,
+        if (repairedFromNonUnique != null)
+          'repairedFromNonUnique': repairedFromNonUnique,
+        if (layoutHash != null) 'layoutHash': layoutHash,
         if (constructionTelemetry != null)
           'constructionTelemetry': constructionTelemetry,
       });
+    }
+
+    Map<String, int> buildRejectCounters() {
+      return <String, int>{
+        'nullCandidate': nullSolutionCount,
+        'layoutGate': layoutGateRejectCount,
+        'nonUnique': nonUniqueCount,
+        'unknownStatus': unknownStatusCount,
+        'logicGate': logicRejectCount,
+        'comboGate': comboRejectCount,
+        'attemptBudget': attemptBudgetExceededCount,
+        'hardBudget': hardBudgetExceededCount,
+        'repairRejected': repairedRejectCount,
+      };
     }
 
     final Stopwatch layoutWatch = Stopwatch()..start();
@@ -291,19 +325,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           'attemptLimit': attemptLimit,
           'hardBudgetMs': hardTimeBudgetMs,
           'perAttemptBudgetMs': perAttemptBudgetMs,
-          'rejectCounters': <String, int>{
-            'nullCandidate': nullSolutionCount,
-            'layoutGate': layoutGateRejectCount,
-            'nonUnique': nonUniqueCount,
-            'unknownStatus': unknownStatusCount,
-            'logicGate': logicRejectCount,
-            'comboGate': comboRejectCount,
-            'attemptBudget': attemptBudgetExceededCount,
-            'hardBudget': hardBudgetExceededCount,
-          },
+          'rejectCounters': buildRejectCounters(),
           'layoutScoreMilli': layoutScoreMilli,
           'layoutGateReason': layoutGateReason,
           'layoutGateReasonCounts': layoutGateReasonCounts,
+          'repairAttemptCount': repairAttemptCount,
+          'repairOutcome': repairOutcome,
+          'repairReason': repairReason,
+          'repairedFromNonUnique': repairedFromNonUnique,
+          'finalLayoutHash': finalLayoutHash,
           'attemptsLog': attemptLog,
         },
       );
@@ -316,6 +346,362 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       );
     }
 
+    _KakuroAcceptedRepairCandidate? tryRepairNonUnique({
+      required int attemptNumber,
+      required String mode,
+      required KakuroLayout template,
+      required SolverResult<KakuroBoard> nonUniqueResult,
+      required Stopwatch attemptWatch,
+    }) {
+      if (nonUniqueResult.solutionStatus != SolverStatus.multiple) {
+        return null;
+      }
+      final _KakuroDisagreementFocus? focus =
+          _KakuroDisagreementFocus.fromSummary(
+            nonUniqueResult.telemetry['disagreementSummary'],
+          );
+      if (focus == null) {
+        repairOutcome = 'rejected';
+        repairReason = 'disagreement_summary_missing';
+        return null;
+      }
+
+      final int focusSeed = _repairFocusSeed(focus);
+      final int repairSeedBase =
+          context.seed64 ^
+          focusSeed ^
+          Seed.fromString('kakuro_repair:$mode:$requestedLevel');
+      String lastReason = 'repair_exhausted';
+      bool attemptedRepair = false;
+
+      for (int pass = 0; pass < _maxDeterministicRepairPasses; pass++) {
+        if (overHardBudget()) {
+          lastReason = 'hard_budget_exceeded';
+          break;
+        }
+        if (attemptWatch.elapsedMilliseconds > perAttemptBudgetMs) {
+          lastReason = 'attempt_budget_exceeded_before_repair';
+          break;
+        }
+        attemptedRepair = true;
+        repairAttemptCount++;
+
+        final bool useLayoutMutation = pass.isOdd;
+        final String strategy = useLayoutMutation
+            ? 'local_layout_mutation'
+            : 'implicated_refill';
+
+        KakuroLayout repairedLayout = template;
+        if (useLayoutMutation) {
+          final KakuroLayout? mutated = _mutateLayoutAroundImplicatedRegion(
+            template: template,
+            focus: focus,
+          );
+          if (mutated == null) {
+            lastReason = 'layout_mutation_invalid';
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptWatch.elapsedMilliseconds,
+              outcome: 'rejected',
+              rejectReason: 'repair_mutation_invalid',
+              solverStatus: SolverStatus.multiple.name,
+              mode: '${mode}_repair',
+              repairPass: pass + 1,
+              repairStrategy: strategy,
+              repairOutcome: 'rejected',
+              repairReason: lastReason,
+              repairedFromNonUnique: false,
+              layoutHash: _computeLayoutHash(template.layout),
+            );
+            continue;
+          }
+          repairedLayout = mutated;
+        }
+
+        final List<KakuroSolution> fillCandidates = <KakuroSolution>[];
+        for (int variant = 0; variant < 2; variant++) {
+          final int solveAttempt = attemptNumber + (pass * 16) + variant + 1;
+          final int stageBase = 5000 + (pass * 40) + (variant * 4);
+          KakuroSolution? variantSolution = buildSolutionFirst(
+            repairedLayout,
+            SeededRng(
+              _deriveSolverSeed(repairSeedBase, solveAttempt, stageBase + 1),
+            ),
+            difficulty: requestedLevel,
+          );
+          variantSolution ??= const KakuroBottomUpGenerator().generate(
+            repairedLayout,
+            SeededRng(
+              _deriveSolverSeed(repairSeedBase, solveAttempt, stageBase + 2),
+            ),
+            difficulty: requestedLevel,
+          );
+          if (variantSolution != null) {
+            fillCandidates.add(variantSolution);
+          }
+        }
+
+        if (fillCandidates.isEmpty) {
+          lastReason = 'repair_refill_failed';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'repair_refill_failed',
+            solverStatus: SolverStatus.noSolution.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+          );
+          continue;
+        }
+
+        KakuroSolution selectedSolution = fillCandidates.first;
+        int selectedStrength = _scoreImplicatedRunStrength(
+          layout: repairedLayout,
+          entrySums: selectedSolution.entrySums,
+          focus: focus,
+        );
+        for (int idx = 1; idx < fillCandidates.length; idx++) {
+          final KakuroSolution candidate = fillCandidates[idx];
+          final int strength = _scoreImplicatedRunStrength(
+            layout: repairedLayout,
+            entrySums: candidate.entrySums,
+            focus: focus,
+          );
+          if (strength > selectedStrength ||
+              (strength == selectedStrength &&
+                  candidate.constructionScoreMilli >
+                      selectedSolution.constructionScoreMilli)) {
+            selectedSolution = candidate;
+            selectedStrength = strength;
+          }
+        }
+
+        final Stopwatch clueBuildWatch = Stopwatch()..start();
+        final KakuroBoard board = repairedLayout.buildBoard(
+          selectedSolution.entrySums,
+        );
+        clueBuildWatch.stop();
+
+        final Stopwatch uniquenessSolveWatch = Stopwatch()..start();
+        SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
+          board,
+          SolverContext(
+            rng: SeededRng(
+              _deriveSolverSeed(
+                repairSeedBase,
+                attemptNumber + (pass * 32) + 1,
+                7001,
+              ),
+            ),
+            maxSolutions: 2,
+          ),
+        );
+        if (uniqueness.solutionStatus == SolverStatus.unknown) {
+          uniqueness = exhaustiveFallbackSolver.solve(
+            board,
+            SolverContext(
+              rng: SeededRng(
+                _deriveSolverSeed(
+                  repairSeedBase,
+                  attemptNumber + (pass * 32) + 1,
+                  7002,
+                ),
+              ),
+              maxSolutions: 2,
+            ),
+          );
+        }
+        uniquenessSolveWatch.stop();
+
+        final Stopwatch difficultyScoreWatch = Stopwatch()..start();
+        final DifficultyTelemetry difficultyTelemetry = _difficultyScorer.score(
+          puzzle: board,
+          solution: board,
+          context: DifficultyContext(
+            generatorTelemetry: <String, Object?>{
+              'givens': 0,
+              'valueCells': repairedLayout.valueCellCount,
+              'width': repairedLayout.width,
+              'height': repairedLayout.height,
+            },
+            solverTelemetry: uniqueness.telemetry,
+          ),
+        );
+        difficultyScoreWatch.stop();
+        final Map<String, Object?> repairConstructionTelemetry =
+            <String, Object?>{
+              ...selectedSolution.constructionTelemetry(),
+              'repairDifficultyScoreMilli':
+                  (difficultyTelemetry.rawScore * 1000).round(),
+            };
+
+        if (overHardBudget()) {
+          lastReason = 'hard_budget_exceeded';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'hard_budget_exceeded',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          break;
+        }
+        if (attemptWatch.elapsedMilliseconds > perAttemptBudgetMs) {
+          lastReason = 'attempt_budget_exceeded_after_repair';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'attempt_budget_exceeded_after_repair',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          continue;
+        }
+
+        if (uniqueness.solutionStatus == SolverStatus.unknown) {
+          lastReason = 'solver_status_unknown';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'solver_status_unknown',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          continue;
+        }
+        if (uniqueness.solutionStatus != SolverStatus.unique) {
+          lastReason = 'non_unique';
+          final Map<String, int>? disagreementMetrics =
+              _nonUniqueDisagreementMetrics(uniqueness.telemetry);
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'non_unique',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            disagreementCellCount:
+                disagreementMetrics?['disagreementCellCount'],
+            disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
+            disagreementMaxRunLength:
+                disagreementMetrics?['disagreementMaxRunLength'],
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          continue;
+        }
+        if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
+          lastReason = 'logic_gate';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'logic_gate',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          continue;
+        }
+        if (!_meetsSingleComboThreshold(
+          repairedLayout,
+          board,
+          requestedLevel,
+        )) {
+          lastReason = 'combo_gate';
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'combo_gate',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: '${mode}_repair',
+            repairPass: pass + 1,
+            repairStrategy: strategy,
+            repairOutcome: 'rejected',
+            repairReason: lastReason,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(repairedLayout.layout),
+            constructionTelemetry: repairConstructionTelemetry,
+          );
+          continue;
+        }
+
+        repairOutcome = 'accepted';
+        repairReason = 'accepted_$strategy';
+        repairedFromNonUnique = true;
+        finalLayoutHash = _computeLayoutHash(repairedLayout.layout);
+        recordAttempt(
+          attempt: attemptNumber,
+          durationMs: attemptWatch.elapsedMilliseconds,
+          outcome: 'accepted',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: '${mode}_repair',
+          repairPass: pass + 1,
+          repairStrategy: strategy,
+          repairOutcome: 'accepted',
+          repairReason: repairReason,
+          repairedFromNonUnique: true,
+          layoutHash: finalLayoutHash,
+          constructionTelemetry: repairConstructionTelemetry,
+        );
+        return _KakuroAcceptedRepairCandidate(
+          layout: repairedLayout,
+          solution: selectedSolution,
+          board: board,
+          uniqueness: uniqueness,
+        );
+      }
+
+      if (attemptedRepair) {
+        repairedRejectCount++;
+      }
+      repairOutcome = attemptedRepair ? 'rejected' : repairOutcome;
+      repairReason = lastReason;
+      return null;
+    }
+
     while (attempts < attemptLimit) {
       if (overHardBudget()) {
         hardBudgetExceededCount++;
@@ -326,10 +712,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       final Stopwatch attemptWatch = Stopwatch()..start();
       final _KakuroAcceptedLayoutCandidate templateCandidate =
           acceptedLayouts[(attempts - 1) % acceptedLayouts.length];
-      final KakuroLayout selectedTemplate = templateCandidate.layout;
+      KakuroLayout selectedTemplate = templateCandidate.layout;
+      KakuroLayoutMetrics selectedMetrics = templateCandidate.metrics;
       layoutScoreMilli = templateCandidate.scoreMilli;
       layoutGateReason = templateCandidate.reason;
-      selectedLayoutMetrics = templateCandidate.metrics;
+      selectedLayoutMetrics = selectedMetrics;
       int solverStage = 0;
       SeededRng nextSolverRng() {
         solverStage++;
@@ -366,7 +753,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
         continue;
       }
-      final Map<String, Object?> constructionTelemetry = solution
+      Map<String, Object?> constructionTelemetry = solution
           .constructionTelemetry();
 
       if (attemptWatch.elapsedMilliseconds > perAttemptBudgetMs) {
@@ -385,7 +772,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       final Stopwatch clueBuildWatch = Stopwatch()..start();
       // Production Kakuro starts with empty playable cells. Uniqueness must
       // come from layout and clue constraints, not hidden answer givens.
-      final KakuroBoard candidateBoard = selectedTemplate.buildBoard(
+      KakuroBoard candidateBoard = selectedTemplate.buildBoard(
         solution.entrySums,
       );
       clueBuildWatch.stop();
@@ -403,7 +790,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
       uniquenessSolveWatch.stop();
 
-      final int attemptMs = attemptWatch.elapsedMilliseconds;
+      int attemptMs = attemptWatch.elapsedMilliseconds;
       if (overHardBudget()) {
         hardBudgetExceededCount++;
         terminalFailureReason = 'hard_budget_exceeded';
@@ -445,23 +832,53 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         continue;
       }
       if (uniqueness.solutionStatus != SolverStatus.unique) {
-        nonUniqueCount++;
-        final Map<String, int>? disagreementMetrics =
-            _nonUniqueDisagreementMetrics(uniqueness.telemetry);
-        recordAttempt(
-          attempt: attempts,
-          durationMs: attemptMs,
-          outcome: 'rejected',
-          rejectReason: 'non_unique',
-          solverStatus: uniqueness.solutionStatus.name,
-          mode: 'primary',
-          disagreementCellCount: disagreementMetrics?['disagreementCellCount'],
-          disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
-          disagreementMaxRunLength:
-              disagreementMetrics?['disagreementMaxRunLength'],
-          constructionTelemetry: constructionTelemetry,
-        );
-        continue;
+        _KakuroAcceptedRepairCandidate? repaired;
+        if (uniqueness.solutionStatus == SolverStatus.multiple &&
+            uniqueness.telemetry['disagreementSummary'] != null) {
+          repaired = tryRepairNonUnique(
+            attemptNumber: attempts,
+            mode: 'primary',
+            template: selectedTemplate,
+            nonUniqueResult: uniqueness,
+            attemptWatch: attemptWatch,
+          );
+        }
+        if (repaired == null) {
+          nonUniqueCount++;
+          final Map<String, int>? disagreementMetrics =
+              _nonUniqueDisagreementMetrics(uniqueness.telemetry);
+          recordAttempt(
+            attempt: attempts,
+            durationMs: attemptMs,
+            outcome: 'rejected',
+            rejectReason: 'non_unique',
+            solverStatus: uniqueness.solutionStatus.name,
+            mode: 'primary',
+            disagreementCellCount:
+                disagreementMetrics?['disagreementCellCount'],
+            disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
+            disagreementMaxRunLength:
+                disagreementMetrics?['disagreementMaxRunLength'],
+            repairOutcome: uniqueness.solutionStatus == SolverStatus.multiple
+                ? repairOutcome
+                : null,
+            repairReason: uniqueness.solutionStatus == SolverStatus.multiple
+                ? repairReason
+                : null,
+            repairedFromNonUnique: false,
+            layoutHash: _computeLayoutHash(selectedTemplate.layout),
+            constructionTelemetry: constructionTelemetry,
+          );
+          continue;
+        }
+        selectedTemplate = repaired.layout;
+        selectedMetrics = selectedTemplate.computeMetrics();
+        selectedLayoutMetrics = selectedMetrics;
+        solution = repaired.solution;
+        candidateBoard = repaired.board;
+        uniqueness = repaired.uniqueness;
+        constructionTelemetry = repaired.solution.constructionTelemetry();
+        attemptMs = attemptWatch.elapsedMilliseconds;
       }
 
       // Gate by backtrack/logic thresholds per difficulty.
@@ -529,15 +946,34 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             return MapEntry<String, Object?>(key, value);
           });
 
+      if (!repairedFromNonUnique) {
+        if (repairAttemptCount == 0) {
+          repairOutcome = 'not_needed';
+          repairReason = 'not_needed';
+        } else if (repairOutcome != 'accepted') {
+          repairOutcome = 'rejected_before_accept';
+          if (repairReason == 'not_attempted') {
+            repairReason = 'repair_rejected_before_accept';
+          }
+        }
+      }
+      finalLayoutHash = selectedMetrics.layoutHash;
+
       puzzle = candidateBoard;
-      recordAttempt(
-        attempt: attempts,
-        durationMs: attemptMs,
-        outcome: 'accepted',
-        solverStatus: uniqueness.solutionStatus.name,
-        mode: 'primary',
-        constructionTelemetry: constructionTelemetry,
-      );
+      if (!repairedFromNonUnique) {
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptMs,
+          outcome: 'accepted',
+          solverStatus: uniqueness.solutionStatus.name,
+          mode: 'primary',
+          repairOutcome: repairOutcome,
+          repairReason: repairReason,
+          repairedFromNonUnique: repairedFromNonUnique,
+          layoutHash: finalLayoutHash,
+          constructionTelemetry: constructionTelemetry,
+        );
+      }
       telemetry = <String, Object?>{
         'attempts': attempts + fallbackAttempts,
         'attemptLimit': attemptLimit,
@@ -573,22 +1009,20 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'layoutScoreMilli': layoutScoreMilli,
         'layoutGateReason': layoutGateReason,
         'layoutGateReasonCounts': layoutGateReasonCounts,
-        ...selectedLayoutMetrics!.toTelemetry(),
+        ...selectedLayoutMetrics.toTelemetry(),
         ...structuralTelemetry,
+        'repairAttemptCount': repairAttemptCount,
+        'repairOutcome': repairOutcome,
+        'repairReason': repairReason,
+        'repairedFromNonUnique': repairedFromNonUnique,
+        'repairedRejectCount': repairedRejectCount,
+        'acceptPath': repairedFromNonUnique ? 'repaired' : 'primary',
+        'finalLayoutHash': finalLayoutHash,
         'perAttemptBudgetMs': perAttemptBudgetMs,
         'hardBudgetMs': hardTimeBudgetMs,
         'hardCapExceeded': false,
         'attemptsLog': attemptLog,
-        'rejectCounters': <String, int>{
-          'nullCandidate': nullSolutionCount,
-          'layoutGate': layoutGateRejectCount,
-          'nonUnique': nonUniqueCount,
-          'unknownStatus': unknownStatusCount,
-          'logicGate': logicRejectCount,
-          'comboGate': comboRejectCount,
-          'attemptBudget': attemptBudgetExceededCount,
-          'hardBudget': hardBudgetExceededCount,
-        },
+        'rejectCounters': buildRejectCounters(),
       };
       break;
     }
@@ -634,14 +1068,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           );
           continue;
         }
-        final KakuroLayoutMetrics altMetrics = preScore.metrics;
+        KakuroLayoutMetrics altMetrics = preScore.metrics;
+        KakuroLayout workingTemplate = altTemplate;
         KakuroSolution? sol = buildSolutionFirst(
-          altTemplate,
+          workingTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 1)),
           difficulty: requestedLevel,
         );
         sol ??= const KakuroBottomUpGenerator().generate(
-          altTemplate,
+          workingTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 101)),
           difficulty: requestedLevel,
         );
@@ -656,9 +1091,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           );
           continue;
         }
-        final Map<String, Object?> constructionTelemetry = sol
+        Map<String, Object?> constructionTelemetry = sol
             .constructionTelemetry();
-        final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
+        KakuroBoard board = workingTemplate.buildBoard(sol.entrySums);
         SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
           SolverContext(
@@ -677,7 +1112,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             ),
           );
         }
-        final int attemptMs = attemptWatch.elapsedMilliseconds;
+        int attemptMs = attemptWatch.elapsedMilliseconds;
         if (overHardBudget()) {
           hardBudgetExceededCount++;
           terminalFailureReason = 'hard_budget_exceeded';
@@ -719,24 +1154,53 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           continue;
         }
         if (uniqueness.solutionStatus != SolverStatus.unique) {
-          nonUniqueCount++;
-          final Map<String, int>? disagreementMetrics =
-              _nonUniqueDisagreementMetrics(uniqueness.telemetry);
-          recordAttempt(
-            attempt: attemptNumber,
-            durationMs: attemptMs,
-            outcome: 'rejected',
-            rejectReason: 'non_unique',
-            solverStatus: uniqueness.solutionStatus.name,
-            mode: 'fallback_strict',
-            disagreementCellCount:
-                disagreementMetrics?['disagreementCellCount'],
-            disagreementRunCount: disagreementMetrics?['disagreementRunCount'],
-            disagreementMaxRunLength:
-                disagreementMetrics?['disagreementMaxRunLength'],
-            constructionTelemetry: constructionTelemetry,
-          );
-          continue;
+          _KakuroAcceptedRepairCandidate? repaired;
+          if (uniqueness.solutionStatus == SolverStatus.multiple &&
+              uniqueness.telemetry['disagreementSummary'] != null) {
+            repaired = tryRepairNonUnique(
+              attemptNumber: attemptNumber,
+              mode: 'fallback_strict',
+              template: workingTemplate,
+              nonUniqueResult: uniqueness,
+              attemptWatch: attemptWatch,
+            );
+          }
+          if (repaired == null) {
+            nonUniqueCount++;
+            final Map<String, int>? disagreementMetrics =
+                _nonUniqueDisagreementMetrics(uniqueness.telemetry);
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'rejected',
+              rejectReason: 'non_unique',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_strict',
+              disagreementCellCount:
+                  disagreementMetrics?['disagreementCellCount'],
+              disagreementRunCount:
+                  disagreementMetrics?['disagreementRunCount'],
+              disagreementMaxRunLength:
+                  disagreementMetrics?['disagreementMaxRunLength'],
+              repairOutcome: uniqueness.solutionStatus == SolverStatus.multiple
+                  ? repairOutcome
+                  : null,
+              repairReason: uniqueness.solutionStatus == SolverStatus.multiple
+                  ? repairReason
+                  : null,
+              repairedFromNonUnique: false,
+              layoutHash: _computeLayoutHash(workingTemplate.layout),
+              constructionTelemetry: constructionTelemetry,
+            );
+            continue;
+          }
+          workingTemplate = repaired.layout;
+          altMetrics = workingTemplate.computeMetrics();
+          sol = repaired.solution;
+          board = repaired.board;
+          uniqueness = repaired.uniqueness;
+          constructionTelemetry = sol.constructionTelemetry();
+          attemptMs = attemptWatch.elapsedMilliseconds;
         }
         if (!_meetsLogicThresholds(requestedLevel, uniqueness.telemetry)) {
           logicRejectCount++;
@@ -751,7 +1215,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           );
           continue;
         }
-        if (!_meetsSingleComboThreshold(altTemplate, board, requestedLevel)) {
+        if (!_meetsSingleComboThreshold(
+          workingTemplate,
+          board,
+          requestedLevel,
+        )) {
           comboRejectCount++;
           recordAttempt(
             attempt: attemptNumber,
@@ -772,9 +1240,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 solution: board,
                 context: DifficultyContext(
                   generatorTelemetry: <String, Object?>{
-                    'valueCells': altTemplate.valueCellCount,
-                    'width': altTemplate.width,
-                    'height': altTemplate.height,
+                    'valueCells': workingTemplate.valueCellCount,
+                    'width': workingTemplate.width,
+                    'height': workingTemplate.height,
                   },
                   solverTelemetry: uniqueness.telemetry,
                 ),
@@ -783,17 +1251,35 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           final String bucket = _difficultyConfig.bucketFor(
             difficultyTelemetry.rawScore,
           );
-          final Map<String, Object?> structuralTelemetry = altTemplate
+          final Map<String, Object?> structuralTelemetry = workingTemplate
               .buildStructuralTelemetry(entrySums: sol.entrySums);
+          if (!repairedFromNonUnique) {
+            if (repairAttemptCount == 0) {
+              repairOutcome = 'not_needed';
+              repairReason = 'not_needed';
+            } else if (repairOutcome != 'accepted') {
+              repairOutcome = 'rejected_before_accept';
+              if (repairReason == 'not_attempted') {
+                repairReason = 'repair_rejected_before_accept';
+              }
+            }
+          }
+          finalLayoutHash = altMetrics.layoutHash;
           puzzle = board;
-          recordAttempt(
-            attempt: attemptNumber,
-            durationMs: attemptMs,
-            outcome: 'accepted',
-            solverStatus: uniqueness.solutionStatus.name,
-            mode: 'fallback_strict',
-            constructionTelemetry: constructionTelemetry,
-          );
+          if (!repairedFromNonUnique) {
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'accepted',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_strict',
+              repairOutcome: repairOutcome,
+              repairReason: repairReason,
+              repairedFromNonUnique: repairedFromNonUnique,
+              layoutHash: finalLayoutHash,
+              constructionTelemetry: constructionTelemetry,
+            );
+          }
           telemetry = <String, Object?>{
             'attempts': attempts + fallbackAttempts,
             'attemptLimit': attemptLimit,
@@ -816,33 +1302,32 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'difficultyMatchedRequest': bucket == requestedLevel,
             'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
                 .round(),
-            'selectedSize': '${altTemplate.width}x${altTemplate.height}',
-            'valueCellCount': altTemplate.valueCellCount,
+            'selectedSize':
+                '${workingTemplate.width}x${workingTemplate.height}',
+            'valueCellCount': workingTemplate.valueCellCount,
             // Kept for telemetry compatibility; generated starts no longer
             // include digit givens.
             'givensCount': 0,
             'givenRatioMilli': 0,
-            'width': altTemplate.width,
-            'height': altTemplate.height,
+            'width': workingTemplate.width,
+            'height': workingTemplate.height,
             'layoutScoreMilli': layoutScoreMilli,
             'layoutGateReason': layoutGateReason,
             'layoutGateReasonCounts': layoutGateReasonCounts,
             ...altMetrics.toTelemetry(),
             ...structuralTelemetry,
+            'repairAttemptCount': repairAttemptCount,
+            'repairOutcome': repairOutcome,
+            'repairReason': repairReason,
+            'repairedFromNonUnique': repairedFromNonUnique,
+            'repairedRejectCount': repairedRejectCount,
+            'acceptPath': repairedFromNonUnique ? 'repaired' : 'primary',
+            'finalLayoutHash': finalLayoutHash,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
             'hardCapExceeded': false,
             'attemptsLog': attemptLog,
-            'rejectCounters': <String, int>{
-              'nullCandidate': nullSolutionCount,
-              'layoutGate': layoutGateRejectCount,
-              'nonUnique': nonUniqueCount,
-              'unknownStatus': unknownStatusCount,
-              'logicGate': logicRejectCount,
-              'comboGate': comboRejectCount,
-              'attemptBudget': attemptBudgetExceededCount,
-              'hardBudget': hardBudgetExceededCount,
-            },
+            'rejectCounters': buildRejectCounters(),
           };
         }
       }
@@ -887,14 +1372,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             );
             continue;
           }
-          final KakuroLayoutMetrics altMetrics = preScore.metrics;
+          KakuroLayoutMetrics altMetrics = preScore.metrics;
+          KakuroLayout workingTemplate = altTemplate;
           KakuroSolution? sol = buildSolutionFirst(
-            altTemplate,
+            workingTemplate,
             SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 1)),
             difficulty: requestedLevel,
           );
           sol ??= const KakuroBottomUpGenerator().generate(
-            altTemplate,
+            workingTemplate,
             SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 101)),
             difficulty: requestedLevel,
           );
@@ -909,10 +1395,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             );
             continue;
           }
-          final Map<String, Object?> constructionTelemetry = sol
+          Map<String, Object?> constructionTelemetry = sol
               .constructionTelemetry();
 
-          final KakuroBoard board = altTemplate.buildBoard(sol.entrySums);
+          KakuroBoard board = workingTemplate.buildBoard(sol.entrySums);
           SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
             board,
             SolverContext(
@@ -931,7 +1417,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
               ),
             );
           }
-          final int attemptMs = attemptWatch.elapsedMilliseconds;
+          int attemptMs = attemptWatch.elapsedMilliseconds;
           if (overHardBudget()) {
             hardBudgetExceededCount++;
             terminalFailureReason = 'hard_budget_exceeded';
@@ -973,25 +1459,54 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             continue;
           }
           if (uniqueness.solutionStatus != SolverStatus.unique) {
-            nonUniqueCount++;
-            final Map<String, int>? disagreementMetrics =
-                _nonUniqueDisagreementMetrics(uniqueness.telemetry);
-            recordAttempt(
-              attempt: attemptNumber,
-              durationMs: attemptMs,
-              outcome: 'rejected',
-              rejectReason: 'non_unique',
-              solverStatus: uniqueness.solutionStatus.name,
-              mode: 'fallback_relaxed',
-              disagreementCellCount:
-                  disagreementMetrics?['disagreementCellCount'],
-              disagreementRunCount:
-                  disagreementMetrics?['disagreementRunCount'],
-              disagreementMaxRunLength:
-                  disagreementMetrics?['disagreementMaxRunLength'],
-              constructionTelemetry: constructionTelemetry,
-            );
-            continue;
+            _KakuroAcceptedRepairCandidate? repaired;
+            if (uniqueness.solutionStatus == SolverStatus.multiple &&
+                uniqueness.telemetry['disagreementSummary'] != null) {
+              repaired = tryRepairNonUnique(
+                attemptNumber: attemptNumber,
+                mode: 'fallback_relaxed',
+                template: workingTemplate,
+                nonUniqueResult: uniqueness,
+                attemptWatch: attemptWatch,
+              );
+            }
+            if (repaired == null) {
+              nonUniqueCount++;
+              final Map<String, int>? disagreementMetrics =
+                  _nonUniqueDisagreementMetrics(uniqueness.telemetry);
+              recordAttempt(
+                attempt: attemptNumber,
+                durationMs: attemptMs,
+                outcome: 'rejected',
+                rejectReason: 'non_unique',
+                solverStatus: uniqueness.solutionStatus.name,
+                mode: 'fallback_relaxed',
+                disagreementCellCount:
+                    disagreementMetrics?['disagreementCellCount'],
+                disagreementRunCount:
+                    disagreementMetrics?['disagreementRunCount'],
+                disagreementMaxRunLength:
+                    disagreementMetrics?['disagreementMaxRunLength'],
+                repairOutcome:
+                    uniqueness.solutionStatus == SolverStatus.multiple
+                    ? repairOutcome
+                    : null,
+                repairReason: uniqueness.solutionStatus == SolverStatus.multiple
+                    ? repairReason
+                    : null,
+                repairedFromNonUnique: false,
+                layoutHash: _computeLayoutHash(workingTemplate.layout),
+                constructionTelemetry: constructionTelemetry,
+              );
+              continue;
+            }
+            workingTemplate = repaired.layout;
+            altMetrics = workingTemplate.computeMetrics();
+            sol = repaired.solution;
+            board = repaired.board;
+            uniqueness = repaired.uniqueness;
+            constructionTelemetry = sol.constructionTelemetry();
+            attemptMs = attemptWatch.elapsedMilliseconds;
           }
 
           final Stopwatch difficultyScoreWatch = Stopwatch()..start();
@@ -1001,9 +1516,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 solution: board,
                 context: DifficultyContext(
                   generatorTelemetry: <String, Object?>{
-                    'valueCells': altTemplate.valueCellCount,
-                    'width': altTemplate.width,
-                    'height': altTemplate.height,
+                    'valueCells': workingTemplate.valueCellCount,
+                    'width': workingTemplate.width,
+                    'height': workingTemplate.height,
                   },
                   solverTelemetry: uniqueness.telemetry,
                 ),
@@ -1012,17 +1527,35 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           final String bucket = _difficultyConfig.bucketFor(
             difficultyTelemetry.rawScore,
           );
-          final Map<String, Object?> structuralTelemetry = altTemplate
+          final Map<String, Object?> structuralTelemetry = workingTemplate
               .buildStructuralTelemetry(entrySums: sol.entrySums);
+          if (!repairedFromNonUnique) {
+            if (repairAttemptCount == 0) {
+              repairOutcome = 'not_needed';
+              repairReason = 'not_needed';
+            } else if (repairOutcome != 'accepted') {
+              repairOutcome = 'rejected_before_accept';
+              if (repairReason == 'not_attempted') {
+                repairReason = 'repair_rejected_before_accept';
+              }
+            }
+          }
+          finalLayoutHash = altMetrics.layoutHash;
           puzzle = board;
-          recordAttempt(
-            attempt: attemptNumber,
-            durationMs: attemptMs,
-            outcome: 'accepted',
-            solverStatus: uniqueness.solutionStatus.name,
-            mode: 'fallback_relaxed',
-            constructionTelemetry: constructionTelemetry,
-          );
+          if (!repairedFromNonUnique) {
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptMs,
+              outcome: 'accepted',
+              solverStatus: uniqueness.solutionStatus.name,
+              mode: 'fallback_relaxed',
+              repairOutcome: repairOutcome,
+              repairReason: repairReason,
+              repairedFromNonUnique: repairedFromNonUnique,
+              layoutHash: finalLayoutHash,
+              constructionTelemetry: constructionTelemetry,
+            );
+          }
           telemetry = <String, Object?>{
             'attempts': attempts + fallbackAttempts,
             'attemptLimit': attemptLimit,
@@ -1046,33 +1579,32 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'difficultyMatchedRequest': bucket == requestedLevel,
             'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000)
                 .round(),
-            'selectedSize': '${altTemplate.width}x${altTemplate.height}',
-            'valueCellCount': altTemplate.valueCellCount,
+            'selectedSize':
+                '${workingTemplate.width}x${workingTemplate.height}',
+            'valueCellCount': workingTemplate.valueCellCount,
             // Kept for telemetry compatibility; generated starts no longer
             // include digit givens.
             'givensCount': 0,
             'givenRatioMilli': 0,
-            'width': altTemplate.width,
-            'height': altTemplate.height,
+            'width': workingTemplate.width,
+            'height': workingTemplate.height,
             'layoutScoreMilli': layoutScoreMilli,
             'layoutGateReason': layoutGateReason,
             'layoutGateReasonCounts': layoutGateReasonCounts,
             ...altMetrics.toTelemetry(),
             ...structuralTelemetry,
+            'repairAttemptCount': repairAttemptCount,
+            'repairOutcome': repairOutcome,
+            'repairReason': repairReason,
+            'repairedFromNonUnique': repairedFromNonUnique,
+            'repairedRejectCount': repairedRejectCount,
+            'acceptPath': repairedFromNonUnique ? 'repaired' : 'primary',
+            'finalLayoutHash': finalLayoutHash,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
             'hardCapExceeded': false,
             'attemptsLog': attemptLog,
-            'rejectCounters': <String, int>{
-              'nullCandidate': nullSolutionCount,
-              'layoutGate': layoutGateRejectCount,
-              'nonUnique': nonUniqueCount,
-              'unknownStatus': unknownStatusCount,
-              'logicGate': logicRejectCount,
-              'comboGate': comboRejectCount,
-              'attemptBudget': attemptBudgetExceededCount,
-              'hardBudget': hardBudgetExceededCount,
-            },
+            'rejectCounters': buildRejectCounters(),
           };
         }
       }
@@ -1114,6 +1646,281 @@ class _KakuroAcceptedLayoutCandidate {
   final int scoreMilli;
   final String reason;
   final KakuroLayoutMetrics metrics;
+}
+
+class _KakuroAcceptedRepairCandidate {
+  const _KakuroAcceptedRepairCandidate({
+    required this.layout,
+    required this.solution,
+    required this.board,
+    required this.uniqueness,
+  });
+
+  final KakuroLayout layout;
+  final KakuroSolution solution;
+  final KakuroBoard board;
+  final SolverResult<KakuroBoard> uniqueness;
+}
+
+class _KakuroDisagreementFocus {
+  const _KakuroDisagreementFocus({
+    required this.acrossRunIds,
+    required this.downRunIds,
+    required this.minRow,
+    required this.maxRow,
+    required this.minCol,
+    required this.maxCol,
+  });
+
+  final List<int> acrossRunIds;
+  final List<int> downRunIds;
+  final int minRow;
+  final int maxRow;
+  final int minCol;
+  final int maxCol;
+
+  bool get hasBoundingBox =>
+      minRow >= 0 && minCol >= 0 && maxRow >= minRow && maxCol >= minCol;
+
+  int get centerRow => hasBoundingBox ? (minRow + maxRow) ~/ 2 : -1;
+  int get centerCol => hasBoundingBox ? (minCol + maxCol) ~/ 2 : -1;
+
+  Set<int> get runIds => <int>{...acrossRunIds, ...downRunIds};
+
+  static _KakuroDisagreementFocus? fromSummary(Object? summaryRaw) {
+    if (summaryRaw is! Map) {
+      return null;
+    }
+    final Map<String, Object?> summary = Map<String, Object?>.from(summaryRaw);
+    final Map<String, Object?> runIds = _asObjectMap(
+      summary['disagreementRunIds'],
+    );
+    final List<int> across = _asSortedIntList(runIds['across']);
+    final List<int> down = _asSortedIntList(runIds['down']);
+    final Map<String, Object?> box = _asObjectMap(
+      summary['disagreementBoundingBox'],
+    );
+    final int minRow = (box['minRow'] as num?)?.toInt() ?? -1;
+    final int maxRow = (box['maxRow'] as num?)?.toInt() ?? -1;
+    final int minCol = (box['minCol'] as num?)?.toInt() ?? -1;
+    final int maxCol = (box['maxCol'] as num?)?.toInt() ?? -1;
+    if (across.isEmpty && down.isEmpty) {
+      return null;
+    }
+    return _KakuroDisagreementFocus(
+      acrossRunIds: across,
+      downRunIds: down,
+      minRow: minRow,
+      maxRow: maxRow,
+      minCol: minCol,
+      maxCol: maxCol,
+    );
+  }
+}
+
+Map<String, Object?> _asObjectMap(Object? value) {
+  if (value is Map) {
+    return Map<String, Object?>.from(value);
+  }
+  return const <String, Object?>{};
+}
+
+List<int> _asSortedIntList(Object? value) {
+  if (value is! List) {
+    return const <int>[];
+  }
+  final List<int> ints =
+      value
+          .where((Object? item) => item is num)
+          .map((Object? item) => (item as num).toInt())
+          .toSet()
+          .toList(growable: false)
+        ..sort();
+  return ints;
+}
+
+int _repairFocusSeed(_KakuroDisagreementFocus focus) {
+  int hash = 0xcbf29ce484222325;
+  const int prime = 0x100000001b3;
+  for (final int runId in focus.acrossRunIds) {
+    hash ^= runId;
+    hash = (hash * prime) & _mask64;
+  }
+  hash ^= 0x41;
+  hash = (hash * prime) & _mask64;
+  for (final int runId in focus.downRunIds) {
+    hash ^= runId;
+    hash = (hash * prime) & _mask64;
+  }
+  hash ^= focus.minRow;
+  hash = (hash * prime) & _mask64;
+  hash ^= focus.maxRow;
+  hash = (hash * prime) & _mask64;
+  hash ^= focus.minCol;
+  hash = (hash * prime) & _mask64;
+  hash ^= focus.maxCol;
+  hash = (hash * prime) & _mask64;
+  return hash & _mask64;
+}
+
+int _scoreImplicatedRunStrength({
+  required KakuroLayout layout,
+  required Map<int, int> entrySums,
+  required _KakuroDisagreementFocus focus,
+}) {
+  int singleCount = 0;
+  int totalComboCount = 0;
+  int maxComboCount = 0;
+  int considered = 0;
+  for (final int runId in focus.runIds) {
+    if (runId < 0 || runId >= layout.entries.length) {
+      continue;
+    }
+    final KakuroLayoutEntry entry = layout.entries[runId];
+    final int sum = entrySums[runId] ?? 0;
+    final Set<int>? combos = KakuroDictionary.getCombinations(
+      entry.length,
+      sum,
+    );
+    final int comboCount = combos?.length ?? 999;
+    considered++;
+    totalComboCount += comboCount;
+    if (comboCount == 1) {
+      singleCount++;
+    }
+    if (comboCount > maxComboCount) {
+      maxComboCount = comboCount;
+    }
+  }
+  if (considered <= 0) {
+    return -1000000;
+  }
+  return (singleCount * 100000) -
+      (totalComboCount * 1000) -
+      (maxComboCount * 100);
+}
+
+List<int> _collectImplicatedCells(
+  KakuroLayout layout,
+  _KakuroDisagreementFocus focus,
+) {
+  final Set<int> cells = <int>{};
+  for (final int runId in focus.runIds) {
+    if (runId < 0 || runId >= layout.entries.length) {
+      continue;
+    }
+    cells.addAll(layout.entries[runId].cells);
+  }
+  if (cells.isEmpty && focus.hasBoundingBox) {
+    for (int row = focus.minRow; row <= focus.maxRow; row++) {
+      for (int col = focus.minCol; col <= focus.maxCol; col++) {
+        final int cell = row * layout.width + col;
+        if (cell >= 0 &&
+            cell < layout.width * layout.height &&
+            layout.kinds[cell] == KakuroCellKind.value) {
+          cells.add(cell);
+        }
+      }
+    }
+  }
+  final List<int> ordered = cells.toList(growable: false);
+  final int centerRow = focus.centerRow >= 0
+      ? focus.centerRow
+      : layout.height ~/ 2;
+  final int centerCol = focus.centerCol >= 0
+      ? focus.centerCol
+      : layout.width ~/ 2;
+  ordered.sort((int a, int b) {
+    final int ar = a ~/ layout.width;
+    final int ac = a % layout.width;
+    final int br = b ~/ layout.width;
+    final int bc = b % layout.width;
+    final int aDist = (ar - centerRow).abs() + (ac - centerCol).abs();
+    final int bDist = (br - centerRow).abs() + (bc - centerCol).abs();
+    if (aDist != bDist) {
+      return aDist.compareTo(bDist);
+    }
+    if (ar != br) {
+      return ar.compareTo(br);
+    }
+    return ac.compareTo(bc);
+  });
+  return ordered;
+}
+
+KakuroLayout? _mutateLayoutAroundImplicatedRegion({
+  required KakuroLayout template,
+  required _KakuroDisagreementFocus focus,
+}) {
+  final List<List<int>> grid = _rowsToGrid(template.layout);
+  final List<int> cells = _collectImplicatedCells(template, focus);
+  if (cells.isEmpty) {
+    return null;
+  }
+
+  final Set<String> seen = <String>{};
+  final List<List<int>> candidates = <List<int>>[];
+  void addCandidate(int row, int col) {
+    final String key = '$row:$col';
+    if (seen.add(key)) {
+      candidates.add(<int>[row, col]);
+    }
+  }
+
+  for (final int cell in cells) {
+    final int row = cell ~/ template.width;
+    final int col = cell % template.width;
+    addCandidate(row, col);
+    addCandidate(row - 1, col);
+    addCandidate(row + 1, col);
+    addCandidate(row, col - 1);
+    addCandidate(row, col + 1);
+  }
+
+  final int centerRow = focus.centerRow >= 0
+      ? focus.centerRow
+      : template.height ~/ 2;
+  final int centerCol = focus.centerCol >= 0
+      ? focus.centerCol
+      : template.width ~/ 2;
+  candidates.sort((List<int> a, List<int> b) {
+    final int aDist = (a[0] - centerRow).abs() + (a[1] - centerCol).abs();
+    final int bDist = (b[0] - centerRow).abs() + (b[1] - centerCol).abs();
+    if (aDist != bDist) {
+      return aDist.compareTo(bDist);
+    }
+    if (a[0] != b[0]) {
+      return a[0].compareTo(b[0]);
+    }
+    return a[1].compareTo(b[1]);
+  });
+
+  final String baselineHash = _computeLayoutHash(template.layout);
+  for (final List<int> candidate in candidates) {
+    final int row = candidate[0];
+    final int col = candidate[1];
+    if (row <= 0 ||
+        col <= 0 ||
+        row >= template.height - 1 ||
+        col >= template.width - 1) {
+      continue;
+    }
+    final int current = grid[row][col];
+    final int toggled = current == 1 ? 0 : 1;
+    if (!_trySetSymmetricValue(grid, row, col, toggled)) {
+      continue;
+    }
+    final KakuroLayout mutated = KakuroLayout.fromRows(
+      _gridToRows(grid),
+      layoutFamilyId: template.layoutFamilyId,
+    );
+    if (_isStructurallyValidLayout(mutated) &&
+        _computeLayoutHash(mutated.layout) != baselineHash) {
+      return mutated;
+    }
+    _trySetSymmetricValue(grid, row, col, current, force: true);
+  }
+  return null;
 }
 
 // Helper: difficulty normalization and grid sizing

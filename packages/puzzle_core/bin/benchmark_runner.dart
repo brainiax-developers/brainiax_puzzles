@@ -198,6 +198,9 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final times = <int>[];
   final List<int> uniquenessSolveTimes = <int>[];
   final List<Map<String, Object?>> iterationDetails = <Map<String, Object?>>[];
+  int primaryAcceptCount = 0;
+  int repairedAcceptCount = 0;
+  int repairedRejectCount = 0;
   Map<String, Object?>? slowestIteration;
   final totalStopwatch = Stopwatch()..start();
   double percentileMsOrZero(double percentile) {
@@ -313,6 +316,13 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'averageRunCombinationCountMilli',
       'singleCombinationRunRatioMilli',
       'stageTimingMs',
+      'repairAttemptCount',
+      'repairOutcome',
+      'repairReason',
+      'repairedFromNonUnique',
+      'repairedRejectCount',
+      'acceptPath',
+      'finalLayoutHash',
     ];
     for (final String field in kakuroTelemetryFields) {
       final Object? value = generatorTelemetry[field];
@@ -353,6 +363,21 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
     times.add(generationMicros);
     detail['status'] = 'generated';
+
+    final bool repairedAccept =
+        generatorTelemetry['repairedFromNonUnique'] == true ||
+        generatorTelemetry['acceptPath'] == 'repaired';
+    if (repairedAccept) {
+      repairedAcceptCount++;
+      detail['acceptPath'] = 'repaired';
+    } else {
+      primaryAcceptCount++;
+      detail['acceptPath'] = 'primary';
+    }
+    repairedRejectCount += _asInt(
+      generatorTelemetry['repairedRejectCount'],
+      fallback: 0,
+    );
 
     if (measureKakuroUniqueness) {
       if (puzzle == null || puzzle.state is! KakuroBoard) {
@@ -442,6 +467,11 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         .toList(growable: false),
     if (slowestIteration != null) 'slowestIteration': slowestIteration,
     'iterationDetails': iterationDetails,
+    'acceptBreakdown': <String, int>{
+      'primaryAccepts': primaryAcceptCount,
+      'repairedAccepts': repairedAcceptCount,
+      'repairedRejects': repairedRejectCount,
+    },
   };
   if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
     final List<int> sortedUniqueness = List<int>.from(uniquenessSolveTimes)

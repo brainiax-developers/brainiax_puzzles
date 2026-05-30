@@ -61,6 +61,11 @@ void main() {
     expect(rejectCounters.containsKey('layoutGate'), isTrue);
     expect(telemetry['layoutFamilyId'], isA<String>());
     expect(telemetry['layoutHash'], isA<String>());
+    expect(telemetry['repairAttemptCount'], isA<int>());
+    expect(telemetry['repairOutcome'], isA<String>());
+    expect(telemetry['repairReason'], isA<String>());
+    expect(telemetry['repairedFromNonUnique'], isA<bool>());
+    expect(telemetry['finalLayoutHash'], isA<String>());
     expect(telemetry['runLengthHistogram'], isA<Map>());
     expect(telemetry['constructionTelemetry'], isA<Map>());
     final Map<String, Object?> constructionTelemetry =
@@ -214,6 +219,146 @@ void main() {
       }
     },
   );
+
+  test(
+    'deterministic local repair is bounded and keeps playable cells empty',
+    () {
+      const KakuroGenerator generator = KakuroGenerator(
+        maxTemplateAttempts: 4,
+        maxBacktrackNodes: 220,
+      );
+      final int seed64 = Seed.fromString('repair_probe_5');
+      final GeneratorContext context = GeneratorContext(
+        rng: SeededRng(seed64),
+        seedStr: 'repair_probe_5',
+        seed64: seed64,
+        size: const SizeOpt(
+          id: 'template5x5',
+          description: 'Template 5x5',
+          width: 5,
+          height: 5,
+        ),
+        difficulty: const DifficultyRequest(level: 'easy'),
+      );
+
+      final PuzzleGenerationResult<KakuroBoard> first = generator.generate(
+        context,
+      );
+      final PuzzleGenerationResult<KakuroBoard> second = generator.generate(
+        context,
+      );
+
+      final Map<String, Object?> firstTelemetry = Map<String, Object?>.from(
+        first.snapshot.telemetry,
+      );
+      final Map<String, Object?> secondTelemetry = Map<String, Object?>.from(
+        second.snapshot.telemetry,
+      );
+
+      expect(firstTelemetry['repairedFromNonUnique'], isTrue);
+      expect(firstTelemetry['acceptPath'], equals('repaired'));
+      expect(firstTelemetry['repairOutcome'], equals('accepted'));
+      expect(
+        (firstTelemetry['repairAttemptCount'] as num).toInt(),
+        greaterThan(0),
+      );
+      expect(firstTelemetry['finalLayoutHash'], isA<String>());
+
+      expect(
+        firstTelemetry['repairAttemptCount'],
+        equals(secondTelemetry['repairAttemptCount']),
+      );
+      expect(
+        firstTelemetry['repairOutcome'],
+        equals(secondTelemetry['repairOutcome']),
+      );
+      expect(
+        firstTelemetry['repairReason'],
+        equals(secondTelemetry['repairReason']),
+      );
+      expect(
+        firstTelemetry['finalLayoutHash'],
+        equals(secondTelemetry['finalLayoutHash']),
+      );
+
+      final List<Map<String, Object?>> attemptsLog =
+          (firstTelemetry['attemptsLog'] as List? ?? const <Object?>[])
+              .whereType<Map>()
+              .map((Map raw) => Map<String, Object?>.from(raw))
+              .toList(growable: false);
+
+      final Map<String, int> repairCounts = <String, int>{};
+      for (final Map<String, Object?> attempt in attemptsLog) {
+        final String mode = attempt['mode'] as String? ?? '';
+        if (!mode.endsWith('_repair')) {
+          continue;
+        }
+        final int pass = (attempt['repairPass'] as num?)?.toInt() ?? -1;
+        expect(pass, inInclusiveRange(1, 3));
+        final int attemptNumber = (attempt['attempt'] as num?)?.toInt() ?? -1;
+        final String key = '$attemptNumber:$mode';
+        repairCounts[key] = (repairCounts[key] ?? 0) + 1;
+      }
+      expect(repairCounts, isNotEmpty);
+      for (final int count in repairCounts.values) {
+        expect(count, lessThanOrEqualTo(3));
+      }
+
+      for (int i = 0; i < first.board.cellCount; i++) {
+        if (!first.board.isPlayableIndex(i)) {
+          continue;
+        }
+        expect(first.board.values[i], equals(0));
+      }
+    },
+  );
+
+  test('near-miss repair rejects are surfaced in telemetry', () {
+    const KakuroGenerator generator = KakuroGenerator(
+      maxTemplateAttempts: 4,
+      maxBacktrackNodes: 220,
+    );
+    final int seed64 = Seed.fromString('repair_probe_2');
+    final GeneratorContext context = GeneratorContext(
+      rng: SeededRng(seed64),
+      seedStr: 'repair_probe_2',
+      seed64: seed64,
+      size: const SizeOpt(
+        id: 'template5x5',
+        description: 'Template 5x5',
+        width: 5,
+        height: 5,
+      ),
+      difficulty: const DifficultyRequest(level: 'easy'),
+    );
+
+    final PuzzleGenerationResult<KakuroBoard> result = generator.generate(
+      context,
+    );
+    final Map<String, Object?> telemetry = Map<String, Object?>.from(
+      result.snapshot.telemetry,
+    );
+
+    expect(telemetry['repairedFromNonUnique'], isFalse);
+    expect((telemetry['repairAttemptCount'] as num).toInt(), greaterThan(0));
+    expect((telemetry['repairedRejectCount'] as num).toInt(), greaterThan(0));
+    expect(telemetry['acceptPath'], equals('primary'));
+    expect(telemetry['repairOutcome'], equals('rejected_before_accept'));
+
+    final List<Map<String, Object?>> attemptsLog =
+        (telemetry['attemptsLog'] as List? ?? const <Object?>[])
+            .whereType<Map>()
+            .map((Map raw) => Map<String, Object?>.from(raw))
+            .toList(growable: false);
+    final List<Map<String, Object?>> repairRejects = attemptsLog
+        .where(
+          (Map<String, Object?> attempt) =>
+              (attempt['mode'] as String? ?? '').endsWith('_repair') &&
+              attempt['repairOutcome'] == 'rejected',
+        )
+        .toList(growable: false);
+    expect(repairRejects, isNotEmpty);
+  });
 
   test(
     '9x9 family selection is deterministic and attempt index changes topology',
