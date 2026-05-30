@@ -40,6 +40,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     this.maxSearchDepth = 22,
     this.maxBacktrackNodes = 9000,
     this.perAttemptTimeLimit = const Duration(milliseconds: 1100),
+    this.layoutPreScorer = const KakuroLayoutPreScorer(),
   });
 
   final int maxTemplateAttempts;
@@ -47,6 +48,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   final int maxSearchDepth;
   final int maxBacktrackNodes;
   final Duration perAttemptTimeLimit;
+  final KakuroLayoutPreScorer layoutPreScorer;
 
   // Convenience for callers that want to reuse the same tuning while applying
   // a tighter time budget (e.g., on-demand service).
@@ -57,6 +59,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       maxSearchDepth: maxSearchDepth,
       maxBacktrackNodes: maxBacktrackNodes,
       perAttemptTimeLimit: perAttemptTimeLimit,
+      layoutPreScorer: layoutPreScorer,
     );
   }
 
@@ -89,34 +92,28 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       maxBacktrackNodes: maxBacktrackNodes * 6,
     );
 
-    final Stopwatch layoutWatch = Stopwatch()..start();
-    // Respect the requested phone-supported square size.
-    final int targetWidth = _chooseWidth(context, requestedLevel);
-    final int targetHeight = _chooseHeight(context, requestedLevel);
-    final KakuroLayout template = KakuroLayout.buildNewspaper(
-      rng: context.rng,
-      width: targetWidth,
-      height: targetHeight,
-      difficulty: requestedLevel,
-    );
-    layoutWatch.stop();
-    const int layoutScoreMs = 0;
-
     int attempts = 0;
     int fallbackAttempts = 0;
     int nullSolutionCount = 0;
+    int layoutGateRejectCount = 0;
     int nonUniqueCount = 0;
     int unknownStatusCount = 0;
     int logicRejectCount = 0;
     int comboRejectCount = 0;
     int attemptBudgetExceededCount = 0;
     int hardBudgetExceededCount = 0;
+    final Map<String, int> layoutGateReasonCounts = <String, int>{};
+    String layoutGateReason = 'not_scored';
+    int layoutScoreMilli = 0;
+    KakuroLayoutMetrics? selectedLayoutMetrics;
     final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
     String? terminalFailureReason;
 
-    final int attemptLimit = maxTemplateAttempts * template.attemptMultiplier;
+    // Respect the requested phone-supported square size.
+    final int targetWidth = _chooseWidth(context, requestedLevel);
+    final int targetHeight = _chooseHeight(context, requestedLevel);
     final int hardTimeBudgetMs = _effectiveTimeBudgetMs(requestedLevel);
     final int perAttemptBudgetMs = perAttemptTimeLimit.inMilliseconds;
 
@@ -140,6 +137,58 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       });
     }
 
+    final Stopwatch layoutWatch = Stopwatch()..start();
+    final Stopwatch layoutScoreWatch = Stopwatch();
+    final int maxLayoutCandidates = _layoutCandidateBudgetFor(
+      width: targetWidth,
+      height: targetHeight,
+      difficulty: requestedLevel,
+    );
+    KakuroLayout? template;
+    for (
+      int candidateIndex = 0;
+      candidateIndex < maxLayoutCandidates;
+      candidateIndex++
+    ) {
+      if (overHardBudget()) {
+        hardBudgetExceededCount++;
+        terminalFailureReason = 'hard_budget_exceeded';
+        break;
+      }
+      final KakuroLayout candidate = KakuroLayout.buildNewspaper(
+        rng: context.rng,
+        width: targetWidth,
+        height: targetHeight,
+        difficulty: requestedLevel,
+      );
+      layoutScoreWatch.start();
+      final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
+        layout: candidate,
+        difficulty: requestedLevel,
+      );
+      layoutScoreWatch.stop();
+      layoutScoreMilli = preScore.scoreMilli;
+      selectedLayoutMetrics = preScore.metrics;
+      if (preScore.accepted) {
+        template = candidate;
+        layoutGateReason = preScore.reason;
+        break;
+      }
+      layoutGateRejectCount++;
+      layoutGateReason = preScore.reason;
+      layoutGateReasonCounts[preScore.reason] =
+          (layoutGateReasonCounts[preScore.reason] ?? 0) + 1;
+    }
+    layoutWatch.stop();
+    final int layoutScoreMs = layoutScoreWatch.elapsedMilliseconds;
+    if (template == null) {
+      terminalFailureReason ??= 'layout_gate_exhausted';
+    }
+    final int attemptMultiplier = targetWidth <= 5
+        ? 3
+        : (targetWidth <= 7 ? 8 : 10);
+    final int attemptLimit = maxTemplateAttempts * attemptMultiplier;
+
     GenerationFailure generationFailure({
       required String message,
       required String reason,
@@ -159,6 +208,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           'perAttemptBudgetMs': perAttemptBudgetMs,
           'rejectCounters': <String, int>{
             'nullCandidate': nullSolutionCount,
+            'layoutGate': layoutGateRejectCount,
             'nonUnique': nonUniqueCount,
             'unknownStatus': unknownStatusCount,
             'logicGate': logicRejectCount,
@@ -166,10 +216,22 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'attemptBudget': attemptBudgetExceededCount,
             'hardBudget': hardBudgetExceededCount,
           },
+          'layoutScoreMilli': layoutScoreMilli,
+          'layoutGateReason': layoutGateReason,
+          'layoutGateReasonCounts': layoutGateReasonCounts,
           'attemptsLog': attemptLog,
         },
       );
     }
+
+    if (template == null) {
+      throw generationFailure(
+        message: 'Unable to find Kakuro layout passing pre-score gate',
+        reason: terminalFailureReason ?? 'layout_gate_exhausted',
+      );
+    }
+    final KakuroLayout selectedTemplate = template;
+    selectedLayoutMetrics ??= selectedTemplate.computeMetrics();
 
     while (attempts < attemptLimit) {
       if (overHardBudget()) {
@@ -190,14 +252,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       // Build a fully solved board using the fast solution-first generator.
       final Stopwatch fillWatch = Stopwatch()..start();
       KakuroSolution? solution = buildSolutionFirst(
-        template,
+        selectedTemplate,
         SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
       );
       // If the initial approach fails, try the bottom-up generator once before
       // moving to the next attempt.
       if (solution == null) {
         solution = const KakuroBottomUpGenerator().generate(
-          template,
+          selectedTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, attempts, 1002)),
         );
       }
@@ -230,13 +292,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       // uniqueness rates without reducing challenge.
       final Stopwatch clueBuildWatch = Stopwatch()..start();
       final Set<int> givenCells = _selectGivenCells(
-        template,
+        selectedTemplate,
         SeededRng(_deriveSolverSeed(context.seed64, attempts, 1003)),
         requestedLevel,
       );
 
       // Build a puzzle board with sums and optional givens; verify uniqueness and logic thresholds.
-      final KakuroBoard candidateBoard = template.buildBoard(
+      final KakuroBoard candidateBoard = selectedTemplate.buildBoard(
         solution.entrySums,
         givenCells,
         solution.values,
@@ -324,7 +386,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       // Additional gating: ensure a minimum ratio of entries whose (length,sum)
       // has a single-digit-set combination. This biases toward simpler logic for easy puzzles.
       if (!_meetsSingleComboThreshold(
-        template,
+        selectedTemplate,
         candidateBoard,
         requestedLevel,
       )) {
@@ -348,9 +410,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         context: DifficultyContext(
           generatorTelemetry: <String, Object?>{
             'givens': 0,
-            'valueCells': template.valueCellCount,
-            'width': template.width,
-            'height': template.height,
+            'valueCells': selectedTemplate.valueCellCount,
+            'width': selectedTemplate.width,
+            'height': selectedTemplate.height,
           },
           solverTelemetry: uniqueness.telemetry,
         ),
@@ -359,7 +421,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       final String bucket = _difficultyConfig.bucketFor(
         difficultyTelemetry.rawScore,
       );
-      final Map<String, Object?> structuralTelemetry = template
+      final Map<String, Object?> structuralTelemetry = selectedTemplate
           .buildStructuralTelemetry(entrySums: solution.entrySums);
 
       final Map<String, Object?> sanitizedSolverTelemetry = uniqueness.telemetry
@@ -401,14 +463,18 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'requestedDifficulty': requestedLevel,
         'difficultyMatchedRequest': bucket == requestedLevel,
         'difficultyScoreMilli': (difficultyTelemetry.rawScore * 1000).round(),
-        'selectedSize': '${template.width}x${template.height}',
-        'valueCellCount': template.valueCellCount,
+        'selectedSize': '${selectedTemplate.width}x${selectedTemplate.height}',
+        'valueCellCount': selectedTemplate.valueCellCount,
         'givensCount': givenCells.length,
-        'givenRatioMilli': template.valueCellCount == 0
+        'givenRatioMilli': selectedTemplate.valueCellCount == 0
             ? 0
-            : givenCells.length * 1000 ~/ template.valueCellCount,
-        'width': template.width,
-        'height': template.height,
+            : givenCells.length * 1000 ~/ selectedTemplate.valueCellCount,
+        'width': selectedTemplate.width,
+        'height': selectedTemplate.height,
+        'layoutScoreMilli': layoutScoreMilli,
+        'layoutGateReason': layoutGateReason,
+        'layoutGateReasonCounts': layoutGateReasonCounts,
+        ...selectedLayoutMetrics!.toTelemetry(),
         ...structuralTelemetry,
         'perAttemptBudgetMs': perAttemptBudgetMs,
         'hardBudgetMs': hardTimeBudgetMs,
@@ -416,6 +482,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'attemptsLog': attemptLog,
         'rejectCounters': <String, int>{
           'nullCandidate': nullSolutionCount,
+          'layoutGate': layoutGateRejectCount,
           'nonUnique': nonUniqueCount,
           'unknownStatus': unknownStatusCount,
           'logicGate': logicRejectCount,
@@ -445,6 +512,26 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           height: targetHeight,
           difficulty: requestedLevel,
         );
+        final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
+          layout: altTemplate,
+          difficulty: requestedLevel,
+        );
+        layoutScoreMilli = preScore.scoreMilli;
+        layoutGateReason = preScore.reason;
+        if (!preScore.accepted) {
+          layoutGateRejectCount++;
+          layoutGateReasonCounts[preScore.reason] =
+              (layoutGateReasonCounts[preScore.reason] ?? 0) + 1;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'layout_gate_${preScore.reason}',
+            mode: 'fallback_strict',
+          );
+          continue;
+        }
+        final KakuroLayoutMetrics altMetrics = preScore.metrics;
         KakuroSolution? sol = buildSolutionFirst(
           altTemplate,
           SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 1)),
@@ -624,6 +711,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            'layoutScoreMilli': layoutScoreMilli,
+            'layoutGateReason': layoutGateReason,
+            'layoutGateReasonCounts': layoutGateReasonCounts,
+            ...altMetrics.toTelemetry(),
             ...structuralTelemetry,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
@@ -631,6 +722,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'attemptsLog': attemptLog,
             'rejectCounters': <String, int>{
               'nullCandidate': nullSolutionCount,
+              'layoutGate': layoutGateRejectCount,
               'nonUnique': nonUniqueCount,
               'unknownStatus': unknownStatusCount,
               'logicGate': logicRejectCount,
@@ -659,6 +751,26 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             height: targetHeight,
             difficulty: requestedLevel,
           );
+          final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
+            layout: altTemplate,
+            difficulty: requestedLevel,
+          );
+          layoutScoreMilli = preScore.scoreMilli;
+          layoutGateReason = preScore.reason;
+          if (!preScore.accepted) {
+            layoutGateRejectCount++;
+            layoutGateReasonCounts[preScore.reason] =
+                (layoutGateReasonCounts[preScore.reason] ?? 0) + 1;
+            recordAttempt(
+              attempt: attemptNumber,
+              durationMs: attemptWatch.elapsedMilliseconds,
+              outcome: 'rejected',
+              rejectReason: 'layout_gate_${preScore.reason}',
+              mode: 'fallback_relaxed',
+            );
+            continue;
+          }
+          final KakuroLayoutMetrics altMetrics = preScore.metrics;
           KakuroSolution? sol = buildSolutionFirst(
             altTemplate,
             SeededRng(_deriveSolverSeed(context.seed64, 9128, alt + 1)),
@@ -816,6 +928,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 : altGivens.length * 1000 ~/ altTemplate.valueCellCount,
             'width': altTemplate.width,
             'height': altTemplate.height,
+            'layoutScoreMilli': layoutScoreMilli,
+            'layoutGateReason': layoutGateReason,
+            'layoutGateReasonCounts': layoutGateReasonCounts,
+            ...altMetrics.toTelemetry(),
             ...structuralTelemetry,
             'perAttemptBudgetMs': perAttemptBudgetMs,
             'hardBudgetMs': hardTimeBudgetMs,
@@ -823,6 +939,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'attemptsLog': attemptLog,
             'rejectCounters': <String, int>{
               'nullCandidate': nullSolutionCount,
+              'layoutGate': layoutGateRejectCount,
               'nonUnique': nonUniqueCount,
               'unknownStatus': unknownStatusCount,
               'logicGate': logicRejectCount,
@@ -972,6 +1089,21 @@ int _timeBudgetMillis(String level) {
     default:
       return 4200;
   }
+}
+
+int _layoutCandidateBudgetFor({
+  required int width,
+  required int height,
+  required String difficulty,
+}) {
+  if (width == 9 &&
+      height == 9 &&
+      (difficulty == 'medium' ||
+          difficulty == 'hard' ||
+          difficulty == 'expert')) {
+    return 20;
+  }
+  return 1;
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {

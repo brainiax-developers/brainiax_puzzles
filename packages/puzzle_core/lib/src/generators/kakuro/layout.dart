@@ -16,6 +16,334 @@ class KakuroLayoutEntry {
   int get length => cells.length;
 }
 
+class KakuroLayoutMetrics {
+  const KakuroLayoutMetrics({
+    required this.layoutHash,
+    required this.layoutFamilyId,
+    required this.width,
+    required this.height,
+    required this.totalCells,
+    required this.whiteCellCount,
+    required this.blockCellCount,
+    required this.clueCellCount,
+    required this.whiteCellDensityMilli,
+    required this.clueCellDensityMilli,
+    required this.acrossRunCount,
+    required this.downRunCount,
+    required this.totalRunCount,
+    required this.runLengthHistogram,
+    required this.maxRunLength,
+    required this.averageRunLengthMilli,
+    required this.shortRunCount,
+    required this.longRunCount,
+    required this.shortRunRatioMilli,
+    required this.longRunRatioMilli,
+    required this.runGraphNodeCount,
+    required this.runGraphEdgeCount,
+    required this.minRunGraphDegree,
+    required this.runGraphComponentCount,
+    required this.largestRunGraphComponentNodeCount,
+    required this.runGraphConnectivityMilli,
+    required this.unpairedValueCellCount,
+  });
+
+  final String layoutHash;
+  final String layoutFamilyId;
+  final int width;
+  final int height;
+  final int totalCells;
+  final int whiteCellCount;
+  final int blockCellCount;
+  final int clueCellCount;
+  final int whiteCellDensityMilli;
+  final int clueCellDensityMilli;
+  final int acrossRunCount;
+  final int downRunCount;
+  final int totalRunCount;
+  final Map<String, int> runLengthHistogram;
+  final int maxRunLength;
+  final int averageRunLengthMilli;
+  final int shortRunCount;
+  final int longRunCount;
+  final int shortRunRatioMilli;
+  final int longRunRatioMilli;
+  final int runGraphNodeCount;
+  final int runGraphEdgeCount;
+  final int minRunGraphDegree;
+  final int runGraphComponentCount;
+  final int largestRunGraphComponentNodeCount;
+  final int runGraphConnectivityMilli;
+  final int unpairedValueCellCount;
+
+  Map<String, Object?> toTelemetry() {
+    return <String, Object?>{
+      'layoutHash': layoutHash,
+      'layoutFamilyId': layoutFamilyId,
+      'whiteCellCount': whiteCellCount,
+      'blockCellCount': blockCellCount,
+      'clueCellCount': clueCellCount,
+      'blackOrClueCellCount': blockCellCount,
+      'whiteCellDensityMilli': whiteCellDensityMilli,
+      'clueCellDensityMilli': clueCellDensityMilli,
+      'acrossRunCount': acrossRunCount,
+      'downRunCount': downRunCount,
+      'totalRunCount': totalRunCount,
+      'runLengthHistogram': runLengthHistogram,
+      'maxRunLength': maxRunLength,
+      'averageRunLengthMilli': averageRunLengthMilli,
+      'shortRunCount': shortRunCount,
+      'longRunCount': longRunCount,
+      'shortRunRatioMilli': shortRunRatioMilli,
+      'longRunRatioMilli': longRunRatioMilli,
+      'runGraphNodeCount': runGraphNodeCount,
+      'runGraphEdgeCount': runGraphEdgeCount,
+      'minRunGraphDegree': minRunGraphDegree,
+      'runGraphComponentCount': runGraphComponentCount,
+      'largestRunGraphComponentNodeCount': largestRunGraphComponentNodeCount,
+      'runGraphConnectivityMilli': runGraphConnectivityMilli,
+      'unpairedValueCellCount': unpairedValueCellCount,
+    };
+  }
+}
+
+class KakuroLayoutPreScoreResult {
+  const KakuroLayoutPreScoreResult({
+    required this.accepted,
+    required this.reason,
+    required this.scoreMilli,
+    required this.metrics,
+  });
+
+  final bool accepted;
+  final String reason;
+  final int scoreMilli;
+  final KakuroLayoutMetrics metrics;
+}
+
+class KakuroLayoutPreScorer {
+  const KakuroLayoutPreScorer();
+
+  KakuroLayoutPreScoreResult score({
+    required KakuroLayout layout,
+    required String difficulty,
+  }) {
+    final KakuroLayoutMetrics metrics = layout.computeMetrics();
+    final _KakuroLayoutThresholdProfile? profile = _thresholdProfileFor(
+      width: layout.width,
+      height: layout.height,
+      difficulty: difficulty,
+    );
+
+    if (metrics.totalRunCount == 0 || metrics.whiteCellCount == 0) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'invalid_no_runs',
+        scoreMilli: 0,
+        metrics: metrics,
+      );
+    }
+    if (metrics.unpairedValueCellCount > 0) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'invalid_unpaired_value_cells',
+        scoreMilli: 0,
+        metrics: metrics,
+      );
+    }
+    if (metrics.runGraphComponentCount > 1) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'invalid_disconnected_run_graph',
+        scoreMilli: 0,
+        metrics: metrics,
+      );
+    }
+
+    final int scoreMilli = _scoreMetrics(metrics, profile);
+    if (profile == null) {
+      return KakuroLayoutPreScoreResult(
+        accepted: true,
+        reason: 'gate_skipped',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+
+    if (metrics.whiteCellDensityMilli < profile.minWhiteDensityMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'white_density_low',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.whiteCellDensityMilli > profile.maxWhiteDensityMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'white_density_high',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.longRunCount > profile.maxLongRuns ||
+        metrics.longRunRatioMilli > profile.maxLongRunRatioMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'long_runs_heavy',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.shortRunCount < profile.minShortRuns ||
+        metrics.shortRunRatioMilli < profile.minShortRunRatioMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'short_runs_sparse',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.maxRunLength > profile.maxRunLength) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'max_run_length_exceeded',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.minRunGraphDegree < profile.minRunGraphDegree ||
+        metrics.runGraphConnectivityMilli <
+            profile.minRunGraphConnectivityMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'run_graph_connectivity_weak',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (_isPathologicalHistogram(metrics, profile)) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'run_histogram_pathological',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+
+    return KakuroLayoutPreScoreResult(
+      accepted: true,
+      reason: 'accepted',
+      scoreMilli: scoreMilli,
+      metrics: metrics,
+    );
+  }
+}
+
+class _KakuroLayoutThresholdProfile {
+  const _KakuroLayoutThresholdProfile({
+    required this.minWhiteDensityMilli,
+    required this.maxWhiteDensityMilli,
+    required this.maxLongRuns,
+    required this.maxLongRunRatioMilli,
+    required this.minShortRuns,
+    required this.minShortRunRatioMilli,
+    required this.maxRunLength,
+    required this.minRunGraphDegree,
+    required this.minRunGraphConnectivityMilli,
+    required this.minSmallRunLengthBins,
+    required this.maxDominantRunLengthRatioMilli,
+  });
+
+  final int minWhiteDensityMilli;
+  final int maxWhiteDensityMilli;
+  final int maxLongRuns;
+  final int maxLongRunRatioMilli;
+  final int minShortRuns;
+  final int minShortRunRatioMilli;
+  final int maxRunLength;
+  final int minRunGraphDegree;
+  final int minRunGraphConnectivityMilli;
+  final int minSmallRunLengthBins;
+  final int maxDominantRunLengthRatioMilli;
+}
+
+_KakuroLayoutThresholdProfile? _thresholdProfileFor({
+  required int width,
+  required int height,
+  required String difficulty,
+}) {
+  if (width != height) {
+    return null;
+  }
+  if (width == 9 &&
+      (difficulty == 'medium' ||
+          difficulty == 'hard' ||
+          difficulty == 'expert')) {
+    return const _KakuroLayoutThresholdProfile(
+      minWhiteDensityMilli: 320,
+      maxWhiteDensityMilli: 560,
+      maxLongRuns: 8,
+      maxLongRunRatioMilli: 360,
+      minShortRuns: 12,
+      minShortRunRatioMilli: 560,
+      maxRunLength: 8,
+      minRunGraphDegree: 1,
+      minRunGraphConnectivityMilli: 1000,
+      minSmallRunLengthBins: 2,
+      maxDominantRunLengthRatioMilli: 780,
+    );
+  }
+  return null;
+}
+
+int _scoreMetrics(
+  KakuroLayoutMetrics metrics,
+  _KakuroLayoutThresholdProfile? profile,
+) {
+  int score = 1000;
+  final int targetDensity = profile == null
+      ? 430
+      : (profile.minWhiteDensityMilli + profile.maxWhiteDensityMilli) ~/ 2;
+  score -= ((metrics.whiteCellDensityMilli - targetDensity).abs() * 2);
+  score -= (metrics.longRunRatioMilli * 3) ~/ 4;
+  score += (metrics.shortRunRatioMilli * 3) ~/ 5;
+  score += metrics.runGraphConnectivityMilli ~/ 2;
+  score -= metrics.unpairedValueCellCount * 180;
+  if (score < 0) {
+    return 0;
+  }
+  if (score > 1000) {
+    return 1000;
+  }
+  return score;
+}
+
+bool _isPathologicalHistogram(
+  KakuroLayoutMetrics metrics,
+  _KakuroLayoutThresholdProfile profile,
+) {
+  if (metrics.totalRunCount <= 0) {
+    return true;
+  }
+  int dominantCount = 0;
+  int smallRunLengthBins = 0;
+  for (final MapEntry<String, int> entry
+      in metrics.runLengthHistogram.entries) {
+    final int len = int.tryParse(entry.key) ?? 0;
+    final int count = entry.value;
+    if (count > dominantCount) {
+      dominantCount = count;
+    }
+    if (len >= 2 && len <= 4 && count > 0) {
+      smallRunLengthBins++;
+    }
+  }
+  final int dominantRatioMilli =
+      (dominantCount * 1000) ~/ metrics.totalRunCount;
+  return dominantRatioMilli > profile.maxDominantRunLengthRatioMilli ||
+      smallRunLengthBins < profile.minSmallRunLengthBins;
+}
+
 class KakuroLayout {
   KakuroLayout({
     required this.width,
@@ -75,8 +403,10 @@ class KakuroLayout {
       }
     }();
 
-    final List<List<int>> grid =
-        List<List<int>>.generate(h, (_) => List<int>.filled(w, 0));
+    final List<List<int>> grid = List<List<int>>.generate(
+      h,
+      (_) => List<int>.filled(w, 0),
+    );
 
     for (int r = 0; r < h; r++) {
       for (int c = 0; c < w; c++) {
@@ -130,12 +460,39 @@ class KakuroLayout {
     return _buildFromLayout(layout);
   }
 
+  static KakuroLayout fromRows(List<String> rows) {
+    if (rows.isEmpty) {
+      throw ArgumentError('Kakuro layout rows must not be empty.');
+    }
+    final int width = rows.first.length;
+    if (width == 0) {
+      throw ArgumentError('Kakuro layout rows must not be empty strings.');
+    }
+    final List<String> normalized = <String>[];
+    for (int r = 0; r < rows.length; r++) {
+      final String row = rows[r];
+      if (row.length != width) {
+        throw ArgumentError(
+          'Kakuro layout row $r has width ${row.length}; expected $width.',
+        );
+      }
+      final StringBuffer buffer = StringBuffer();
+      for (int c = 0; c < row.length; c++) {
+        buffer.write(row[c] == '.' ? '.' : '#');
+      }
+      normalized.add(buffer.toString());
+    }
+    return _buildFromLayout(normalized);
+  }
+
   static KakuroLayout _buildFromLayout(List<String> layout) {
     final int height = layout.length;
     final int width = layout.first.length;
 
-    final List<KakuroCellKind> kinds =
-        List<KakuroCellKind>.filled(width * height, KakuroCellKind.block);
+    final List<KakuroCellKind> kinds = List<KakuroCellKind>.filled(
+      width * height,
+      KakuroCellKind.block,
+    );
     final List<KakuroLayoutEntry> entries = <KakuroLayoutEntry>[];
     final List<int> acrossEntryForCell = List<int>.filled(width * height, -1);
     final List<int> downEntryForCell = List<int>.filled(width * height, -1);
@@ -273,19 +630,56 @@ class KakuroLayout {
     );
   }
 
-  Map<String, Object?> buildStructuralTelemetry({
-    Map<int, int>? entrySums,
-  }) {
+  Map<String, Object?> buildStructuralTelemetry({Map<int, int>? entrySums}) {
+    final KakuroLayoutMetrics metrics = computeMetrics();
+
+    int averageRunCombinationCountMilli = 0;
+    int singleCombinationRunRatioMilli = 0;
+    if (entrySums != null && entries.isNotEmpty) {
+      int comboTotal = 0;
+      int singleComboRuns = 0;
+      for (final KakuroLayoutEntry entry in entries) {
+        final int sum = entrySums[entry.id] ?? 0;
+        final Set<int>? combos = KakuroDictionary.getCombinations(
+          entry.length,
+          sum,
+        );
+        final int comboCount = combos?.length ?? 0;
+        comboTotal += comboCount;
+        if (comboCount == 1) {
+          singleComboRuns++;
+        }
+      }
+      averageRunCombinationCountMilli = (comboTotal * 1000) ~/ entries.length;
+      singleCombinationRunRatioMilli =
+          (singleComboRuns * 1000) ~/ entries.length;
+    }
+
+    return <String, Object?>{
+      ...metrics.toTelemetry(),
+      if (entrySums != null)
+        'averageRunCombinationCountMilli': averageRunCombinationCountMilli,
+      if (entrySums != null)
+        'singleCombinationRunRatioMilli': singleCombinationRunRatioMilli,
+    };
+  }
+
+  KakuroLayoutMetrics computeMetrics() {
     final int totalCells = width * height;
     final int whiteCellCount = valueCellCount;
-    final int blackOrClueCellCount = totalCells - whiteCellCount;
+    final int blockCellCount = totalCells - whiteCellCount;
     int acrossRunCount = 0;
     int downRunCount = 0;
     final Set<int> clueCells = <int>{};
-    final Map<String, int> runLengthHistogram = <String, int>{};
+    final Map<int, int> runLengthHistogram = <int, int>{};
     int maxRunLength = 0;
     int runLengthTotal = 0;
+    int shortRunCount = 0;
+    int longRunCount = 0;
+    final Map<int, Set<int>> runGraphAdjacency = <int, Set<int>>{};
+
     for (final KakuroLayoutEntry entry in entries) {
+      runGraphAdjacency.putIfAbsent(entry.id, () => <int>{});
       if (entry.direction == KakuroDirection.across) {
         acrossRunCount++;
         if (entry.cells.isNotEmpty) {
@@ -312,8 +706,13 @@ class KakuroLayout {
       if (length > maxRunLength) {
         maxRunLength = length;
       }
-      final String key = length.toString();
-      runLengthHistogram[key] = (runLengthHistogram[key] ?? 0) + 1;
+      runLengthHistogram[length] = (runLengthHistogram[length] ?? 0) + 1;
+      if (length >= 2 && length <= 4) {
+        shortRunCount++;
+      }
+      if (length >= 6) {
+        longRunCount++;
+      }
     }
     final int totalRunCount = entries.length;
     final int averageRunLengthMilli = totalRunCount == 0
@@ -322,6 +721,7 @@ class KakuroLayout {
 
     final Map<int, int> runDegree = <int, int>{};
     int runGraphEdgeCount = 0;
+    int unpairedValueCellCount = 0;
     for (final int cell in valueCells) {
       final int acrossId = acrossEntryForCell[cell];
       final int downId = downEntryForCell[cell];
@@ -329,8 +729,15 @@ class KakuroLayout {
         runGraphEdgeCount++;
         runDegree[acrossId] = (runDegree[acrossId] ?? 0) + 1;
         runDegree[downId] = (runDegree[downId] ?? 0) + 1;
+        if (acrossId != downId) {
+          runGraphAdjacency.putIfAbsent(acrossId, () => <int>{}).add(downId);
+          runGraphAdjacency.putIfAbsent(downId, () => <int>{}).add(acrossId);
+        }
+      } else {
+        unpairedValueCellCount++;
       }
     }
+
     int minRunGraphDegree = 0;
     if (entries.isNotEmpty) {
       minRunGraphDegree = 1 << 30;
@@ -345,57 +752,85 @@ class KakuroLayout {
       }
     }
 
-    int averageRunCombinationCountMilli = 0;
-    int singleCombinationRunRatioMilli = 0;
-    if (entrySums != null && entries.isNotEmpty) {
-      int comboTotal = 0;
-      int singleComboRuns = 0;
+    int runGraphComponentCount = 0;
+    int largestRunGraphComponentNodeCount = 0;
+    if (entries.isNotEmpty) {
+      final Set<int> visited = <int>{};
       for (final KakuroLayoutEntry entry in entries) {
-        final int sum = entrySums[entry.id] ?? 0;
-        final Set<int>? combos = KakuroDictionary.getCombinations(
-          entry.length,
-          sum,
-        );
-        final int comboCount = combos?.length ?? 0;
-        comboTotal += comboCount;
-        if (comboCount == 1) {
-          singleComboRuns++;
+        if (!visited.add(entry.id)) {
+          continue;
+        }
+        runGraphComponentCount++;
+        int componentSize = 0;
+        final List<int> stack = <int>[entry.id];
+        while (stack.isNotEmpty) {
+          final int current = stack.removeLast();
+          componentSize++;
+          final Set<int> neighbors =
+              runGraphAdjacency[current] ?? const <int>{};
+          for (final int neighbor in neighbors) {
+            if (visited.add(neighbor)) {
+              stack.add(neighbor);
+            }
+          }
+        }
+        if (componentSize > largestRunGraphComponentNodeCount) {
+          largestRunGraphComponentNodeCount = componentSize;
         }
       }
-      averageRunCombinationCountMilli = (comboTotal * 1000) ~/ entries.length;
-      singleCombinationRunRatioMilli = (singleComboRuns * 1000) ~/ entries.length;
     }
+    final int runGraphConnectivityMilli = totalRunCount == 0
+        ? 0
+        : (largestRunGraphComponentNodeCount * 1000) ~/ totalRunCount;
 
-    final List<String> sortedRunLengths = runLengthHistogram.keys.toList()
-      ..sort((String a, String b) => int.parse(a).compareTo(int.parse(b)));
+    final List<int> sortedRunLengths = runLengthHistogram.keys.toList()..sort();
     final Map<String, int> stableHistogram = <String, int>{};
-    for (final String key in sortedRunLengths) {
-      stableHistogram[key] = runLengthHistogram[key]!;
+    for (final int key in sortedRunLengths) {
+      stableHistogram[key.toString()] = runLengthHistogram[key]!;
     }
 
-    return <String, Object?>{
-      'layoutHash': _computeLayoutHash(layout),
-      'layoutFamilyId': _kakuroLayoutFamilyId,
-      'whiteCellCount': whiteCellCount,
-      'blockCellCount': blackOrClueCellCount,
-      'clueCellCount': clueCells.length,
-      'blackOrClueCellCount': blackOrClueCellCount,
-      'acrossRunCount': acrossRunCount,
-      'downRunCount': downRunCount,
-      'totalRunCount': totalRunCount,
-      'runLengthHistogram': stableHistogram,
-      'maxRunLength': maxRunLength,
-      'averageRunLengthMilli': averageRunLengthMilli,
-      'runGraphNodeCount': totalRunCount,
-      'runGraphEdgeCount': runGraphEdgeCount,
-      'minRunGraphDegree': minRunGraphDegree,
-      // TODO: Add articulationPointCount when a lightweight deterministic
-      // algorithm is introduced for the run graph.
-      if (entrySums != null)
-        'averageRunCombinationCountMilli': averageRunCombinationCountMilli,
-      if (entrySums != null)
-        'singleCombinationRunRatioMilli': singleCombinationRunRatioMilli,
-    };
+    final int shortRunRatioMilli = totalRunCount == 0
+        ? 0
+        : (shortRunCount * 1000) ~/ totalRunCount;
+    final int longRunRatioMilli = totalRunCount == 0
+        ? 0
+        : (longRunCount * 1000) ~/ totalRunCount;
+    final int whiteCellDensityMilli = totalCells == 0
+        ? 0
+        : (whiteCellCount * 1000) ~/ totalCells;
+    final int clueCellDensityMilli = totalCells == 0
+        ? 0
+        : (clueCells.length * 1000) ~/ totalCells;
+
+    return KakuroLayoutMetrics(
+      layoutHash: _computeLayoutHash(layout),
+      layoutFamilyId: _kakuroLayoutFamilyId,
+      width: width,
+      height: height,
+      totalCells: totalCells,
+      whiteCellCount: whiteCellCount,
+      blockCellCount: blockCellCount,
+      clueCellCount: clueCells.length,
+      whiteCellDensityMilli: whiteCellDensityMilli,
+      clueCellDensityMilli: clueCellDensityMilli,
+      acrossRunCount: acrossRunCount,
+      downRunCount: downRunCount,
+      totalRunCount: totalRunCount,
+      runLengthHistogram: stableHistogram,
+      maxRunLength: maxRunLength,
+      averageRunLengthMilli: averageRunLengthMilli,
+      shortRunCount: shortRunCount,
+      longRunCount: longRunCount,
+      shortRunRatioMilli: shortRunRatioMilli,
+      longRunRatioMilli: longRunRatioMilli,
+      runGraphNodeCount: totalRunCount,
+      runGraphEdgeCount: runGraphEdgeCount,
+      minRunGraphDegree: minRunGraphDegree,
+      runGraphComponentCount: runGraphComponentCount,
+      largestRunGraphComponentNodeCount: largestRunGraphComponentNodeCount,
+      runGraphConnectivityMilli: runGraphConnectivityMilli,
+      unpairedValueCellCount: unpairedValueCellCount,
+    );
   }
 }
 

@@ -33,6 +33,12 @@ void main() {
 
     expect(puzzle.width, equals(9));
     expect(puzzle.height, equals(9));
+    expect(telemetry['layoutScoreMilli'], isA<int>());
+    expect(telemetry['layoutGateReason'], isA<String>());
+    final Map<String, Object?> rejectCounters = Map<String, Object?>.from(
+      telemetry['rejectCounters'] as Map? ?? const <String, Object?>{},
+    );
+    expect(rejectCounters.containsKey('layoutGate'), isTrue);
     expect(telemetry['layoutHash'], equals('57539225835b19aa'));
     expect(
       telemetry['runLengthHistogram'],
