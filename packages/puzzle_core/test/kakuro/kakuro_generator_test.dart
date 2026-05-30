@@ -59,6 +59,7 @@ void main() {
       telemetry['rejectCounters'] as Map? ?? const <String, Object?>{},
     );
     expect(rejectCounters.containsKey('layoutGate'), isTrue);
+    expect(telemetry['layoutFamilyId'], isA<String>());
     expect(telemetry['layoutHash'], isA<String>());
     expect(telemetry['runLengthHistogram'], isA<Map>());
     expect(telemetry['givensCount'], equals(0));
@@ -125,6 +126,71 @@ void main() {
     }
     expect(selectedSeedStr, isNotNull);
   });
+
+  test(
+    '9x9 family selection is deterministic and attempt index changes topology',
+    () {
+      final int seed64 = Seed.fromString('kakuro_layout_family_selection_seed');
+
+      final KakuroLayout baseline = KakuroGenerator.buildLayoutCandidateForTest(
+        seed64: seed64,
+        width: 9,
+        height: 9,
+        difficulty: 'hard',
+        attemptIndex: 0,
+      );
+      final KakuroLayout repeated = KakuroGenerator.buildLayoutCandidateForTest(
+        seed64: seed64,
+        width: 9,
+        height: 9,
+        difficulty: 'hard',
+        attemptIndex: 0,
+      );
+
+      final KakuroLayoutMetrics baselineMetrics = baseline.computeMetrics();
+      final KakuroLayoutMetrics repeatedMetrics = repeated.computeMetrics();
+      expect(
+        baselineMetrics.layoutFamilyId,
+        equals(repeatedMetrics.layoutFamilyId),
+      );
+      expect(baselineMetrics.layoutHash, equals(repeatedMetrics.layoutHash));
+
+      final Set<String> signatures = <String>{};
+      for (int attemptIndex = 0; attemptIndex < 8; attemptIndex++) {
+        final KakuroLayout layout = KakuroGenerator.buildLayoutCandidateForTest(
+          seed64: seed64,
+          width: 9,
+          height: 9,
+          difficulty: 'hard',
+          attemptIndex: attemptIndex,
+        );
+        final KakuroLayoutMetrics metrics = layout.computeMetrics();
+        signatures.add('${metrics.layoutFamilyId}:${metrics.layoutHash}');
+
+        expect(
+          const <String>{
+            'medium-balanced',
+            'hard-crossing-heavy',
+            'expert-long-run-controlled',
+            'easy-9x9-calibration',
+            'newspaper_random_v1',
+          }.contains(metrics.layoutFamilyId),
+          isTrue,
+        );
+        expect(metrics.unpairedValueCellCount, equals(0));
+        expect(metrics.maxRunLength <= 9, isTrue);
+        for (final KakuroLayoutEntry entry in layout.entries) {
+          expect(entry.length, inInclusiveRange(2, 9));
+        }
+        for (final int cell in layout.valueCells) {
+          expect(layout.acrossEntryForCell[cell] >= 0, isTrue);
+          expect(layout.downEntryForCell[cell] >= 0, isTrue);
+        }
+      }
+
+      expect(signatures.length, greaterThan(1));
+    },
+  );
 
   test('generator rejects unknown uniqueness when search budget is tiny', () {
     const KakuroGenerator generator = KakuroGenerator(

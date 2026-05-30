@@ -15,6 +15,7 @@ import 'kakuro_difficulty.dart';
 import 'kakuro_solver.dart';
 
 part '../generators/kakuro/layout.dart';
+part '../generators/kakuro/layout_family.dart';
 part '../generators/kakuro/generator_solution_first.dart';
 part '../generators/kakuro/generator_bottom_up.dart';
 
@@ -66,6 +67,23 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   // Exposed for tests: map numeric and alias difficulties to normalized labels.
   static String normalizeDifficultyForTest(String raw) =>
       _normalizeDifficulty(raw.trim().toLowerCase());
+
+  // Exposed for tests: deterministic structural candidate selection by attempt.
+  static KakuroLayout buildLayoutCandidateForTest({
+    required int seed64,
+    required int width,
+    required int height,
+    required String difficulty,
+    required int attemptIndex,
+  }) {
+    return _buildLayoutCandidateForAttempt(
+      seed64: seed64,
+      width: width,
+      height: height,
+      difficulty: _normalizeDifficulty(difficulty.trim().toLowerCase()),
+      attemptIndex: attemptIndex,
+    );
+  }
 
   static final DifficultyBucketConfig _difficultyConfig =
       const DifficultyConfigLoader().loadSync(
@@ -144,7 +162,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       height: targetHeight,
       difficulty: requestedLevel,
     );
-    KakuroLayout? template;
+    final List<_KakuroAcceptedLayoutCandidate> acceptedLayouts =
+        <_KakuroAcceptedLayoutCandidate>[];
+    int bestAcceptedLayoutScore = -1;
     for (
       int candidateIndex = 0;
       candidateIndex < maxLayoutCandidates;
@@ -155,11 +175,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         terminalFailureReason = 'hard_budget_exceeded';
         break;
       }
-      final KakuroLayout candidate = KakuroLayout.buildNewspaper(
-        rng: context.rng,
+      final KakuroLayout candidate = _buildLayoutCandidateForAttempt(
+        seed64: context.seed64,
         width: targetWidth,
         height: targetHeight,
         difficulty: requestedLevel,
+        attemptIndex: candidateIndex,
+        newspaperRng: context.rng,
       );
       layoutScoreWatch.start();
       final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
@@ -167,12 +189,28 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         difficulty: requestedLevel,
       );
       layoutScoreWatch.stop();
-      layoutScoreMilli = preScore.scoreMilli;
-      selectedLayoutMetrics = preScore.metrics;
       if (preScore.accepted) {
-        template = candidate;
-        layoutGateReason = preScore.reason;
-        break;
+        acceptedLayouts.add(
+          _KakuroAcceptedLayoutCandidate(
+            layout: candidate,
+            scoreMilli: preScore.scoreMilli,
+            reason: preScore.reason,
+            metrics: preScore.metrics,
+          ),
+        );
+        bestAcceptedLayoutScore = math.max(
+          bestAcceptedLayoutScore,
+          preScore.scoreMilli,
+        );
+        if (preScore.scoreMilli >=
+            _layoutEarlyAcceptScoreThreshold(
+              width: targetWidth,
+              height: targetHeight,
+              difficulty: requestedLevel,
+            )) {
+          break;
+        }
+        continue;
       }
       layoutGateRejectCount++;
       layoutGateReason = preScore.reason;
@@ -181,8 +219,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     }
     layoutWatch.stop();
     final int layoutScoreMs = layoutScoreWatch.elapsedMilliseconds;
-    if (template == null) {
+    if (acceptedLayouts.isEmpty) {
       terminalFailureReason ??= 'layout_gate_exhausted';
+    } else {
+      acceptedLayouts.sort(
+        (_KakuroAcceptedLayoutCandidate a, _KakuroAcceptedLayoutCandidate b) =>
+            b.scoreMilli.compareTo(a.scoreMilli),
+      );
+      final _KakuroAcceptedLayoutCandidate top = acceptedLayouts.first;
+      layoutScoreMilli = top.scoreMilli;
+      layoutGateReason = top.reason;
+      selectedLayoutMetrics = top.metrics;
     }
     final int attemptMultiplier = targetWidth <= 5
         ? 3
@@ -224,14 +271,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       );
     }
 
-    if (template == null) {
+    if (acceptedLayouts.isEmpty) {
       throw generationFailure(
         message: 'Unable to find Kakuro layout passing pre-score gate',
         reason: terminalFailureReason ?? 'layout_gate_exhausted',
       );
     }
-    final KakuroLayout selectedTemplate = template;
-    selectedLayoutMetrics ??= selectedTemplate.computeMetrics();
 
     while (attempts < attemptLimit) {
       if (overHardBudget()) {
@@ -241,6 +286,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       }
       attempts++;
       final Stopwatch attemptWatch = Stopwatch()..start();
+      final _KakuroAcceptedLayoutCandidate templateCandidate =
+          acceptedLayouts[(attempts - 1) % acceptedLayouts.length];
+      final KakuroLayout selectedTemplate = templateCandidate.layout;
+      layoutScoreMilli = templateCandidate.scoreMilli;
+      layoutGateReason = templateCandidate.reason;
+      selectedLayoutMetrics = templateCandidate.metrics;
       int solverStage = 0;
       SeededRng nextSolverRng() {
         solverStage++;
@@ -497,11 +548,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         fallbackAttempts++;
         final int attemptNumber = attempts + fallbackAttempts;
         final Stopwatch attemptWatch = Stopwatch()..start();
-        final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
-          rng: SeededRng(_deriveSolverSeed(context.seed64, 1234, alt + 1)),
+        final KakuroLayout altTemplate = _buildLayoutCandidateForAttempt(
+          seed64: context.seed64,
           width: targetWidth,
           height: targetHeight,
           difficulty: requestedLevel,
+          attemptIndex: maxLayoutCandidates + alt,
+          newspaperRng: SeededRng(
+            _deriveSolverSeed(context.seed64, 1234, alt + 1),
+          ),
         );
         final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
           layout: altTemplate,
@@ -727,11 +782,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           fallbackAttempts++;
           final int attemptNumber = attempts + fallbackAttempts;
           final Stopwatch attemptWatch = Stopwatch()..start();
-          final KakuroLayout altTemplate = KakuroLayout.buildNewspaper(
-            rng: SeededRng(_deriveSolverSeed(context.seed64, 8128, alt + 1)),
+          final KakuroLayout altTemplate = _buildLayoutCandidateForAttempt(
+            seed64: context.seed64,
             width: targetWidth,
             height: targetHeight,
             difficulty: requestedLevel,
+            attemptIndex: maxLayoutCandidates + 8 + alt,
+            newspaperRng: SeededRng(
+              _deriveSolverSeed(context.seed64, 8128, alt + 1),
+            ),
           );
           final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
             layout: altTemplate,
@@ -949,6 +1008,20 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   }
 }
 
+class _KakuroAcceptedLayoutCandidate {
+  const _KakuroAcceptedLayoutCandidate({
+    required this.layout,
+    required this.scoreMilli,
+    required this.reason,
+    required this.metrics,
+  });
+
+  final KakuroLayout layout;
+  final int scoreMilli;
+  final String reason;
+  final KakuroLayoutMetrics metrics;
+}
+
 // Helper: difficulty normalization and grid sizing
 String _normalizeDifficulty(String raw) {
   // Accept numeric shortcuts (0..3) and aliases; default to easy for 'auto'.
@@ -1040,6 +1113,21 @@ int _layoutCandidateBudgetFor({
     return 20;
   }
   return 1;
+}
+
+int _layoutEarlyAcceptScoreThreshold({
+  required int width,
+  required int height,
+  required String difficulty,
+}) {
+  if (width == 9 &&
+      height == 9 &&
+      (difficulty == 'medium' ||
+          difficulty == 'hard' ||
+          difficulty == 'expert')) {
+    return 780;
+  }
+  return 1000;
 }
 
 bool _meetsLogicThresholds(String level, Map<String, Object?> telemetry) {

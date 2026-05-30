@@ -1,6 +1,6 @@
 part of puzzle_core_kakuro_generator;
 
-const String _kakuroLayoutFamilyId = 'newspaper_random_v1';
+const String _defaultKakuroLayoutFamilyId = 'newspaper_random_v1';
 
 class KakuroLayoutEntry {
   KakuroLayoutEntry({
@@ -349,6 +349,7 @@ class KakuroLayout {
     required this.width,
     required this.height,
     required this.layout,
+    this.layoutFamilyId = _defaultKakuroLayoutFamilyId,
     required this.kinds,
     required this.entries,
     required this.acrossEntryForCell,
@@ -359,6 +360,7 @@ class KakuroLayout {
   final int width;
   final int height;
   final List<String> layout;
+  final String layoutFamilyId;
   final List<KakuroCellKind> kinds;
   final List<KakuroLayoutEntry> entries;
   final List<int> acrossEntryForCell;
@@ -384,6 +386,7 @@ class KakuroLayout {
     required int width,
     required int height,
     required String difficulty,
+    String layoutFamilyId = _defaultKakuroLayoutFamilyId,
   }) {
     final int w = width;
     final int h = height;
@@ -457,10 +460,13 @@ class KakuroLayout {
       }
       layout.add(row.toString());
     }
-    return _buildFromLayout(layout);
+    return _buildFromLayout(layout, layoutFamilyId: layoutFamilyId);
   }
 
-  static KakuroLayout fromRows(List<String> rows) {
+  static KakuroLayout fromRows(
+    List<String> rows, {
+    String layoutFamilyId = _defaultKakuroLayoutFamilyId,
+  }) {
     if (rows.isEmpty) {
       throw ArgumentError('Kakuro layout rows must not be empty.');
     }
@@ -482,10 +488,13 @@ class KakuroLayout {
       }
       normalized.add(buffer.toString());
     }
-    return _buildFromLayout(normalized);
+    return _buildFromLayout(normalized, layoutFamilyId: layoutFamilyId);
   }
 
-  static KakuroLayout _buildFromLayout(List<String> layout) {
+  static KakuroLayout _buildFromLayout(
+    List<String> layout, {
+    String layoutFamilyId = _defaultKakuroLayoutFamilyId,
+  }) {
     final int height = layout.length;
     final int width = layout.first.length;
 
@@ -566,6 +575,7 @@ class KakuroLayout {
       width: width,
       height: height,
       layout: layout,
+      layoutFamilyId: layoutFamilyId,
       kinds: kinds,
       entries: entries,
       acrossEntryForCell: acrossEntryForCell,
@@ -804,7 +814,7 @@ class KakuroLayout {
 
     return KakuroLayoutMetrics(
       layoutHash: _computeLayoutHash(layout),
-      layoutFamilyId: _kakuroLayoutFamilyId,
+      layoutFamilyId: layoutFamilyId,
       width: width,
       height: height,
       totalCells: totalCells,
