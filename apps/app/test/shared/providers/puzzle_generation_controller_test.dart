@@ -90,4 +90,20 @@ void main() {
         reason:
             'Puzzle generation p95 ${p95Duration.inMilliseconds}ms exceeds SLA ${puzzleGenerationPhase2Sla.inMilliseconds}ms');
   });
+
+  test('rejects benchmark-only Kakuro profile in production generation', () async {
+    core.EngineRegistry().register(
+      core.StubPuzzleEngine(engineId: PuzzleType.kakuroClassic.key),
+    );
+    final controller = container.read(puzzleGenerationControllerProvider.notifier);
+
+    await expectLater(
+      controller.generate(
+        puzzleType: PuzzleType.kakuroClassic,
+        difficulty: 'medium',
+        size: '9x9',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
 }

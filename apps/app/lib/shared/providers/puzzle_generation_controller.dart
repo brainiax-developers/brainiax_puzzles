@@ -63,6 +63,11 @@ class PuzzleGenerationController
         ? _parseSize(size)
         : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
+    _assertProfileAllowedForProduction(
+      puzzleType: puzzleType,
+      size: resolvedSize,
+      difficulty: difficultyScore.level,
+    );
 
     final token = ++_generationToken;
 
@@ -214,31 +219,9 @@ class PuzzleGenerationController
             );
         }
       case app.PuzzleType.kakuroClassic:
-        switch (difficulty.toLowerCase()) {
-          case 'easy':
-            return const core.SizeOpt(
-              id: '7x7',
-              description: '7x7',
-              width: 7,
-              height: 7,
-            );
-          case 'medium':
-          case 'hard':
-          case 'expert':
-            return const core.SizeOpt(
-              id: '9x9',
-              description: '9x9',
-              width: 9,
-              height: 9,
-            );
-          default:
-            return const core.SizeOpt(
-              id: '9x9',
-              description: '9x9',
-              width: 9,
-              height: 9,
-            );
-        }
+        final String sizeId = core.KakuroSupportedProfiles
+            .shippingSizeForDifficulty(difficulty);
+        return _parseSize(sizeId);
       default:
         return _defaultSizeFor(puzzleType);
     }
@@ -270,11 +253,8 @@ class PuzzleGenerationController
           height: 10,
         );
       case app.PuzzleType.kakuroClassic:
-        return const core.SizeOpt(
-          id: '9x9',
-          description: '9x9',
-          width: 9,
-          height: 9,
+        return _parseSize(
+          core.KakuroSupportedProfiles.shippingProfiles.first.sizeId,
         );
       case app.PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
@@ -367,5 +347,38 @@ class PuzzleGenerationController
       return remaining <= Duration.zero ? Duration.zero : remaining;
     }
     return _defaultGenerationCap;
+  }
+
+  void _assertProfileAllowedForProduction({
+    required app.PuzzleType puzzleType,
+    required core.SizeOpt size,
+    required String difficulty,
+  }) {
+    if (puzzleType != app.PuzzleType.kakuroClassic) {
+      return;
+    }
+    final String normalizedDifficulty = core.KakuroSupportedProfiles
+        .normalizeDifficulty(difficulty);
+    final bool allowed = core.KakuroSupportedProfiles.isShippingSafe(
+      sizeId: size.id,
+      difficulty: normalizedDifficulty,
+    );
+    if (allowed) {
+      return;
+    }
+    final core.KakuroProfileTier? tier = core.KakuroSupportedProfiles.tierFor(
+      sizeId: size.id,
+      difficulty: normalizedDifficulty,
+    );
+    final String reason = switch (tier) {
+      core.KakuroProfileTier.benchmarkOnly =>
+        'benchmark-only and not enabled for production random play',
+      core.KakuroProfileTier.experimental =>
+        'experimental and not enabled for production random play',
+      _ => 'unsupported by production policy',
+    };
+    throw StateError(
+      'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} is $reason.',
+    );
   }
 }

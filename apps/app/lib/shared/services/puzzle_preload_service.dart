@@ -158,31 +158,9 @@ class PuzzlePreloadService {
             );
         }
       case PuzzleType.kakuroClassic:
-        switch (difficulty.toLowerCase()) {
-          case 'easy':
-            return const core.SizeOpt(
-              id: '7x7',
-              description: '7x7',
-              width: 7,
-              height: 7,
-            );
-          case 'medium':
-          case 'hard':
-          case 'expert':
-            return const core.SizeOpt(
-              id: '9x9',
-              description: '9x9',
-              width: 9,
-              height: 9,
-            );
-          default:
-            return const core.SizeOpt(
-              id: '9x9',
-              description: '9x9',
-              width: 9,
-              height: 9,
-            );
-        }
+        final String sizeId = core.KakuroSupportedProfiles
+            .shippingSizeForDifficulty(difficulty);
+        return _parseSize(sizeId);
       default:
         final sizeStr = metadata.supportedSizes.isNotEmpty
             ? metadata.supportedSizes.first
@@ -210,11 +188,8 @@ class PuzzlePreloadService {
           height: 10,
         );
       case PuzzleType.kakuroClassic:
-        return const core.SizeOpt(
-          id: '9x9',
-          description: '9x9',
-          width: 9,
-          height: 9,
+        return _parseSize(
+          core.KakuroSupportedProfiles.shippingProfiles.first.sizeId,
         );
       case PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(

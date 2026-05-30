@@ -39,7 +39,15 @@ class _PuzzleCardState extends State<PuzzleCard> {
   }
 
   Future<void> _loadPreferredDifficulty() async {
-    final preferred = await DifficultyPreferenceService.getPreferredDifficulty(widget.metadata.type);
+    final preferred = await DifficultyPreferenceService.getPreferredDifficulty(
+      widget.metadata.type,
+    );
+    final String resolvedDifficulty =
+        widget.metadata.supportedDifficulties.contains(preferred)
+        ? preferred
+        : (widget.metadata.supportedDifficulties.isNotEmpty
+              ? widget.metadata.supportedDifficulties.first
+              : preferred);
     // Check for in-progress saved puzzle for this type
     bool hasProgress = false;
     try {
@@ -49,7 +57,7 @@ class _PuzzleCardState extends State<PuzzleCard> {
     } catch (_) {}
     if (mounted) {
       setState(() {
-        _selectedDifficulty = preferred;
+        _selectedDifficulty = resolvedDifficulty;
         _isLoading = false;
         _hasProgress = hasProgress;
       });

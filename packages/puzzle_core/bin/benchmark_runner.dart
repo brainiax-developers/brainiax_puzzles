@@ -160,12 +160,17 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   }
   final width = int.parse(sizeParts[0]);
   final height = int.parse(sizeParts[1]);
-  const Set<int> kakuroPhoneV1Sizes = <int>{5, 7, 9, 11};
+  final String normalizedDifficulty = KakuroSupportedProfiles
+      .normalizeDifficulty(difficulty);
+  final String sizeId = '${width}x$height';
   if (measureKakuroUniqueness &&
-      (width != height || !kakuroPhoneV1Sizes.contains(width))) {
+      !KakuroSupportedProfiles.isBenchmarkEligible(
+        sizeId: sizeId,
+        difficulty: normalizedDifficulty,
+      )) {
     throw Exception(
-      'Unsupported Kakuro benchmark size ${width}x$height. '
-      'Phone V1 supports only 5x5, 7x7, 9x9, and 11x11.',
+      'Unsupported Kakuro benchmark profile $sizeId/$normalizedDifficulty. '
+      'Use a shipping, benchmark-only, or experimental Kakuro profile.',
     );
   }
 

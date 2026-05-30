@@ -163,13 +163,20 @@ class PuzzleRegistry {
         );
 
       case app.PuzzleType.kakuroClassic:
+        final List<String> kakuroShippingSizes = core.KakuroSupportedProfiles
+            .shippingSizes;
+        final List<String> kakuroShippingDifficulties = core
+            .KakuroSupportedProfiles
+            .shippingDifficulties
+            .map((String difficulty) => _titleCase(difficulty))
+            .toList(growable: false);
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
           icon: Icons.add_box,
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
-          supportedSizes: ['7x7', '9x9', '5x5'],
-          supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
+          supportedSizes: kakuroShippingSizes,
+          supportedDifficulties: kakuroShippingDifficulties,
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );
@@ -223,5 +230,12 @@ class PuzzleRegistry {
           category: PuzzleCategory.logic,
         );
     }
+  }
+
+  String _titleCase(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+    return '${value[0].toUpperCase()}${value.substring(1).toLowerCase()}';
   }
 }

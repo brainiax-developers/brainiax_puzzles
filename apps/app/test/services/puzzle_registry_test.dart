@@ -118,5 +118,18 @@ void main() {
       expect(metadata, isNotNull);
       expect(metadata!.supportsHints, isFalse);
     });
+
+    test('exposes only shipping-safe Kakuro profiles in app metadata', () {
+      core.EngineRegistry().register(
+        core.StubPuzzleEngine(engineId: 'kakuro_classic'),
+      );
+
+      registry.initialize();
+
+      final metadata = registry.getMetadata(app.PuzzleType.kakuroClassic);
+      expect(metadata, isNotNull);
+      expect(metadata!.supportedSizes, equals(<String>['7x7']));
+      expect(metadata.supportedDifficulties, equals(<String>['Easy']));
+    });
   });
 }

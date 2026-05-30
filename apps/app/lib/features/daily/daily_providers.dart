@@ -75,6 +75,8 @@ final dailyPuzzleProvider =
     });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {
+  final String kakuroShippingSize =
+      KakuroSupportedProfiles.shippingProfiles.first.sizeId;
   const Map<String, SizeOpt> defaults = {
     'sudoku_classic': SizeOpt(
       id: '9x9',
@@ -120,11 +122,24 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
       height: 8,
     ),
   };
+  if (puzzleTypeKey == 'kakuro_classic') {
+    final List<String> parts = kakuroShippingSize.split('x');
+    final int width = int.parse(parts[0]);
+    final int height = int.parse(parts[1]);
+    return SizeOpt(
+      id: kakuroShippingSize,
+      description: kakuroShippingSize,
+      width: width,
+      height: height,
+    );
+  }
   return defaults[puzzleTypeKey] ??
       const SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
 }
 
 DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
+  final String kakuroShippingDifficulty =
+      KakuroSupportedProfiles.shippingProfiles.first.difficulty;
   const Map<String, DifficultyScore> defaults = {
     'sudoku_classic': DifficultyScore(value: 0.3, level: 'easy'),
     'nonogram_mono': DifficultyScore(value: 0.3, level: 'easy'),
@@ -134,6 +149,9 @@ DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
     'killer_queens': DifficultyScore(value: 0.3, level: 'easy'),
     'takuzu_binary': DifficultyScore(value: 0.3, level: 'easy'),
   };
+  if (puzzleTypeKey == 'kakuro_classic') {
+    return DifficultyScore(value: 0.3, level: kakuroShippingDifficulty);
+  }
   return defaults[puzzleTypeKey] ??
       const DifficultyScore(value: 0.3, level: 'easy');
 }
