@@ -62,6 +62,26 @@ void main() {
     expect(telemetry['layoutFamilyId'], isA<String>());
     expect(telemetry['layoutHash'], isA<String>());
     expect(telemetry['runLengthHistogram'], isA<Map>());
+    expect(telemetry['constructionTelemetry'], isA<Map>());
+    final Map<String, Object?> constructionTelemetry =
+        Map<String, Object?>.from(
+          telemetry['constructionTelemetry'] as Map? ??
+              const <String, Object?>{},
+        );
+    expect(
+      constructionTelemetry['averageRunCombinationCountMilli'],
+      isA<int>(),
+    );
+    expect(constructionTelemetry['singleCombinationRunRatioMilli'], isA<int>());
+    expect(constructionTelemetry['maxRunAmbiguityMilli'], isA<int>());
+    expect(
+      constructionTelemetry['intersectionCandidateReductionMilli'],
+      isA<int>(),
+    );
+    expect(
+      constructionTelemetry['runLengthWeightedAmbiguityMilli'],
+      isA<int>(),
+    );
     expect(telemetry['givensCount'], equals(0));
     expect(telemetry['givenRatioMilli'], equals(0));
 
@@ -243,5 +263,68 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('construction scoring matches known length/sum combinations', () {
+    final KakuroLayout template = KakuroLayout.fromRows(const <String>[
+      '####',
+      '#..#',
+      '#..#',
+      '####',
+    ]);
+    final List<int> values = List<int>.filled(16, 0);
+    values[5] = 1;
+    values[6] = 2;
+    values[9] = 3;
+    values[10] = 4;
+
+    final Map<String, Object?> metrics =
+        KakuroGenerator.scoreConstructionForTest(
+          template: template,
+          values: values,
+          difficulty: 'medium',
+        );
+
+    expect(metrics['averageRunCombinationCountMilli'], equals(1750));
+    expect(metrics['singleCombinationRunRatioMilli'], equals(500));
+    expect(metrics['maxRunAmbiguityMilli'], equals(3000));
+    expect(metrics['runLengthWeightedAmbiguityMilli'], equals(1750));
+    expect(metrics['intersectionCandidateReductionMilli'], equals(749));
+  });
+
+  test('construction scoring supports partial fills', () {
+    final KakuroLayout template = KakuroLayout.fromRows(const <String>[
+      '####',
+      '#..#',
+      '#..#',
+      '####',
+    ]);
+    final List<int> partialValues = List<int>.filled(16, 0);
+    partialValues[5] = 1;
+
+    final Map<String, Object?> partial =
+        KakuroGenerator.scoreConstructionForTest(
+          template: template,
+          values: partialValues,
+          difficulty: 'medium',
+        );
+    final Map<String, Object?> complete =
+        KakuroGenerator.scoreConstructionForTest(
+          template: template,
+          values: <int>[0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4, 0, 0, 0, 0, 0],
+          difficulty: 'medium',
+        );
+
+    final int partialAvg = (partial['averageRunCombinationCountMilli'] as num)
+        .toInt();
+    final int completeAvg = (complete['averageRunCombinationCountMilli'] as num)
+        .toInt();
+    final int partialSingle = (partial['singleCombinationRunRatioMilli'] as num)
+        .toInt();
+    final int completeSingle =
+        (complete['singleCombinationRunRatioMilli'] as num).toInt();
+
+    expect(partialAvg, greaterThan(completeAvg));
+    expect(partialSingle, lessThan(completeSingle));
   });
 }
