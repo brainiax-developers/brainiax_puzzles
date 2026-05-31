@@ -6,7 +6,7 @@
 *.swp
 .buildlog/
 .history
-run-dev.sh
+run-dev.bat
 
 
 # Flutter repo-specific
