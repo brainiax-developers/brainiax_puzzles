@@ -295,6 +295,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   int nonUniqueCount = 0;
   int unknownStatusCount = 0;
   int layoutGateCount = 0;
+  int difficultyGateCount = 0;
   int repairAttemptCount = 0;
   int difficultyMatchSamples = 0;
   int difficultyMatchCount = 0;
@@ -445,6 +446,10 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
           rejectCounters['unknownStatus'],
           fallback: 0,
         );
+        difficultyGateCount += _asInt(
+          rejectCounters['difficultyGate'],
+          fallback: 0,
+        );
         repairAttemptCount += _asInt(
           failure.context['repairAttemptCount'],
           fallback: 0,
@@ -487,6 +492,10 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     );
     unknownStatusCount += _asInt(
       _asObjectMap(generatorTelemetry['rejectCounters'])['unknownStatus'],
+      fallback: 0,
+    );
+    difficultyGateCount += _asInt(
+      _asObjectMap(generatorTelemetry['rejectCounters'])['difficultyGate'],
       fallback: 0,
     );
     if (measuredBucket != null && measuredBucket.isNotEmpty) {
@@ -587,6 +596,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         'nonUniqueCount': nonUniqueCount,
         'unknownStatusCount': unknownStatusCount,
         'layoutGateCount': layoutGateCount,
+        'difficultyGateCount': difficultyGateCount,
         if (repairAttemptCount > 0) 'repairCount': repairAttemptCount,
         'generationMs': <String, double>{
           'p50': _percentile(sortedTimes, 0.50) / 1000.0,
@@ -598,6 +608,15 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
             ? 0.0
             : difficultyMatchCount / difficultyMatchSamples,
         'layoutFamilyDistribution': layoutFamilyDistribution,
+      },
+    if (measureKakuroUniqueness)
+      'difficultySummaryByRequest': <String, Object?>{
+        normalizedDifficulty: <String, Object?>{
+          'measuredDifficultyDistribution': measuredDifficultyDistribution,
+          'difficultyMatchRate': difficultyMatchSamples == 0
+              ? 0.0
+              : difficultyMatchCount / difficultyMatchSamples,
+        },
       },
   };
   Map<String, Object?>? kakuroMetrics;

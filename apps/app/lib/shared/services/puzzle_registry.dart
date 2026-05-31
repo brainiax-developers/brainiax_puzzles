@@ -171,7 +171,13 @@ class PuzzleRegistry {
             core.KakuroSupportedProfiles.appSizesForSurface(surface);
         final List<String> kakuroDifficulties =
             core.KakuroSupportedProfiles.appDifficultiesForSurface(surface)
-                .map((String difficulty) => _titleCase(difficulty))
+                .map(
+                  (String difficulty) =>
+                      core.KakuroSupportedProfiles.appDifficultyLabel(
+                        difficulty: difficulty,
+                        surface: surface,
+                      ),
+                )
                 .toList(growable: false);
         return PuzzleMetadata(
           type: type,
@@ -233,12 +239,5 @@ class PuzzleRegistry {
           category: PuzzleCategory.logic,
         );
     }
-  }
-
-  String _titleCase(String value) {
-    if (value.isEmpty) {
-      return value;
-    }
-    return '${value[0].toUpperCase()}${value.substring(1).toLowerCase()}';
   }
 }

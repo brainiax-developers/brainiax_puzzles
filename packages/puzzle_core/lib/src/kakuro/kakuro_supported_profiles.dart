@@ -45,6 +45,11 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '9x9', difficulty: 'hard'),
   ];
 
+  static const Set<String> _difficultyFallbackAllowedProfiles = <String>{
+    // Temporary fallback is only allowed for early 7x7 easy bring-up.
+    '7x7:easy',
+  };
+
   static const Set<String> supportedDifficulties = <String>{
     'easy',
     'medium',
@@ -171,6 +176,47 @@ class KakuroSupportedProfiles {
   }) {
     return isGeneratorSizeSupported(width: width, height: height) &&
         isDifficultySupported(difficulty);
+  }
+
+  static bool allowsDifficultyFallback({
+    required String sizeId,
+    required String difficulty,
+  }) {
+    final String normalizedDifficulty = normalizeDifficulty(difficulty);
+    return _difficultyFallbackAllowedProfiles.contains(
+      '$sizeId:$normalizedDifficulty',
+    );
+  }
+
+  static String appDifficultyLabel({
+    required String difficulty,
+    required KakuroAppProfileSurface surface,
+  }) {
+    final String normalizedDifficulty = normalizeDifficulty(difficulty);
+    final String base =
+        '${normalizedDifficulty[0].toUpperCase()}${normalizedDifficulty.substring(1)}';
+    if (surface == KakuroAppProfileSurface.production) {
+      return base;
+    }
+    KakuroProfile? profile;
+    for (final KakuroProfile candidate in appProfilesForSurface(surface)) {
+      if (candidate.difficulty == normalizedDifficulty) {
+        profile = candidate;
+        break;
+      }
+    }
+    if (profile == null) {
+      return base;
+    }
+    final KakuroProfileTier? tier = tierFor(
+      sizeId: profile.sizeId,
+      difficulty: normalizedDifficulty,
+    );
+    if (tier == KakuroProfileTier.benchmarkOnly ||
+        tier == KakuroProfileTier.experimental) {
+      return '$base (Dev)';
+    }
+    return base;
   }
 
   static String shippingSizeForDifficulty(String difficulty) {
