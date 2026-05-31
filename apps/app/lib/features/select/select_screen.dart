@@ -83,17 +83,18 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
         });
         try {
           final service = ref.read(kakuroOnDemandProvider);
-          final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
-          final sizeStr = metadata?.supportedSizes.isNotEmpty == true
-              ? metadata!.supportedSizes.first
-              : core.KakuroSupportedProfiles.appProfilesForSurface(
-                  AppEnvironment.isProduction
-                      ? core.KakuroAppProfileSurface.production
-                      : core.KakuroAppProfileSurface.nonProduction,
-                ).first.sizeId;
+          final surface = AppEnvironment.isProduction
+              ? core.KakuroAppProfileSurface.production
+              : core.KakuroAppProfileSurface.nonProduction;
+
+          final sizeStr = core.KakuroSupportedProfiles.appSizeForDifficulty(
+            difficulty: difficulty,
+            surface: surface,
+          );
+
           final parts = sizeStr.split('x');
           final width = int.tryParse(parts.first) ?? 9;
-          final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? 9;
+          final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? width;
           final generated = await service.nextPuzzle(
             difficulty: difficulty,
             width: width,

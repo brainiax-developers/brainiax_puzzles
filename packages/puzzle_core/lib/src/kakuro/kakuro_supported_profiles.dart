@@ -102,14 +102,13 @@ class KakuroSupportedProfiles {
   }
 
   static List<KakuroProfile> appProfilesForSurface(
-    KakuroAppProfileSurface surface,
-  ) {
-    switch (surface) {
-      case KakuroAppProfileSurface.production:
-        return shippingProfiles;
-      case KakuroAppProfileSurface.nonProduction:
-        return nonProductionAppProfiles;
-    }
+      KakuroAppProfileSurface surface,
+      ) {
+    // App UI should expose the same Kakuro testable profiles across flavors.
+    // Shipping/benchmark/experimental tiers still exist for benchmark reporting
+    // and future Remote Config/product gating, but local app testing should not
+    // silently hide Medium/Hard just because APP_FLAVOR resolves to prod.
+    return nonProductionAppProfiles;
   }
 
   static bool isAppProfileAllowed({
@@ -193,30 +192,7 @@ class KakuroSupportedProfiles {
     required KakuroAppProfileSurface surface,
   }) {
     final String normalizedDifficulty = normalizeDifficulty(difficulty);
-    final String base =
-        '${normalizedDifficulty[0].toUpperCase()}${normalizedDifficulty.substring(1)}';
-    if (surface == KakuroAppProfileSurface.production) {
-      return base;
-    }
-    KakuroProfile? profile;
-    for (final KakuroProfile candidate in appProfilesForSurface(surface)) {
-      if (candidate.difficulty == normalizedDifficulty) {
-        profile = candidate;
-        break;
-      }
-    }
-    if (profile == null) {
-      return base;
-    }
-    final KakuroProfileTier? tier = tierFor(
-      sizeId: profile.sizeId,
-      difficulty: normalizedDifficulty,
-    );
-    if (tier == KakuroProfileTier.benchmarkOnly ||
-        tier == KakuroProfileTier.experimental) {
-      return '$base (Dev)';
-    }
-    return base;
+    return '${normalizedDifficulty[0].toUpperCase()}${normalizedDifficulty.substring(1)}';
   }
 
   static String shippingSizeForDifficulty(String difficulty) {
