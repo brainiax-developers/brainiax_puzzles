@@ -119,6 +119,14 @@ class TestSudokuEngine
       const core.PuzzleCapabilities(supportsHints: false);
 
   @override
+  core.PuzzleHint? requestHint({
+    required core.SudokuBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+
+  @override
   core.GeneratedPuzzle<core.SudokuBoard> generate({
     required String seedStr,
     required int seed64,

@@ -58,5 +58,50 @@ void main() {
         isTrue,
       );
     });
+
+    test('non-production app surface exposes easy/medium/hard only', () {
+      final List<String> difficulties =
+          KakuroSupportedProfiles.appDifficultiesForSurface(
+            KakuroAppProfileSurface.nonProduction,
+          );
+      expect(difficulties, containsAll(<String>['easy', 'medium', 'hard']));
+      expect(difficulties, isNot(contains('expert')));
+
+      expect(
+        KakuroSupportedProfiles.isAppProfileAllowed(
+          sizeId: '9x9',
+          difficulty: 'medium',
+          surface: KakuroAppProfileSurface.nonProduction,
+        ),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isAppProfileAllowed(
+          sizeId: '9x9',
+          difficulty: 'expert',
+          surface: KakuroAppProfileSurface.nonProduction,
+        ),
+        isFalse,
+      );
+    });
+
+    test('supports rectangular side-length combinations for generation', () {
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 9, height: 7),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 11, height: 9),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 13, height: 11),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 8, height: 8),
+        isFalse,
+      );
+    });
   });
 }

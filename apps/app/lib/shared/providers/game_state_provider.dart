@@ -612,6 +612,26 @@ class GameStateNotifier extends Notifier<GameState?> {
       return null;
     }
   }
+
+  /// Clears the active game when it does not match the requested route key.
+  ///
+  /// This is used by daily navigation to avoid rendering stale puzzles while
+  /// a new daily puzzle is still loading.
+  void clearIfMismatched({required String engineId, String? seed}) {
+    final GameState? current = state;
+    if (current == null) {
+      return;
+    }
+    final bool mismatchedEngine = current.engineId != engineId;
+    final bool mismatchedSeed = seed != null && current.seed != seed;
+    if (!mismatchedEngine && !mismatchedSeed) {
+      return;
+    }
+    _actionHistory.clear();
+    _currentActionIndex = -1;
+    _initialPuzzle = null;
+    state = null;
+  }
 }
 
 /// Game state containing puzzle and game information.

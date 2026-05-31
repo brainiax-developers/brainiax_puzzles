@@ -246,10 +246,15 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       !KakuroSupportedProfiles.isBenchmarkEligible(
         sizeId: sizeId,
         difficulty: normalizedDifficulty,
+      ) &&
+      !KakuroSupportedProfiles.isAdhocBenchmarkSupported(
+        width: width,
+        height: height,
+        difficulty: normalizedDifficulty,
       )) {
     throw Exception(
       'Unsupported Kakuro benchmark profile $sizeId/$normalizedDifficulty. '
-      'Use a shipping, benchmark-only, or experimental Kakuro profile.',
+      'Use a known Kakuro profile or supported ad-hoc size/difficulty.',
     );
   }
 

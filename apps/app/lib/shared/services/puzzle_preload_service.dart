@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'generation_isolate.dart';
+import '../config/app_environment.dart';
 
 import '../models/models.dart';
 import 'puzzle_registry.dart';
@@ -158,8 +159,11 @@ class PuzzlePreloadService {
             );
         }
       case PuzzleType.kakuroClassic:
-        final String sizeId = core.KakuroSupportedProfiles
-            .shippingSizeForDifficulty(difficulty);
+        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
+        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
+          difficulty: difficulty,
+          surface: surface,
+        );
         return _parseSize(sizeId);
       default:
         final sizeStr = metadata.supportedSizes.isNotEmpty
@@ -189,7 +193,9 @@ class PuzzlePreloadService {
         );
       case PuzzleType.kakuroClassic:
         return _parseSize(
-          core.KakuroSupportedProfiles.shippingProfiles.first.sizeId,
+          core.KakuroSupportedProfiles.appProfilesForSurface(
+            _activeKakuroAppSurface(),
+          ).first.sizeId,
         );
       case PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
@@ -251,6 +257,12 @@ class PuzzlePreloadService {
       default:
         return const core.DifficultyScore(value: 0.6, level: 'medium');
     }
+  }
+
+  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
+    return AppEnvironment.isProduction
+        ? core.KakuroAppProfileSurface.production
+        : core.KakuroAppProfileSurface.nonProduction;
   }
 }
 

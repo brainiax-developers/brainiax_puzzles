@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../../shared/services/generation_isolate.dart';
+import '../../shared/config/app_environment.dart';
 
 import '../../shared/providers/engine_provider.dart';
 import 'daily_seed_generator.dart';
@@ -75,8 +76,12 @@ final dailyPuzzleProvider =
     });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {
-  final String kakuroShippingSize =
-      KakuroSupportedProfiles.shippingProfiles.first.sizeId;
+  final KakuroAppProfileSurface kakuroSurface = AppEnvironment.isProduction
+      ? KakuroAppProfileSurface.production
+      : KakuroAppProfileSurface.nonProduction;
+  final KakuroProfile kakuroDefaultProfile =
+      KakuroSupportedProfiles.appProfilesForSurface(kakuroSurface).first;
+  final String kakuroSize = kakuroDefaultProfile.sizeId;
   const Map<String, SizeOpt> defaults = {
     'sudoku_classic': SizeOpt(
       id: '9x9',
@@ -123,12 +128,12 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
     ),
   };
   if (puzzleTypeKey == 'kakuro_classic') {
-    final List<String> parts = kakuroShippingSize.split('x');
+    final List<String> parts = kakuroSize.split('x');
     final int width = int.parse(parts[0]);
     final int height = int.parse(parts[1]);
     return SizeOpt(
-      id: kakuroShippingSize,
-      description: kakuroShippingSize,
+      id: kakuroSize,
+      description: kakuroSize,
       width: width,
       height: height,
     );
@@ -138,8 +143,12 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
 }
 
 DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
-  final String kakuroShippingDifficulty =
-      KakuroSupportedProfiles.shippingProfiles.first.difficulty;
+  final KakuroAppProfileSurface kakuroSurface = AppEnvironment.isProduction
+      ? KakuroAppProfileSurface.production
+      : KakuroAppProfileSurface.nonProduction;
+  final String kakuroDifficulty = KakuroSupportedProfiles.appProfilesForSurface(
+    kakuroSurface,
+  ).first.difficulty;
   const Map<String, DifficultyScore> defaults = {
     'sudoku_classic': DifficultyScore(value: 0.3, level: 'easy'),
     'nonogram_mono': DifficultyScore(value: 0.3, level: 'easy'),
@@ -150,7 +159,7 @@ DifficultyScore _defaultDifficultyFor(String puzzleTypeKey) {
     'takuzu_binary': DifficultyScore(value: 0.3, level: 'easy'),
   };
   if (puzzleTypeKey == 'kakuro_classic') {
-    return DifficultyScore(value: 0.3, level: kakuroShippingDifficulty);
+    return DifficultyScore(value: 0.3, level: kakuroDifficulty);
   }
   return defaults[puzzleTypeKey] ??
       const DifficultyScore(value: 0.3, level: 'easy');

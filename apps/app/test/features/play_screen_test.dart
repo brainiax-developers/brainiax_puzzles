@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app/features/play/play_screen.dart';
+import 'package:app/features/daily/daily_providers.dart';
 import 'package:app/shared/providers/game_state_provider.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
@@ -22,7 +23,9 @@ void main() {
     core.EngineRegistry().clear();
   });
 
-  testWidgets('solving updates status and records completion stats', (tester) async {
+  testWidgets('solving updates status and records completion stats', (
+    tester,
+  ) async {
     final engine = TestSudokuEngine();
     core.EngineRegistry().register(engine);
 
@@ -65,7 +68,8 @@ void main() {
     expect(find.text('Solved'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
-    final key = 'puzzle_local_store.v1.best_time.${PuzzleType.sudokuClassic.key}.easy';
+    final key =
+        'puzzle_local_store.v1.best_time.${PuzzleType.sudokuClassic.key}.easy';
     expect(prefs.containsKey(key), isTrue);
     expect(find.textContaining('Streak'), findsOneWidget);
 
@@ -74,4 +78,61 @@ void main() {
     );
     expect(container.read(gameStateProvider)?.isSolved, isTrue);
   });
+
+  testWidgets(
+    'daily Kakuro shows loading immediately and does not render stale puzzle',
+    (tester) async {
+      core.EngineRegistry().register(
+        core.StubPuzzleEngine(engineId: PuzzleType.sudokuClassic.key),
+      );
+      core.EngineRegistry().register(
+        core.StubPuzzleEngine(engineId: PuzzleType.kakuroClassic.key),
+      );
+
+      final ProviderContainer container = ProviderContainer(
+        overrides: [
+          dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+            if (puzzleTypeKey == PuzzleType.kakuroClassic.key) {
+              await Future<void>.delayed(const Duration(milliseconds: 800));
+              return buildKakuroPuzzle();
+            }
+            return buildSudokuPuzzle();
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final core.GeneratedPuzzle<core.SudokuBoard> staleSudoku =
+          buildSudokuPuzzle();
+      await container
+          .read(gameStateProvider.notifier)
+          .startWithGeneratedPuzzle(
+            engineId: PuzzleType.sudokuClassic.key,
+            seed: staleSudoku.meta.seedStr,
+            difficulty: staleSudoku.meta.difficulty.level,
+            size: staleSudoku.meta.size.id,
+            puzzle: staleSudoku,
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.kakuroClassic,
+              mode: PuzzleMode.daily,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(SudokuRendererWidget), findsNothing);
+      expect(find.text('Generating puzzle...'), findsOneWidget);
+
+      // Drain the delayed stub future to avoid pending timer assertions.
+      await tester.pump(const Duration(milliseconds: 900));
+    },
+  );
 }

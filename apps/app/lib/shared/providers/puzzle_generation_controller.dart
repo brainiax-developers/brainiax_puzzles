@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../models/puzzle_type.dart' as app;
+import '../config/app_environment.dart';
 import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import 'engine_provider.dart';
@@ -219,8 +220,11 @@ class PuzzleGenerationController
             );
         }
       case app.PuzzleType.kakuroClassic:
-        final String sizeId = core.KakuroSupportedProfiles
-            .shippingSizeForDifficulty(difficulty);
+        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
+        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
+          difficulty: difficulty,
+          surface: surface,
+        );
         return _parseSize(sizeId);
       default:
         return _defaultSizeFor(puzzleType);
@@ -254,7 +258,9 @@ class PuzzleGenerationController
         );
       case app.PuzzleType.kakuroClassic:
         return _parseSize(
-          core.KakuroSupportedProfiles.shippingProfiles.first.sizeId,
+          core.KakuroSupportedProfiles.appProfilesForSurface(
+            _activeKakuroAppSurface(),
+          ).first.sizeId,
         );
       case app.PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
@@ -357,14 +363,22 @@ class PuzzleGenerationController
     if (puzzleType != app.PuzzleType.kakuroClassic) {
       return;
     }
-    final String normalizedDifficulty = core.KakuroSupportedProfiles
-        .normalizeDifficulty(difficulty);
-    final bool allowed = core.KakuroSupportedProfiles.isShippingSafe(
+    final String normalizedDifficulty =
+        core.KakuroSupportedProfiles.normalizeDifficulty(difficulty);
+    final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
+    final bool allowed = core.KakuroSupportedProfiles.isAppProfileAllowed(
       sizeId: size.id,
       difficulty: normalizedDifficulty,
+      surface: surface,
     );
     if (allowed) {
       return;
+    }
+    if (surface == core.KakuroAppProfileSurface.nonProduction) {
+      throw StateError(
+        'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} '
+        'is not enabled for non-production random play.',
+      );
     }
     final core.KakuroProfileTier? tier = core.KakuroSupportedProfiles.tierFor(
       sizeId: size.id,
@@ -380,5 +394,11 @@ class PuzzleGenerationController
     throw StateError(
       'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} is $reason.',
     );
+  }
+
+  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
+    return AppEnvironment.isProduction
+        ? core.KakuroAppProfileSurface.production
+        : core.KakuroAppProfileSurface.nonProduction;
   }
 }

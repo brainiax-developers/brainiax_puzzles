@@ -14,6 +14,7 @@ import '../util/seeded_rng.dart';
 import 'kakuro_board.dart';
 import 'kakuro_difficulty.dart';
 import 'kakuro_solver.dart';
+import 'kakuro_supported_profiles.dart';
 
 part '../generators/kakuro/layout.dart';
 part '../generators/kakuro/layout_family.dart';
@@ -1946,28 +1947,39 @@ String _normalizeDifficulty(String raw) {
   }
 }
 
-const Set<int> _supportedKakuroSizes = <int>{5, 7, 9, 11};
-
 int _chooseWidth(GeneratorContext context, String level) {
-  return _resolveGridSize(context, level);
+  return _resolveGridSide(
+    requested: context.size.width,
+    level: level,
+    axis: 'width',
+  );
 }
 
 int _chooseHeight(GeneratorContext context, String level) {
-  return _resolveGridSize(context, level);
+  return _resolveGridSide(
+    requested: context.size.height,
+    level: level,
+    axis: 'height',
+  );
 }
 
-int _resolveGridSize(GeneratorContext context, String level) {
-  final int width = context.size.width;
-  final int height = context.size.height;
-  if (width <= 0 || height <= 0) {
+int _resolveGridSide({
+  required int requested,
+  required String level,
+  required String axis,
+}) {
+  if (requested <= 0) {
     return _defaultSizeForLevel(level);
   }
-  if (width == height && _supportedKakuroSizes.contains(width)) {
-    return width;
+  if (KakuroSupportedProfiles.supportedSideLengths.contains(requested)) {
+    return requested;
   }
+  final List<int> supported =
+      KakuroSupportedProfiles.supportedSideLengths.toList(growable: false)
+        ..sort();
   throw ArgumentError(
-    'Unsupported Kakuro size ${width}x$height for level "$level". '
-    'Supported sizes: 5x5, 7x7, 9x9, 11x11.',
+    'Unsupported Kakuro $axis $requested for level "$level". '
+    'Supported side lengths: ${supported.join(', ')}.',
   );
 }
 

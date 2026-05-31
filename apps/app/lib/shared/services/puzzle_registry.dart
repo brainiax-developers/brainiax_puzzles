@@ -3,6 +3,7 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 import '../models/puzzle_type.dart' as app;
 import '../models/puzzle_metadata.dart';
 import '../models/puzzle_category.dart';
+import '../config/app_environment.dart';
 
 /// Registry for puzzle types with their metadata and UI properties.
 class PuzzleRegistry {
@@ -163,20 +164,22 @@ class PuzzleRegistry {
         );
 
       case app.PuzzleType.kakuroClassic:
-        final List<String> kakuroShippingSizes = core.KakuroSupportedProfiles
-            .shippingSizes;
-        final List<String> kakuroShippingDifficulties = core
-            .KakuroSupportedProfiles
-            .shippingDifficulties
-            .map((String difficulty) => _titleCase(difficulty))
-            .toList(growable: false);
+        final core.KakuroAppProfileSurface surface = AppEnvironment.isProduction
+            ? core.KakuroAppProfileSurface.production
+            : core.KakuroAppProfileSurface.nonProduction;
+        final List<String> kakuroSizes =
+            core.KakuroSupportedProfiles.appSizesForSurface(surface);
+        final List<String> kakuroDifficulties =
+            core.KakuroSupportedProfiles.appDifficultiesForSurface(surface)
+                .map((String difficulty) => _titleCase(difficulty))
+                .toList(growable: false);
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
           icon: Icons.add_box,
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
-          supportedSizes: kakuroShippingSizes,
-          supportedDifficulties: kakuroShippingDifficulties,
+          supportedSizes: kakuroSizes,
+          supportedDifficulties: kakuroDifficulties,
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
         );

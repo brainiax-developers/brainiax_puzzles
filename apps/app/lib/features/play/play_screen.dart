@@ -132,16 +132,16 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             widget.puzzleInstance == null &&
             engineAvailable) {
           try {
-            final String expectedSeed = ref
-                .read(dailySeedGeneratorProvider)
-                .generate(engineId)
-                .seedStr;
+            final String expectedSeed = _expectedDailySeed(engineId);
             final bool hasCurrentDaily =
                 currentState != null &&
                 currentState.engineId == engineId &&
                 currentState.seed == expectedSeed;
 
             if (!hasCurrentDaily) {
+              ref
+                  .read(gameStateProvider.notifier)
+                  .clearIfMismatched(engineId: engineId, seed: expectedSeed);
               final generated = await ref.read(
                 dailyPuzzleProvider(engineId).future,
               );
@@ -297,6 +297,40 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       case PuzzleType.takuzuBinary:
         return '8x8';
     }
+  }
+
+  String _expectedDailySeed(String engineId) {
+    return ref.read(dailySeedGeneratorProvider).generate(engineId).seedStr;
+  }
+
+  bool _matchesRoutePuzzleType(core.GeneratedPuzzle<dynamic> puzzle) {
+    final Object board = puzzle.state;
+    switch (widget.puzzleType) {
+      case PuzzleType.sudokuClassic:
+        return board is core.SudokuBoard;
+      case PuzzleType.nonogramMono:
+        return board is core.NonogramBoard;
+      case PuzzleType.kakuroClassic:
+        return board is core.KakuroBoard;
+      case PuzzleType.slitherlinkLoop:
+        return board is core.SlitherlinkBoard;
+      case PuzzleType.mathdokuClassic:
+        return board is core.MathdokuBoard;
+      case PuzzleType.killerQueens:
+        return board is core.KillerQueensBoard;
+      case PuzzleType.takuzuBinary:
+        return board is core.TakuzuBoard;
+    }
+  }
+
+  bool _matchesRouteState(GameState? gameState) {
+    if (gameState == null || gameState.engineId != widget.puzzleType.key) {
+      return false;
+    }
+    if (widget.mode == PuzzleMode.daily) {
+      return gameState.seed == _expectedDailySeed(widget.puzzleType.key);
+    }
+    return true;
   }
 
   Future<void> _clearPersistedProgress() async {
@@ -1805,6 +1839,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   Widget _buildPuzzleContent(ThemeData theme, ColorScheme colorScheme) {
     // Get game state from provider
     final gameState = ref.watch(gameStateProvider);
+    final bool routeStateMatch = _matchesRouteState(gameState);
+    final AsyncValue<core.GeneratedPuzzle<dynamic>>? dailyPuzzleAsync =
+        widget.mode == PuzzleMode.daily
+        ? ref.watch(dailyPuzzleProvider(widget.puzzleType.key))
+        : null;
 
     // Note: debug logging is performed once in initState/didUpdateWidget via
     // _logPuzzleInfoIfNeeded to avoid spamming logs during rebuilds.
@@ -1813,15 +1852,38 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // fall back to the game state provider's puzzle (if any).
     // Prefer the live game state's puzzle so UI reflects moves; fall back
     // to a navigation-provided instance only if state hasn't initialized yet.
-    final core.GeneratedPuzzle? generatedPuzzle =
-        gameState?.puzzle ??
-        (widget.puzzleInstance is core.GeneratedPuzzle
-            ? widget.puzzleInstance as core.GeneratedPuzzle
-            : null);
+    final core.GeneratedPuzzle? navigationPuzzle =
+        widget.puzzleInstance is core.GeneratedPuzzle &&
+            _matchesRoutePuzzleType(
+              widget.puzzleInstance as core.GeneratedPuzzle<dynamic>,
+            )
+        ? widget.puzzleInstance as core.GeneratedPuzzle<dynamic>
+        : null;
+
+    final core.GeneratedPuzzle? generatedPuzzle = routeStateMatch
+        ? gameState!.puzzle
+        : (widget.mode == PuzzleMode.daily ? null : navigationPuzzle);
 
     // If we still don't have a puzzle, show a loading indicator while
     // a generator/provider populates it.
     if (generatedPuzzle == null) {
+      if (dailyPuzzleAsync != null && dailyPuzzleAsync.hasError) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, color: colorScheme.error, size: 28),
+              const SizedBox(height: 10),
+              Text(
+                'Failed to load daily puzzle',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

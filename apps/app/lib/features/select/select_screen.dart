@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/models/models.dart';
 import '../../shared/services/puzzle_registry.dart';
@@ -12,6 +13,7 @@ import '../../shared/theme/app_theme.dart';
 
 import '../../shared/services/kakuro_on_demand_service.dart';
 import '../../shared/services/puzzle_progress_service.dart';
+import '../../shared/config/app_environment.dart';
 
 /// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
@@ -84,7 +86,11 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
           final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
           final sizeStr = metadata?.supportedSizes.isNotEmpty == true
               ? metadata!.supportedSizes.first
-              : '9x9';
+              : core.KakuroSupportedProfiles.appProfilesForSurface(
+                  AppEnvironment.isProduction
+                      ? core.KakuroAppProfileSurface.production
+                      : core.KakuroAppProfileSurface.nonProduction,
+                ).first.sizeId;
           final parts = sizeStr.split('x');
           final width = int.tryParse(parts.first) ?? 9;
           final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? 9;

@@ -1,18 +1,13 @@
 class KakuroProfile {
-  const KakuroProfile({
-    required this.sizeId,
-    required this.difficulty,
-  });
+  const KakuroProfile({required this.sizeId, required this.difficulty});
 
   final String sizeId;
   final String difficulty;
 }
 
-enum KakuroProfileTier {
-  shipping,
-  benchmarkOnly,
-  experimental,
-}
+enum KakuroProfileTier { shipping, benchmarkOnly, experimental }
+
+enum KakuroAppProfileSurface { production, nonProduction }
 
 /// Central policy for Kakuro profile exposure.
 ///
@@ -26,12 +21,14 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '7x7', difficulty: 'easy'),
   ];
 
+  // Bench calibration profiles that are not shown in production app UX.
   static const List<KakuroProfile> benchmarkOnlyProfiles = <KakuroProfile>[
     KakuroProfile(sizeId: '9x9', difficulty: 'medium'),
     KakuroProfile(sizeId: '9x9', difficulty: 'hard'),
     KakuroProfile(sizeId: '9x9', difficulty: 'expert'),
   ];
 
+  // Experimental profiles are available for local verification only.
   static const List<KakuroProfile> experimentalProfiles = <KakuroProfile>[
     KakuroProfile(sizeId: '5x5', difficulty: 'easy'),
     KakuroProfile(sizeId: '5x5', difficulty: 'medium'),
@@ -39,6 +36,23 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '5x5', difficulty: 'expert'),
     KakuroProfile(sizeId: '11x11', difficulty: 'expert'),
   ];
+
+  // Non-production app UX should expose Easy/Medium/Hard without surfacing
+  // Expert by default.
+  static const List<KakuroProfile> nonProductionAppProfiles = <KakuroProfile>[
+    KakuroProfile(sizeId: '7x7', difficulty: 'easy'),
+    KakuroProfile(sizeId: '9x9', difficulty: 'medium'),
+    KakuroProfile(sizeId: '9x9', difficulty: 'hard'),
+  ];
+
+  static const Set<String> supportedDifficulties = <String>{
+    'easy',
+    'medium',
+    'hard',
+    'expert',
+  };
+
+  static const Set<int> supportedSideLengths = <int>{5, 7, 9, 11, 13};
 
   static List<KakuroProfile> get benchmarkEligibleProfiles => <KakuroProfile>[
     ...shippingProfiles,
@@ -80,6 +94,83 @@ class KakuroSupportedProfiles {
     required String difficulty,
   }) {
     return tierFor(sizeId: sizeId, difficulty: difficulty) != null;
+  }
+
+  static List<KakuroProfile> appProfilesForSurface(
+    KakuroAppProfileSurface surface,
+  ) {
+    switch (surface) {
+      case KakuroAppProfileSurface.production:
+        return shippingProfiles;
+      case KakuroAppProfileSurface.nonProduction:
+        return nonProductionAppProfiles;
+    }
+  }
+
+  static bool isAppProfileAllowed({
+    required String sizeId,
+    required String difficulty,
+    required KakuroAppProfileSurface surface,
+  }) {
+    final String normalizedDifficulty = normalizeDifficulty(difficulty);
+    return _contains(
+      appProfilesForSurface(surface),
+      sizeId,
+      normalizedDifficulty,
+    );
+  }
+
+  static String appSizeForDifficulty({
+    required String difficulty,
+    required KakuroAppProfileSurface surface,
+  }) {
+    final String normalized = normalizeDifficulty(difficulty);
+    final List<KakuroProfile> visibleProfiles = appProfilesForSurface(surface);
+    for (final KakuroProfile profile in visibleProfiles) {
+      if (profile.difficulty == normalized) {
+        return profile.sizeId;
+      }
+    }
+    return visibleProfiles.first.sizeId;
+  }
+
+  static List<String> appDifficultiesForSurface(
+    KakuroAppProfileSurface surface,
+  ) {
+    return appProfilesForSurface(surface)
+        .map((KakuroProfile profile) => profile.difficulty)
+        .toSet()
+        .toList(growable: false);
+  }
+
+  static List<String> appSizesForSurface(KakuroAppProfileSurface surface) {
+    return appProfilesForSurface(surface)
+        .map((KakuroProfile profile) => profile.sizeId)
+        .toSet()
+        .toList(growable: false);
+  }
+
+  static bool isDifficultySupported(String difficulty) {
+    return supportedDifficulties.contains(normalizeDifficulty(difficulty));
+  }
+
+  static bool isGeneratorSizeSupported({
+    required int width,
+    required int height,
+  }) {
+    return width > 0 &&
+        height > 0 &&
+        supportedSideLengths.contains(width) &&
+        supportedSideLengths.contains(height);
+  }
+
+  static bool isAdhocBenchmarkSupported({
+    required int width,
+    required int height,
+    required String difficulty,
+  }) {
+    return isGeneratorSizeSupported(width: width, height: height) &&
+        isDifficultySupported(difficulty);
   }
 
   static String shippingSizeForDifficulty(String difficulty) {

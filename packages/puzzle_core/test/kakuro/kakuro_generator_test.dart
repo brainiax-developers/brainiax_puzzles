@@ -450,19 +450,14 @@ void main() {
     );
   });
 
-  test('generator rejects unsupported 13x13 size', () {
+  test('generator rejects unsupported 8x8 size', () {
     const KakuroGenerator generator = KakuroGenerator();
-    final int seed64 = Seed.fromString('kakuro_gen_13x13_seed');
+    final int seed64 = Seed.fromString('kakuro_gen_8x8_seed');
     final GeneratorContext context = GeneratorContext(
       rng: SeededRng(seed64),
-      seedStr: 'kakuro_gen_13x13_seed',
+      seedStr: 'kakuro_gen_8x8_seed',
       seed64: seed64,
-      size: const SizeOpt(
-        id: '13x13',
-        description: '13x13',
-        width: 13,
-        height: 13,
-      ),
+      size: const SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8),
       difficulty: const DifficultyRequest(level: 'expert'),
     );
 
@@ -472,9 +467,91 @@ void main() {
         isA<ArgumentError>().having(
           (ArgumentError error) => error.toString(),
           'error',
-          contains('Supported sizes: 5x5, 7x7, 9x9, 11x11'),
+          contains('Supported side lengths: 5, 7, 9, 11, 13'),
         ),
       ),
+    );
+  });
+
+  test('generator accepts 9x7 and never throws unsupported-size errors', () {
+    const KakuroGenerator generator = KakuroGenerator();
+    final int seed64 = Seed.fromString('kakuro_rectangular_9x7_seed');
+    final GeneratorContext context = GeneratorContext(
+      rng: SeededRng(seed64),
+      seedStr: 'kakuro_rectangular_9x7_seed',
+      seed64: seed64,
+      size: const SizeOpt(id: '9x7', description: '9x7', width: 9, height: 7),
+      difficulty: const DifficultyRequest(level: 'medium'),
+    );
+
+    PuzzleGenerationResult<KakuroBoard>? result;
+    Object? failure;
+    try {
+      result = generator.generate(context);
+    } catch (error) {
+      failure = error;
+    }
+
+    if (result != null) {
+      expect(result.board.width, equals(9));
+      expect(result.board.height, equals(7));
+      return;
+    }
+    expect(failure, isA<GenerationFailure>());
+  });
+
+  test('generator accepts 11x9 and remains deterministic by seed+size', () {
+    const KakuroGenerator generator = KakuroGenerator();
+    final int seed64 = Seed.fromString('kakuro_rectangular_11x9_seed');
+
+    GeneratorContext buildContext() {
+      return GeneratorContext(
+        rng: SeededRng(seed64),
+        seedStr: 'kakuro_rectangular_11x9_seed',
+        seed64: seed64,
+        size: const SizeOpt(
+          id: '11x9',
+          description: '11x9',
+          width: 11,
+          height: 9,
+        ),
+        difficulty: const DifficultyRequest(level: 'hard'),
+      );
+    }
+
+    PuzzleGenerationResult<KakuroBoard>? first;
+    PuzzleGenerationResult<KakuroBoard>? second;
+    Object? firstFailure;
+    Object? secondFailure;
+
+    try {
+      first = generator.generate(buildContext());
+    } catch (error) {
+      firstFailure = error;
+    }
+
+    try {
+      second = generator.generate(buildContext());
+    } catch (error) {
+      secondFailure = error;
+    }
+
+    if (first != null && second != null) {
+      expect(first.board.width, equals(11));
+      expect(first.board.height, equals(9));
+      expect(second.board.width, equals(11));
+      expect(second.board.height, equals(9));
+      expect(first.board.toJson(), equals(second.board.toJson()));
+      return;
+    }
+
+    expect(firstFailure, isA<GenerationFailure>());
+    expect(secondFailure, isA<GenerationFailure>());
+    final GenerationFailure failA = firstFailure! as GenerationFailure;
+    final GenerationFailure failB = secondFailure! as GenerationFailure;
+    expect(
+      failA.context['failureReason'],
+      equals(failB.context['failureReason']),
     );
   });
 
