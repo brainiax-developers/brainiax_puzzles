@@ -39,7 +39,8 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
       if (value == null) {
         continue;
       }
-      if (value != NonogramLineSolver.filled && value != NonogramLineSolver.empty) {
+      if (value != NonogramLineSolver.filled &&
+          value != NonogramLineSolver.empty) {
         issues.add('cell_out_of_range');
         break;
       }
@@ -94,7 +95,10 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
   }
 
   @override
-  ValidationSummary validateSolution(NonogramBoard board, NonogramBoard solution) {
+  ValidationSummary validateSolution(
+    NonogramBoard board,
+    NonogramBoard solution,
+  ) {
     final Stopwatch stopwatch = Stopwatch()..start();
     final List<String> issues = <String>[];
 
@@ -109,7 +113,8 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
     if (issues.isEmpty) {
       for (int i = 0; i < solution.cells.length; i++) {
         final int? value = solution.cells[i];
-        if (value != NonogramLineSolver.filled && value != NonogramLineSolver.empty) {
+        if (value != NonogramLineSolver.filled &&
+            value != NonogramLineSolver.empty) {
           issues.add('solution_value_out_of_range:$i');
           break;
         }
@@ -146,13 +151,22 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
 
   @override
   bool isSolved(NonogramBoard board) {
+    if (!board.isComplete) {
+      return false;
+    }
     for (int row = 0; row < board.height; row++) {
-      if (!_cluesEqual(_deriveClues(board.rowValues(row)), board.rowClues[row])) {
+      if (!_cluesEqual(
+        _deriveClues(board.rowValues(row)),
+        board.rowClues[row],
+      )) {
         return false;
       }
     }
     for (int col = 0; col < board.width; col++) {
-      if (!_cluesEqual(_deriveClues(board.columnValues(col)), board.columnClues[col])) {
+      if (!_cluesEqual(
+        _deriveClues(board.columnValues(col)),
+        board.columnClues[col],
+      )) {
         return false;
       }
     }
