@@ -253,5 +253,83 @@ void main() {
         lessThan(hardGenerator['fragmentation']! as num),
       );
     });
+
+    test(
+      'NonogramBoard serialization round-trips clues and nullable cells',
+      () {
+        final NonogramBoard board = NonogramBoard(
+          width: 3,
+          height: 2,
+          rowClues: const <List<int>>[
+            <int>[1, 1],
+            <int>[2],
+          ],
+          columnClues: const <List<int>>[
+            <int>[1],
+            <int>[1],
+            <int>[2],
+          ],
+          cells: const <int?>[1, 0, null, null, 1, 1],
+        );
+
+        final Map<String, dynamic> json = board.toJson();
+        final NonogramBoard decoded = NonogramBoard.fromJson(json);
+
+        expect(decoded, equals(board));
+        expect(decoded.toJson(), equals(json));
+      },
+    );
+
+    test('GeneratedPuzzle serialization round-trips NonogramBoard state', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[],
+        ],
+        cells: const <int?>[1, null, 0, 0],
+      );
+      final GeneratedPuzzle<NonogramBoard> puzzle =
+          GeneratedPuzzle<NonogramBoard>(
+            state: board,
+            meta: const PuzzleMetadata(
+              engineVersion: 'nonogram-test',
+              rngId: 'seeded_rng',
+              size: SizeOpt(
+                id: 'mono2x2',
+                description: 'Monochrome 2x2',
+                width: 2,
+                height: 2,
+              ),
+              difficulty: DifficultyScore(value: 0.25, level: 'easy'),
+              seedStr: 'round_trip_nonogram',
+              seed64: 42,
+            ),
+            telemetry: const GenerationTelemetry(
+              difficulty: DifficultyTelemetry(
+                rawScore: 12.5,
+                bucket: 'easy',
+                metrics: <String, double>{'logicCompletion': 1.0},
+              ),
+              extras: <String, Object?>{
+                'generator': <String, Object?>{'profile': 'test'},
+              },
+            ),
+          );
+
+      final Map<String, dynamic> json = puzzle.toJson();
+      final GeneratedPuzzle<NonogramBoard> decoded =
+          GeneratedPuzzle<NonogramBoard>.fromJson(json, NonogramBoard.fromJson);
+
+      expect(decoded.state, equals(board));
+      expect(decoded.meta, equals(puzzle.meta));
+      expect(decoded.telemetry, equals(puzzle.telemetry));
+      expect(decoded.toJson(), equals(json));
+    });
   });
 }

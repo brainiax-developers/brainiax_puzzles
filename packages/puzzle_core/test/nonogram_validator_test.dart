@@ -197,5 +197,101 @@ void main() {
       expect(validator.isSolved(solution), isTrue);
       expect(validator.validateSolution(puzzle, solution).isValid, isTrue);
     });
+
+    group('line placements', () {
+      test('empty clue only permits an empty line', () {
+        expect(
+          NonogramLineSolver.generatePlacements(3, const <int>[]),
+          equals(const <List<int>>[
+            <int>[0, 0, 0],
+          ]),
+        );
+        expect(
+          NonogramLineSolver.propagate(const <int?>[
+            null,
+            null,
+            null,
+          ], const <int>[]).updated,
+          equals(const <int?>[0, 0, 0]),
+        );
+      });
+
+      test('full clue fills the entire line', () {
+        expect(
+          NonogramLineSolver.generatePlacements(3, const <int>[3]),
+          equals(const <List<int>>[
+            <int>[1, 1, 1],
+          ]),
+        );
+        expect(
+          NonogramLineSolver.propagate(
+            const <int?>[null, null, null],
+            const <int>[3],
+          ).updated,
+          equals(const <int?>[1, 1, 1]),
+        );
+      });
+
+      test('[1,1] requires a separator and enumerates legal offsets', () {
+        expect(
+          NonogramLineSolver.generatePlacements(3, const <int>[1, 1]),
+          equals(const <List<int>>[
+            <int>[1, 0, 1],
+          ]),
+        );
+        expect(
+          NonogramLineSolver.generatePlacements(4, const <int>[1, 1]),
+          equals(const <List<int>>[
+            <int>[1, 0, 1, 0],
+            <int>[1, 0, 0, 1],
+            <int>[0, 1, 0, 1],
+          ]),
+        );
+      });
+
+      test('known filled and empty contradictions remove all placements', () {
+        expect(
+          NonogramLineSolver.generatePlacements(
+            3,
+            const <int>[],
+            current: const <int?>[null, 1, null],
+          ),
+          isEmpty,
+        );
+
+        final NonogramPropagationResult result = NonogramLineSolver.propagate(
+          const <int?>[null, 0, null],
+          const <int>[3],
+        );
+
+        expect(result.contradiction, isTrue);
+        expect(result.updated, equals(const <int?>[null, 0, null]));
+      });
+
+      test('intersection reports mustFill and mustEmpty cells', () {
+        final List<List<int>> placements =
+            NonogramLineSolver.generatePlacements(5, const <int>[3]);
+
+        expect(
+          placements,
+          equals(const <List<int>>[
+            <int>[1, 1, 1, 0, 0],
+            <int>[0, 1, 1, 1, 0],
+            <int>[0, 0, 1, 1, 1],
+          ]),
+        );
+        expect(
+          NonogramLineSolver.intersectPlacements(placements),
+          equals(const <int?>[null, null, 1, null, null]),
+        );
+        expect(
+          NonogramLineSolver.propagate(
+            const <int?>[null, null, null, null, 0],
+            const <int>[3],
+          ).updated,
+          equals(const <int?>[null, 1, 1, null, 0]),
+        );
+      });
+    });
   });
 }
