@@ -119,13 +119,17 @@ class PuzzleGenerationController
         }
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          final generated = await generatePuzzleIsolated(
-            engineId: puzzleType.key,
-            seedStr: attemptSeed,
-            seed64: core.Seed.fromString(attemptSeed),
-            size: resolvedSize,
-            difficulty: difficultyScore,
-          ).timeout(attemptTimeout);
+          final worker = ref.read(puzzleGenerationWorkerProvider);
+          final generated = await worker.generate(
+            PuzzleGenerationRequest(
+              engineId: puzzleType.key,
+              seedStr: attemptSeed,
+              seed64: core.Seed.fromString(attemptSeed),
+              size: resolvedSize,
+              difficulty: difficultyScore,
+            ),
+            timeout: attemptTimeout,
+          );
           if (token == _generationToken) {
             state = AsyncValue.data(generated);
           }

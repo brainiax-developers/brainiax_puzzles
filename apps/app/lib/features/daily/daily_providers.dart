@@ -42,13 +42,18 @@ final dailyPuzzleProvider =
               : '${seed.seedStr}#attempt$attempt';
           final int attemptSeed64 = Seed.fromString(attemptSeedStr);
           try {
-            return await generatePuzzleIsolated(
-              engineId: puzzleTypeKey,
-              seedStr: attemptSeedStr,
-              seed64: attemptSeed64,
-              size: size,
-              difficulty: difficulty,
-            ).timeout(remaining);
+            return await ref
+                .read(puzzleGenerationWorkerProvider)
+                .generate(
+                  PuzzleGenerationRequest(
+                    engineId: puzzleTypeKey,
+                    seedStr: attemptSeedStr,
+                    seed64: attemptSeed64,
+                    size: size,
+                    difficulty: difficulty,
+                  ),
+                  timeout: remaining,
+                );
           } catch (error, stackTrace) {
             lastError = error;
             lastStackTrace = stackTrace;
@@ -66,13 +71,18 @@ final dailyPuzzleProvider =
         );
       }
 
-      return generatePuzzleIsolated(
-        engineId: puzzleTypeKey,
-        seedStr: seed.seedStr,
-        seed64: seed.seed64,
-        size: size,
-        difficulty: difficulty,
-      ).timeout(const Duration(seconds: 2));
+      return ref
+          .read(puzzleGenerationWorkerProvider)
+          .generate(
+            PuzzleGenerationRequest(
+              engineId: puzzleTypeKey,
+              seedStr: seed.seedStr,
+              seed64: seed.seed64,
+              size: size,
+              difficulty: difficulty,
+            ),
+            timeout: const Duration(seconds: 2),
+          );
     });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {

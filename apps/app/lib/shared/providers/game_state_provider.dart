@@ -43,13 +43,18 @@ class GameStateNotifier extends Notifier<GameState?> {
     final Duration timeout = engineId == 'kakuro_classic'
         ? const Duration(seconds: 8)
         : const Duration(seconds: 2);
-    final puzzle = await generatePuzzleIsolated(
-      engineId: engineId,
-      seedStr: seed,
-      seed64: seed64,
-      size: sizeOpt,
-      difficulty: difficultyScore,
-    ).timeout(timeout);
+    final puzzle = await ref
+        .read(puzzleGenerationWorkerProvider)
+        .generate(
+          PuzzleGenerationRequest(
+            engineId: engineId,
+            seedStr: seed,
+            seed64: seed64,
+            size: sizeOpt,
+            difficulty: difficultyScore,
+          ),
+          timeout: timeout,
+        );
     stopwatch.stop();
 
     if (kDebugMode) {
@@ -329,8 +334,9 @@ class GameStateNotifier extends Notifier<GameState?> {
 
   /// Redo the next action.
   void redo() {
-    if (state == null || _currentActionIndex >= _actionHistory.length - 1)
+    if (state == null || _currentActionIndex >= _actionHistory.length - 1) {
       return;
+    }
 
     _currentActionIndex++;
     _reconstructState();

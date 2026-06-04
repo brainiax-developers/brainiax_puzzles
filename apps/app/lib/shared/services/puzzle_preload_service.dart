@@ -14,9 +14,12 @@ import 'engine_registry_service.dart';
 /// Runs a best-effort preload of one puzzle for each supported difficulty for
 /// every registered puzzle type.
 class PuzzlePreloadService {
-  PuzzlePreloadService();
+  PuzzlePreloadService({
+    PuzzleGenerationWorker worker = const IsolatePuzzleGenerationWorker(),
+  }) : _worker = worker;
 
   final Map<String, core.GeneratedPuzzle<dynamic>> _cache = {};
+  final PuzzleGenerationWorker _worker;
   bool _isPreloading = false;
 
   static String _cacheKey(PuzzleType type, String difficulty) =>
@@ -38,8 +41,9 @@ class PuzzlePreloadService {
         // and continue — PuzzleRegistry.initialize will attempt to provide
         // stub engines if necessary.
         // ignore: avoid_print
-        if (kDebugMode)
+        if (kDebugMode) {
           print('Warning: EngineRegistryService.initialize() failed: $e');
+        }
       }
 
       final registry = PuzzleRegistry();
@@ -59,10 +63,11 @@ class PuzzlePreloadService {
                   metadata.type.key,
                 );
             if (engine == null) {
-              if (kDebugMode)
+              if (kDebugMode) {
                 print(
                   'No engine available for ${metadata.type.key} — skipping preload',
                 );
+              }
               continue;
             }
 
@@ -75,23 +80,28 @@ class PuzzlePreloadService {
                 metadata.type == PuzzleType.kakuroClassic
                 ? const Duration(seconds: 3)
                 : const Duration(seconds: 2);
-            final generated = await generatePuzzleIsolated(
-              engineId: metadata.type.key,
-              seedStr: seed,
-              seed64: core.Seed.fromString(seed),
-              size: sizeOpt,
-              difficulty: diffScore,
-            ).timeout(attemptTimeout);
+            final generated = await _worker.generate(
+              PuzzleGenerationRequest(
+                engineId: metadata.type.key,
+                seedStr: seed,
+                seed64: core.Seed.fromString(seed),
+                size: sizeOpt,
+                difficulty: diffScore,
+              ),
+              timeout: attemptTimeout,
+            );
             _cache[key] = generated;
-            if (kDebugMode)
+            if (kDebugMode) {
               print(
                 'Preloaded puzzle for ${metadata.type.key} @ $difficulty (seed: $seed)',
               );
+            }
           } catch (e) {
-            if (kDebugMode)
+            if (kDebugMode) {
               print(
                 'Preload failed for ${metadata.type.key} @ $difficulty: $e',
               );
+            }
           }
 
           // Yield to event loop so we don't permanently block startup.
@@ -268,5 +278,7 @@ class PuzzlePreloadService {
 
 /// Riverpod provider exposing a singleton preload service.
 final puzzlePreloadProvider = Provider<PuzzlePreloadService>((ref) {
-  return PuzzlePreloadService();
+  return PuzzlePreloadService(
+    worker: ref.watch(puzzleGenerationWorkerProvider),
+  );
 });
