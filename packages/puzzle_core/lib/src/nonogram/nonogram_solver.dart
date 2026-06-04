@@ -30,6 +30,11 @@ class NonogramSolver extends PuzzleSolver<NonogramBoard> {
       'logicCompletion': result.logicCompletion,
       'speculativeSteps': result.speculativeSteps,
       'visitedNodes': result.visitedNodes,
+      'maxDepthReached': result.maxDepthReached,
+      'branchCount': result.branchCount,
+      'contradictionCount': result.contradictionCount,
+      'cacheHits': result.cacheHits,
+      'cacheMisses': result.cacheMisses,
       'lineIterations': result.lineIterations,
       'depthCapHit': result.depthCapHit,
       'lineIterationCapHit': result.lineIterationCapHit,
@@ -64,10 +69,14 @@ class _NonogramSearch {
   final int? speculativeStepBudget;
 
   final List<NonogramBoard> solutions = <NonogramBoard>[];
+  final NonogramLineCache lineCache = NonogramLineCache();
   int logicAssignments = 0;
   int initialLogicAssignments = 0;
   int speculativeSteps = 0;
   int visitedNodes = 0;
+  int maxDepthReached = 0;
+  int branchCount = 0;
+  int contradictionCount = 0;
   int lineIterations = 0;
   bool depthCapHit = false;
   bool lineIterationCapHit = false;
@@ -84,6 +93,7 @@ class _NonogramSearch {
       lineIterationCapHit = true;
     }
     if (rootLogic.contradiction) {
+      contradictionCount++;
       return _result();
     }
 
@@ -114,6 +124,11 @@ class _NonogramSearch {
       logicCompletion: _logicCompletion(board, initialLogicAssignments),
       speculativeSteps: speculativeSteps,
       visitedNodes: visitedNodes,
+      maxDepthReached: maxDepthReached,
+      branchCount: branchCount,
+      contradictionCount: contradictionCount,
+      cacheHits: lineCache.cacheHits,
+      cacheMisses: lineCache.cacheMisses,
       lineIterations: lineIterations,
       depthCapHit: depthCapHit,
       lineIterationCapHit: lineIterationCapHit,
@@ -129,9 +144,11 @@ class _NonogramSearch {
       return;
     }
     visitedNodes++;
+    if (depth > maxDepthReached) {
+      maxDepthReached = depth;
+    }
 
-    final int? cellIndex = state.firstUnsolvedCell();
-    if (cellIndex == null) {
+    if (state.isSolved) {
       solutions.add(state.toBoard());
       return;
     }
@@ -147,13 +164,20 @@ class _NonogramSearch {
       return;
     }
 
+    final _BranchChoice? branchChoice = _selectBranch(state);
+    if (branchChoice == null) {
+      depthCapHit = true;
+      return;
+    }
+
     speculativeSteps++;
+    branchCount++;
     for (final int assumption in <int>[
       NonogramLineSolver.filled,
       NonogramLineSolver.empty,
     ]) {
       final _SearchState child = state.clone();
-      child.cells[cellIndex] = assumption;
+      child.cells[branchChoice.cellIndex] = assumption;
       final _LogicResult logicResult = _applyLogic(
         child,
         trackAssignments: false,
@@ -164,6 +188,7 @@ class _NonogramSearch {
         continue;
       }
       if (logicResult.contradiction) {
+        contradictionCount++;
         continue;
       }
       if (child.isSolved) {
@@ -214,7 +239,11 @@ class _NonogramSearch {
       for (int row = 0; row < board.height; row++) {
         final List<int?> values = state.row(row);
         final NonogramPropagationResult propagation =
-            NonogramLineSolver.propagate(values, board.rowClues[row]);
+            NonogramLineSolver.propagate(
+              values,
+              board.rowClues[row],
+              cache: lineCache,
+            );
         if (propagation.contradiction) {
           return _LogicResult(contradiction: true);
         }
@@ -235,7 +264,11 @@ class _NonogramSearch {
       for (int col = 0; col < board.width; col++) {
         final List<int?> values = state.column(col);
         final NonogramPropagationResult propagation =
-            NonogramLineSolver.propagate(values, board.columnClues[col]);
+            NonogramLineSolver.propagate(
+              values,
+              board.columnClues[col],
+              cache: lineCache,
+            );
         if (propagation.contradiction) {
           return _LogicResult(contradiction: true);
         }
@@ -259,6 +292,132 @@ class _NonogramSearch {
       assignments: assignments,
       iterations: iterations,
     );
+  }
+
+  _BranchChoice? _selectBranch(_SearchState state) {
+    _BranchChoice? best;
+
+    for (int row = 0; row < board.height; row++) {
+      final List<int?> values = state.row(row);
+      if (!values.contains(null)) {
+        continue;
+      }
+      final NonogramLineSummary summary = lineCache.summary(
+        values,
+        board.rowClues[row],
+      );
+      if (summary.contradiction || summary.domainSize <= 1) {
+        continue;
+      }
+      best = _betterBranchChoice(
+        best,
+        _branchChoiceForLine(
+          state: state,
+          summary: summary,
+          values: values,
+          isRow: true,
+          lineIndex: row,
+        ),
+      );
+    }
+
+    for (int col = 0; col < board.width; col++) {
+      final List<int?> values = state.column(col);
+      if (!values.contains(null)) {
+        continue;
+      }
+      final NonogramLineSummary summary = lineCache.summary(
+        values,
+        board.columnClues[col],
+      );
+      if (summary.contradiction || summary.domainSize <= 1) {
+        continue;
+      }
+      best = _betterBranchChoice(
+        best,
+        _branchChoiceForLine(
+          state: state,
+          summary: summary,
+          values: values,
+          isRow: false,
+          lineIndex: col,
+        ),
+      );
+    }
+
+    return best;
+  }
+
+  _BranchChoice? _branchChoiceForLine({
+    required _SearchState state,
+    required NonogramLineSummary summary,
+    required List<int?> values,
+    required bool isRow,
+    required int lineIndex,
+  }) {
+    int bestCellOffset = -1;
+    int bestSplit = -1;
+    int bestImbalance = summary.domainSize + 1;
+
+    for (int offset = 0; offset < values.length; offset++) {
+      if (values[offset] != null) {
+        continue;
+      }
+      int filledCount = 0;
+      for (final List<int> placement in summary.placements) {
+        if (placement[offset] == NonogramLineSolver.filled) {
+          filledCount++;
+        }
+      }
+      final int emptyCount = summary.domainSize - filledCount;
+      if (filledCount == 0 || emptyCount == 0) {
+        continue;
+      }
+      final int split = filledCount < emptyCount ? filledCount : emptyCount;
+      final int imbalance = (filledCount - emptyCount).abs();
+      if (split > bestSplit ||
+          (split == bestSplit && imbalance < bestImbalance)) {
+        bestCellOffset = offset;
+        bestSplit = split;
+        bestImbalance = imbalance;
+      }
+    }
+
+    if (bestCellOffset < 0) {
+      return null;
+    }
+
+    final int cellIndex = isRow
+        ? lineIndex * state.width + bestCellOffset
+        : bestCellOffset * state.width + lineIndex;
+    return _BranchChoice(
+      cellIndex: cellIndex,
+      domainSize: summary.domainSize,
+      splitScore: bestSplit,
+      imbalance: bestImbalance,
+    );
+  }
+
+  _BranchChoice? _betterBranchChoice(
+    _BranchChoice? current,
+    _BranchChoice? candidate,
+  ) {
+    if (candidate == null) {
+      return current;
+    }
+    if (current == null) {
+      return candidate;
+    }
+    if (candidate.domainSize != current.domainSize) {
+      return candidate.domainSize < current.domainSize ? candidate : current;
+    }
+    if (candidate.splitScore != current.splitScore) {
+      return candidate.splitScore > current.splitScore ? candidate : current;
+    }
+    if (candidate.imbalance != current.imbalance) {
+      return candidate.imbalance < current.imbalance ? candidate : current;
+    }
+    return candidate.cellIndex < current.cellIndex ? candidate : current;
   }
 
   SolverStatus _statusFor(bool proofIncomplete) {
@@ -326,15 +485,6 @@ class _SearchState {
     );
   }
 
-  int? firstUnsolvedCell() {
-    for (int i = 0; i < cells.length; i++) {
-      if (cells[i] == null) {
-        return i;
-      }
-    }
-    return null;
-  }
-
   List<int?> row(int row) {
     final int offset = row * width;
     return List<int?>.generate(width, (int index) => cells[offset + index]);
@@ -343,6 +493,20 @@ class _SearchState {
   List<int?> column(int col) {
     return List<int?>.generate(height, (int row) => cells[row * width + col]);
   }
+}
+
+class _BranchChoice {
+  const _BranchChoice({
+    required this.cellIndex,
+    required this.domainSize,
+    required this.splitScore,
+    required this.imbalance,
+  });
+
+  final int cellIndex;
+  final int domainSize;
+  final int splitScore;
+  final int imbalance;
 }
 
 class _LogicResult {
@@ -367,6 +531,11 @@ class _SearchResult {
     required this.logicCompletion,
     required this.speculativeSteps,
     required this.visitedNodes,
+    required this.maxDepthReached,
+    required this.branchCount,
+    required this.contradictionCount,
+    required this.cacheHits,
+    required this.cacheMisses,
     required this.lineIterations,
     required this.depthCapHit,
     required this.lineIterationCapHit,
@@ -382,6 +551,11 @@ class _SearchResult {
   final double logicCompletion;
   final int speculativeSteps;
   final int visitedNodes;
+  final int maxDepthReached;
+  final int branchCount;
+  final int contradictionCount;
+  final int cacheHits;
+  final int cacheMisses;
   final int lineIterations;
   final bool depthCapHit;
   final bool lineIterationCapHit;

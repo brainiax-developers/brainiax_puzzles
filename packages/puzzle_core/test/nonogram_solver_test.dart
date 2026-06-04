@@ -44,6 +44,23 @@ void main() {
       expect(result.solutions.length, equals(2));
     });
 
+    test('reports deterministic search cache telemetry', () {
+      final SolverResult<NonogramBoard> result = const NonogramSolver().solve(
+        _twoSolutionPuzzle(),
+        SolverContext(rng: SeededRng(107), maxSolutions: 2),
+      );
+
+      expect(result.status, equals(SolverStatus.multiple));
+      expect(result.telemetry['visitedNodes'], isA<int>());
+      expect(result.telemetry['maxDepthReached'], isA<int>());
+      expect(result.telemetry['branchCount'], isA<int>());
+      expect(result.telemetry['contradictionCount'], isA<int>());
+      expect(result.telemetry['cacheHits'], isA<int>());
+      expect(result.telemetry['cacheMisses'], isA<int>());
+      expect(result.telemetry['branchCount'], greaterThan(0));
+      expect(result.telemetry['cacheMisses'], greaterThan(0));
+    });
+
     test('reports noSolution only for a fully proven contradiction', () {
       final NonogramBoard puzzle = NonogramBoard.empty(
         width: 2,

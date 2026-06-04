@@ -379,6 +379,9 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     final Map<String, Object?> generatorTelemetry = _asObjectMap(
       puzzle?.telemetry?.extras['generator'],
     );
+    final Map<String, Object?> solverTelemetry = _asObjectMap(
+      puzzle?.telemetry?.extras['solver'],
+    );
     final String? measuredBucket =
         generatorTelemetry['measuredDifficultyBucket'] as String? ??
         generatorTelemetry['difficultyBucket'] as String?;
@@ -394,6 +397,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       if (attemptCount != null) 'attempts': attemptCount,
       if (rejectCounters != null) 'rejectCounters': rejectCounters,
       if (hardCapExceeded != null) 'hardCapExceeded': hardCapExceeded,
+      if (solverTelemetry.isNotEmpty) 'solverTelemetry': solverTelemetry,
     };
     const List<String> kakuroTelemetryFields = <String>[
       'layoutHash',
