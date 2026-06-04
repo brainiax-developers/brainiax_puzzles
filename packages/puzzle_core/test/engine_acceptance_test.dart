@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:puzzle_core/puzzle_core.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:test/test.dart';
 
 class EngineAcceptanceConfig<TBoard> {
@@ -961,18 +960,18 @@ List<DifficultyFixture<NonogramBoard>> _nonogramDifficultyFixtures() {
     width: 5,
     height: 5,
     rowClues: const <List<int>>[
-      <int>[5],
-      <int>[1, 1],
-      <int>[5],
-      <int>[1, 1],
-      <int>[5],
+      <int>[],
+      <int>[3],
+      <int>[3],
+      <int>[3],
+      <int>[],
     ],
     columnClues: const <List<int>>[
-      <int>[5],
+      <int>[],
       <int>[3],
-      <int>[5],
       <int>[3],
-      <int>[5],
+      <int>[3],
+      <int>[],
     ],
     cells: List<int?>.filled(25, null),
   );
@@ -982,42 +981,92 @@ List<DifficultyFixture<NonogramBoard>> _nonogramDifficultyFixtures() {
     height: 5,
     rowClues: board.rowClues,
     columnClues: board.columnClues,
-    cells: List<int?>.filled(25, 1),
+    cells: const <int?>[
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ],
   );
 
-  Map<String, Object?> telemetry(double completion, int speculative) =>
-      <String, Object?>{
-        'logicCompletion': completion,
-        'speculativeSteps': speculative,
-      };
+  Map<String, Object?> telemetry(
+    double completion, {
+    int speculative = 0,
+    int visitedNodes = 0,
+    int maxDepth = 0,
+    int branchCount = 0,
+    int contradictionCount = 0,
+  }) => <String, Object?>{
+    'logicCompletion': completion,
+    'speculativeSteps': speculative,
+    'propagationRounds': 3,
+    'visitedNodes': visitedNodes,
+    'maxDepth': maxDepth,
+    'branchCount': branchCount,
+    'contradictionCount': contradictionCount,
+  };
 
   return <DifficultyFixture<NonogramBoard>>[
     DifficultyFixture<NonogramBoard>(
       name: 'nonogram-easy',
       puzzle: board,
       solution: solution,
-      solverTelemetry: telemetry(0.95, 0),
+      solverTelemetry: telemetry(0.95),
       expectedBucket: 'easy',
     ),
     DifficultyFixture<NonogramBoard>(
       name: 'nonogram-medium',
       puzzle: board,
       solution: solution,
-      solverTelemetry: telemetry(0.7, 1),
+      solverTelemetry: telemetry(0.7, speculative: 1),
       expectedBucket: 'medium',
     ),
     DifficultyFixture<NonogramBoard>(
       name: 'nonogram-hard',
       puzzle: board,
       solution: solution,
-      solverTelemetry: telemetry(0.45, 2),
+      solverTelemetry: telemetry(
+        0.45,
+        speculative: 2,
+        visitedNodes: 1,
+        branchCount: 1,
+        contradictionCount: 1,
+      ),
       expectedBucket: 'hard',
     ),
     DifficultyFixture<NonogramBoard>(
       name: 'nonogram-expert',
       puzzle: board,
       solution: solution,
-      solverTelemetry: telemetry(0.2, 3),
+      solverTelemetry: telemetry(
+        0.2,
+        speculative: 3,
+        visitedNodes: 2,
+        maxDepth: 2,
+        branchCount: 2,
+        contradictionCount: 2,
+      ),
       expectedBucket: 'expert',
     ),
   ];
