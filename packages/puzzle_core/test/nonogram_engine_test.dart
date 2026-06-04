@@ -201,5 +201,57 @@ void main() {
       );
       expect(easy.metrics['rawScore'], equals(easy.rawScore));
     });
+
+    test('fixed seeds emit bounded bitmap profile telemetry', () {
+      final GeneratedPuzzle<NonogramBoard> easyPuzzle = engine.generate(
+        seedStr: 'calibrate_easy_0',
+        seed64: Seed.fromString('calibrate_easy_0'),
+        size: size10,
+        difficulty: const DifficultyScore(value: 0.0, level: 'easy'),
+      );
+      final GeneratedPuzzle<NonogramBoard> mediumPuzzle = engine.generate(
+        seedStr: 'calibrate_medium_2',
+        seed64: Seed.fromString('calibrate_medium_2'),
+        size: size10,
+        difficulty: const DifficultyScore(value: 0.0, level: 'medium'),
+      );
+      final GeneratedPuzzle<NonogramBoard> hardPuzzle = engine.generate(
+        seedStr: 'calibrate_hard_2',
+        seed64: Seed.fromString('calibrate_hard_2'),
+        size: size10,
+        difficulty: const DifficultyScore(value: 0.0, level: 'hard'),
+      );
+
+      final Map<String, Object?> easyGenerator =
+          easyPuzzle.telemetry!.extras['generator']! as Map<String, Object?>;
+      final Map<String, Object?> mediumGenerator =
+          mediumPuzzle.telemetry!.extras['generator']! as Map<String, Object?>;
+      final Map<String, Object?> hardGenerator =
+          hardPuzzle.telemetry!.extras['generator']! as Map<String, Object?>;
+
+      for (final Map<String, Object?> telemetry in <Map<String, Object?>>[
+        easyGenerator,
+        mediumGenerator,
+        hardGenerator,
+      ]) {
+        expect(telemetry['candidateDensity'], isA<num>());
+        expect(telemetry['fragmentation'], isA<num>());
+        expect(telemetry['visualScore'], isA<num>());
+        expect(telemetry['rejectionReason'], equals('accepted'));
+        expect(telemetry['attempts'], lessThanOrEqualTo(64));
+      }
+
+      expect(easyGenerator['profile'], equals('easy'));
+      expect(mediumGenerator['profile'], equals('medium'));
+      expect(hardGenerator['profile'], equals('hard'));
+      expect(
+        easyGenerator['fragmentation']! as num,
+        lessThan(mediumGenerator['fragmentation']! as num),
+      );
+      expect(
+        mediumGenerator['fragmentation']! as num,
+        lessThan(hardGenerator['fragmentation']! as num),
+      );
+    });
   });
 }
