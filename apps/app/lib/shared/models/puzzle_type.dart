@@ -34,7 +34,9 @@ enum PuzzleType {
     sudokuClassic,
     nonogramMono,
     kakuroClassic,
+    slitherlinkLoop,
     mathdokuClassic,
+    killerQueens,
     takuzuBinary,
   ];
 

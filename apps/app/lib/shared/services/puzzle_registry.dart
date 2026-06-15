@@ -94,10 +94,8 @@ class PuzzleRegistry {
       categorized.putIfAbsent(metadata.category, () => []).add(metadata);
     }
 
-    // Ensure a stable, intentional ordering within each category. In
-    // particular, keep "coming soon" puzzles like Killer Queens and
-    // Slitherlink at the bottom of the list (after Binary Takuzu) while
-    // keeping their engines registered for future use.
+    // Ensure a stable, intentional ordering within each category so recently
+    // enabled engines remain near the bottom without affecting availability.
     for (final entry in categorized.entries) {
       entry.value.sort(
         (a, b) => _sortKeyForType(a.type).compareTo(_sortKeyForType(b.type)),
@@ -116,9 +114,8 @@ class PuzzleRegistry {
 
   /// Sort key to control display order of puzzles within a category.
   ///
-  /// Normal playable puzzles come first, followed by Binary Takuzu, then any
-  /// temporarily disabled/"coming soon" puzzles such as Killer Queens and
-  /// Slitherlink.
+  /// Normal playable puzzles come first, followed by Binary Takuzu, then
+  /// Slitherlink and Killer Queens.
   int _sortKeyForType(app.PuzzleType type) {
     switch (type) {
       case app.PuzzleType.killerQueens:

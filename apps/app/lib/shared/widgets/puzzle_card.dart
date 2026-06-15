@@ -93,15 +93,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
     });
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final bool isComingSoon =
-      widget.metadata.type == PuzzleType.killerQueens ||
-      widget.metadata.type == PuzzleType.slitherlinkLoop;
-    
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
@@ -125,7 +119,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: widget.metadata.primaryAccentColor.withOpacity(0.2),
+                      color: widget.metadata.primaryAccentColor.withOpacity(
+                        0.2,
+                      ),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -157,32 +153,12 @@ class _PuzzleCardState extends State<PuzzleCard> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Difficulty selectors or coming-soon message
               if (_isLoading)
                 const SizedBox(height: 32) // Placeholder while loading
-              else if (isComingSoon)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Coming soon',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: widget.metadata.primaryAccentColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'This puzzle will be available in a future update.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                  ],
-                )
               else
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,7 +174,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
                     Wrap(
                       spacing: 16,
                       runSpacing: 8,
-                      children: widget.metadata.supportedDifficulties.map((difficulty) {
+                      children: widget.metadata.supportedDifficulties.map((
+                        difficulty,
+                      ) {
                         // Use chip style for all puzzles (radio behavior with chip visuals)
                         return _DifficultyChip(
                           difficulty: difficulty,
@@ -210,20 +188,15 @@ class _PuzzleCardState extends State<PuzzleCard> {
                     ),
                   ],
                 ),
-              
+
               const SizedBox(height: 16),
-              
-              // Daily Challenge Surface (disabled for coming-soon puzzles)
-              if (!isComingSoon)
-                DailySurface(
-                  puzzleType: widget.metadata.type,
-                  compact: true,
-                ),
-              
-              if (!isComingSoon) const SizedBox(height: 12),
+
+              DailySurface(puzzleType: widget.metadata.type, compact: true),
+
+              const SizedBox(height: 12),
 
               // Continue Game (when in-progress exists)
-              if (!isComingSoon && _hasProgress) ...[
+              if (_hasProgress) ...[
                 SizedBox(
                   width: double.infinity,
                   child: _ActionButton(
@@ -244,7 +217,10 @@ class _PuzzleCardState extends State<PuzzleCard> {
                             );
                           }
                           if (!context.mounted) return;
-                          context.push('/play/${widget.metadata.type.key}/random', extra: puzzle);
+                          context.push(
+                            '/play/${widget.metadata.type.key}/random',
+                            extra: puzzle,
+                          );
                         }
                       } catch (_) {}
                     },
@@ -252,9 +228,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
                 ),
                 const SizedBox(height: 8),
               ],
-              
+
               // New Game Button (only show if difficulty is selected)
-              if (!isComingSoon && _selectedDifficulty != null) ...[
+              if (_selectedDifficulty != null) ...[
                 SizedBox(
                   width: double.infinity,
                   child: _ActionButton(
@@ -264,14 +240,17 @@ class _PuzzleCardState extends State<PuzzleCard> {
                     color: widget.metadata.primaryAccentColor,
                     onPressed: () {
                       if (widget.onRandomPlay != null) {
-                        widget.onRandomPlay!(widget.metadata.type, _selectedDifficulty!);
+                        widget.onRandomPlay!(
+                          widget.metadata.type,
+                          _selectedDifficulty!,
+                        );
                       }
                     },
                   ),
                 ),
                 const SizedBox(height: 8),
               ],
-              
+
               // Removed legacy Random Puzzle button; Random Play supersedes it
             ],
           ),
@@ -284,10 +263,13 @@ class _PuzzleCardState extends State<PuzzleCard> {
     setState(() {
       _selectedDifficulty = difficulty;
     });
-    
+
     // Save the preference
-    DifficultyPreferenceService.setPreferredDifficulty(widget.metadata.type, difficulty);
-    
+    DifficultyPreferenceService.setPreferredDifficulty(
+      widget.metadata.type,
+      difficulty,
+    );
+
     if (widget.onDifficultySelected != null) {
       widget.onDifficultySelected!(difficulty);
     }
@@ -311,20 +293,16 @@ class _DifficultyChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? color 
-              : color.withOpacity(0.15),
+          color: isSelected ? color : color.withOpacity(0.15),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected 
-                ? color 
-                : color.withOpacity(0.3),
+            color: isSelected ? color : color.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -363,7 +341,7 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
