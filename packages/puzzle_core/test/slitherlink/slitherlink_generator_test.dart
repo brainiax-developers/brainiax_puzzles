@@ -89,6 +89,57 @@ void main() {
       expect(roundTrip, equals(result.board));
     });
 
+    test('emits rich difficulty telemetry in generator snapshot', () {
+      final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+          .generate(contextFor('slitherlink_telemetry', 5));
+      final Map<String, Object?> telemetry = result.snapshot.telemetry;
+
+      _expectSlitherlinkTelemetryKeys(telemetry);
+      expect(
+        telemetry['revealedClues'],
+        equals(result.board.clues.where((int? clue) => clue != null).length),
+      );
+      expect(
+        telemetry['hiddenClues'],
+        equals(result.board.clues.where((int? clue) => clue == null).length),
+      );
+      final Map<String, Object?> histogram = (telemetry['clueHistogram'] as Map)
+          .cast<String, Object?>();
+      expect(histogram.keys, containsAll(<String>['0', '1', '2', '3']));
+    });
+
+    test('exposes rich difficulty telemetry on generated puzzles', () {
+      final SlitherlinkEngine engine = SlitherlinkEngine(
+        config: const DifficultyBucketConfig(
+          buckets: <DifficultyBucketThreshold>[
+            DifficultyBucketThreshold(id: 'medium', maxInclusive: 9999.0),
+          ],
+        ),
+      );
+      final GeneratedPuzzle<SlitherlinkBoard> generated = engine.generate(
+        seedStr: 'slitherlink_generated_telemetry',
+        seed64: Seed.fromString('slitherlink_generated_telemetry'),
+        size: const SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5),
+        difficulty: const DifficultyScore(value: 0.5, level: 'medium'),
+      );
+
+      final GenerationTelemetry telemetry = generated.telemetry!;
+      final Map<String, Object?> generatorTelemetry =
+          (telemetry.extras['generator'] as Map).cast<String, Object?>();
+      final Map<String, num> metrics = telemetry.difficulty.metrics;
+
+      _expectSlitherlinkTelemetryKeys(generatorTelemetry);
+      expect(
+        telemetry.difficulty.bucket,
+        equals(generated.meta.difficulty.level),
+      );
+      expect(metrics.keys, containsAll(_slitherlinkDifficultyMetricKeys));
+      expect(
+        engine.difficultyConfig.bucketFor(telemetry.difficulty.rawScore),
+        equals(generated.meta.difficulty.level),
+      );
+    });
+
     test('rejects non-unique full-clue fallback solves', () {
       final SlitherlinkBoard first = _solvedBoard(
         width: 1,
@@ -120,6 +171,39 @@ void main() {
       expect(slitherlinkFallbackSolveAccepted(fallbackSolve), isFalse);
     });
   });
+}
+
+const List<String> _slitherlinkTelemetryKeys = <String>[
+  'clueDensity',
+  'revealedClues',
+  'hiddenClues',
+  'clueHistogram',
+  'loopEdgeCount',
+  'speculativeSteps',
+  'maxDepth',
+  'localAssignments',
+  'globalAssignments',
+  'totalAssignments',
+];
+
+const List<String> _slitherlinkDifficultyMetricKeys = <String>[
+  'clueDensity',
+  'revealedClues',
+  'hiddenClues',
+  'clue0',
+  'clue1',
+  'clue2',
+  'clue3',
+  'loopEdgeCount',
+  'speculativeSteps',
+  'maxDepth',
+  'localAssignments',
+  'globalAssignments',
+  'totalAssignments',
+];
+
+void _expectSlitherlinkTelemetryKeys(Map<String, Object?> telemetry) {
+  expect(telemetry.keys, containsAll(_slitherlinkTelemetryKeys));
 }
 
 SlitherlinkBoard _solvedBoard({

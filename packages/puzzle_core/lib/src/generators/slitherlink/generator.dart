@@ -81,6 +81,7 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
         maxSolutions: 2,
       ),
     );
+    Map<String, Object?> solverTelemetry = verificationResult.telemetry;
 
     bool fallbackFullClues = false;
     if (!verificationResult.isUnique) {
@@ -100,6 +101,7 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
       if (!slitherlinkFallbackSolveAccepted(fallbackSolve)) {
         throw StateError('Slitherlink fallback puzzle is not provably unique');
       }
+      solverTelemetry = fallbackSolve.telemetry;
       solutionEdges = Uint8List.fromList(fallbackSolve.solutions.first.edges);
     } else if (verificationResult.solutions.isNotEmpty) {
       solutionEdges = Uint8List.fromList(
@@ -122,6 +124,7 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
         if (!slitherlinkRetrySolveAccepted(retrySolve, targetEdges)) {
           throw StateError('Slitherlink generator drifted from target loop');
         }
+        solverTelemetry = retrySolve.telemetry;
         solutionEdges = Uint8List.fromList(retrySolve.solutions.first.edges);
       }
     }
@@ -129,6 +132,9 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
     stopwatch.stop();
 
     final int revealedClues = puzzle.clues.where((int? c) => c != null).length;
+    final int totalCells = width * height;
+    final int hiddenClues = totalCells - revealedClues;
+    final Map<String, int> clueHistogram = _clueHistogram(puzzle.clues);
     final int removedClues = fallbackFullClues
         ? 0
         : removal.stats.removedClueCount;
@@ -137,8 +143,16 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
       'height': height,
       'difficulty': context.difficulty.level.toLowerCase(),
       'generator': 'region_color',
+      'clueDensity': totalCells == 0 ? 0.0 : revealedClues / totalCells,
       'revealedClues': revealedClues,
+      'hiddenClues': hiddenClues,
+      'clueHistogram': clueHistogram,
       'loopEdgeCount': loop.loopLength,
+      'speculativeSteps': solverTelemetry['speculativeSteps'] ?? 0,
+      'maxDepth': solverTelemetry['maxDepth'] ?? 0,
+      'localAssignments': solverTelemetry['localAssignments'] ?? 0,
+      'globalAssignments': solverTelemetry['globalAssignments'] ?? 0,
+      'totalAssignments': solverTelemetry['totalAssignments'] ?? 0,
       'solverCalls': removal.stats.solverCalls,
       'removalMaxDepth': removal.stats.maxDepthHit,
       'removalElapsedUs': removal.stats.elapsed.inMicroseconds,
@@ -204,6 +218,25 @@ bool _edgesMatch(List<int> a, List<int> b) {
     }
   }
   return true;
+}
+
+Map<String, int> _clueHistogram(List<int?> clues) {
+  final Map<String, int> histogram = <String, int>{
+    '0': 0,
+    '1': 0,
+    '2': 0,
+    '3': 0,
+  };
+  for (final int? clue in clues) {
+    if (clue == null) {
+      continue;
+    }
+    final String key = clue.toString();
+    if (histogram.containsKey(key)) {
+      histogram[key] = histogram[key]! + 1;
+    }
+  }
+  return histogram;
 }
 
 bool slitherlinkFallbackSolveAccepted(

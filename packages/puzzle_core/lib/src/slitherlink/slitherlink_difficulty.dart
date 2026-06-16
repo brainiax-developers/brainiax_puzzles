@@ -11,11 +11,15 @@ class SlitherlinkDifficultyScorer extends DifficultyScorer<SlitherlinkBoard> {
     required DifficultyContext context,
   }) {
     final Map<String, Object?> telemetry = context.solverTelemetry;
+    final Map<String, Object?> generation = context.generatorTelemetry;
     final double totalAssignments = _asDouble(telemetry['totalAssignments']);
     final double localAssignments = _asDouble(telemetry['localAssignments']);
     final double globalAssignments = _asDouble(telemetry['globalAssignments']);
     final double speculativeSteps = _asDouble(telemetry['speculativeSteps']);
     final double maxDepth = _asDouble(telemetry['maxDepth']);
+    final Map<String, Object?> clueHistogram =
+        (generation['clueHistogram'] as Map?)?.cast<String, Object?>() ??
+        const <String, Object?>{};
 
     final double localRatio = totalAssignments <= 0
         ? 1.0
@@ -38,6 +42,14 @@ class SlitherlinkDifficultyScorer extends DifficultyScorer<SlitherlinkBoard> {
       'globalAssignments': globalAssignments,
       'speculativeSteps': speculativeSteps,
       'maxDepth': maxDepth,
+      'clueDensity': _asDouble(generation['clueDensity']),
+      'revealedClues': _asDouble(generation['revealedClues']),
+      'hiddenClues': _asDouble(generation['hiddenClues']),
+      'clue0': _asDouble(clueHistogram['0']),
+      'clue1': _asDouble(clueHistogram['1']),
+      'clue2': _asDouble(clueHistogram['2']),
+      'clue3': _asDouble(clueHistogram['3']),
+      'loopEdgeCount': _asDouble(generation['loopEdgeCount']),
       'localRatio': localRatio,
       'globalRatio': globalRatio,
       'localPenalty': localPenalty,
