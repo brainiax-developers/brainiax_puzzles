@@ -91,7 +91,6 @@ void main() {
               jsonEncode((board as KillerQueensBoard).toJson()),
           difficultyFixtures: _killerQueensDifficultyFixtures(),
           validationP95Millis: 45,
-          requiresUniqueSolutions: false,
         ),
         EngineAcceptanceConfig<MathdokuBoard>(
           name: 'Mathdoku',

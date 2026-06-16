@@ -1,8 +1,12 @@
 import 'dart:math' as math;
 
 import '../generators/generator.dart';
+import '../solver/solver.dart';
 import '../util/seeded_rng.dart';
 import 'killer_queens_board.dart';
+import 'killer_queens_solver.dart';
+
+const int _generatorSolverSalt = 0x41f1c3d5a7b92e11;
 
 class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
   const KillerQueensGenerator();
@@ -117,25 +121,61 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
     final int cellCount = width * width;
     final int queenCount = queenIndices.length;
 
-    // No givens for any difficulty - all cells start empty
-    final List<int> puzzleCells = List<int>.filled(cellCount, 0);
-    final List<bool> fixed = List<bool>.filled(cellCount, false);
-
-    // Store the solution internally for validation purposes
     final List<int> solutionCells = List<int>.filled(cellCount, 0);
+    final List<bool> puzzleFixed = List<bool>.filled(cellCount, false);
     for (final int index in queenIndices) {
       solutionCells[index] = 1;
+      puzzleFixed[index] = true;
     }
 
-    final int removals = queenCount; // All queens removed
-    final int uniquenessChecks = 0; // No uniqueness checks needed
+    final List<int> puzzleCells = List<int>.from(solutionCells);
+    final int targetGivens = tier.givensRange.$2;
+    final int targetRemovals = math.max(0, queenCount - targetGivens);
+    int removals = 0;
+    int uniquenessChecks = 0;
+    final List<int> removalOrder = List<int>.from(queenIndices);
+    context.rng.shuffle(removalOrder);
+
+    final KillerQueensSolver solver = const KillerQueensSolver();
+    for (final int index in removalOrder) {
+      if (removals >= targetRemovals) {
+        break;
+      }
+
+      puzzleCells[index] = 0;
+      puzzleFixed[index] = false;
+      final KillerQueensBoard candidate = KillerQueensBoard(
+        size: width,
+        cells: puzzleCells,
+        fixed: puzzleFixed,
+        cages: cages,
+      );
+
+      uniquenessChecks += 1;
+      final SolverResult<KillerQueensBoard> uniqueness = solver.solve(
+        candidate,
+        SolverContext(
+          rng: SeededRng(
+            context.seed64 ^ _generatorSolverSalt ^ uniquenessChecks,
+          ),
+          maxSolutions: 2,
+        ),
+      );
+      if (uniqueness.solutionStatus == SolverStatus.unique) {
+        removals += 1;
+      } else {
+        puzzleCells[index] = 1;
+        puzzleFixed[index] = true;
+      }
+    }
 
     final KillerQueensBoard puzzle = KillerQueensBoard(
       size: width,
       cells: puzzleCells,
-      fixed: fixed,
+      fixed: puzzleFixed,
       cages: cages,
     );
+    final int givens = puzzle.fixed.where((bool fixed) => fixed).length;
 
     return PuzzleGenerationResult<KillerQueensBoard>(
       board: puzzle,
@@ -143,12 +183,12 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
         telemetry: <String, Object?>{
           'tier': tier.tier,
           'attempts': attempt,
-          'givens': 0, // No givens in any difficulty
+          'givens': givens,
           'cageCount': cages.length,
           'initialCageCount': initialCageCount,
           'removals': removals,
-          'targetMinGivens': 0, // No givens target
-          'targetMaxGivens': 0, // No givens target
+          'targetMinGivens': tier.givensRange.$1,
+          'targetMaxGivens': tier.givensRange.$2,
           'uniquenessChecks': uniquenessChecks,
         },
       ),

@@ -53,6 +53,7 @@ class _KillerQueensSearch {
     'branches': _branches,
     'backtracks': _backtracks,
     'solutions': _solutions.length,
+    'maxSolutions': maxSolutions,
     'inconsistent': _inconsistent,
   };
 
