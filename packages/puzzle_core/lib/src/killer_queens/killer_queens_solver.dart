@@ -18,6 +18,7 @@ class KillerQueensSolver extends PuzzleSolver<KillerQueensBoard> {
       solutions: solutions,
       elapsed: stopwatch.elapsed,
       telemetry: search.telemetry,
+      status: search.status,
     );
   }
 }
@@ -27,7 +28,8 @@ class _KillerQueensSearch {
     : size = board.size,
       cageByCell = board.cageByCell,
       rng = context.rng,
-      maxSolutions = context.maxSolutions;
+      maxSolutions = context.maxSolutions,
+      speculativeStepBudget = context.speculativeStepBudget;
 
   final KillerQueensBoard board;
   final SolverContext context;
@@ -35,6 +37,7 @@ class _KillerQueensSearch {
   final List<int> cageByCell;
   final SeededRng rng;
   final int maxSolutions;
+  final int? speculativeStepBudget;
 
   final List<KillerQueensBoard> _solutions = <KillerQueensBoard>[];
   final List<int> _queenPositions = <int>[];
@@ -46,16 +49,59 @@ class _KillerQueensSearch {
   int _nodes = 0;
   int _branches = 0;
   int _backtracks = 0;
+  int _maxDepth = 0;
+  final List<int> _candidateCounts = <int>[];
   bool _inconsistent = false;
+  bool _speculativeStepBudgetHit = false;
 
   Map<String, Object?> get telemetry => <String, Object?>{
     'nodes': _nodes,
     'branches': _branches,
     'backtracks': _backtracks,
+    'maxDepth': _maxDepth,
+    'candidateCounts': List<int>.unmodifiable(_candidateCounts),
+    'averageBranchingFactor': _averageBranchingFactor,
+    'speculativeSteps': _branches,
+    'speculativeStepBudget': speculativeStepBudget,
+    'speculativeStepBudgetHit': _speculativeStepBudgetHit,
+    'proofIncomplete': _proofIncomplete,
     'solutions': _solutions.length,
     'maxSolutions': maxSolutions,
     'inconsistent': _inconsistent,
+    'solutionStatus': status.name,
+    'status': status.name,
   };
+
+  SolverStatus get status {
+    if (_solutions.length >= 2) {
+      return SolverStatus.multiple;
+    }
+    if (_proofIncomplete) {
+      return SolverStatus.unknown;
+    }
+    if (_solutions.isEmpty) {
+      return SolverStatus.noSolution;
+    }
+    return SolverStatus.unique;
+  }
+
+  bool get _proofIncomplete {
+    if (_speculativeStepBudgetHit || maxSolutions <= 0) {
+      return true;
+    }
+    return maxSolutions <= 1 && _solutions.isNotEmpty;
+  }
+
+  double get _averageBranchingFactor {
+    if (_candidateCounts.isEmpty) {
+      return 0.0;
+    }
+    final int total = _candidateCounts.fold<int>(
+      0,
+      (int sum, int count) => sum + count,
+    );
+    return total / _candidateCounts.length;
+  }
 
   List<KillerQueensBoard> run() {
     _columnUsed.addAll(List<bool>.filled(size, false));
@@ -73,13 +119,16 @@ class _KillerQueensSearch {
       }
     }
 
-    _search(0);
+    _search(0, depth: 0);
     return List<KillerQueensBoard>.unmodifiable(_solutions);
   }
 
-  void _search(int row) {
+  void _search(int row, {required int depth}) {
     if (_solutions.length >= maxSolutions) {
       return;
+    }
+    if (depth > _maxDepth) {
+      _maxDepth = depth;
     }
 
     int nextRow = row;
@@ -107,6 +156,7 @@ class _KillerQueensSearch {
       }
       candidates.add(col);
     }
+    _candidateCounts.add(candidates.length);
 
     if (candidates.isEmpty) {
       _backtracks += 1;
@@ -119,14 +169,28 @@ class _KillerQueensSearch {
       if (_solutions.length >= maxSolutions) {
         break;
       }
+      if (_branchBudgetConsumed()) {
+        return;
+      }
       final int index = nextRow * size + col;
       _branches += 1;
       if (!_place(index, given: false)) {
         continue;
       }
-      _search(nextRow + 1);
+      _search(nextRow + 1, depth: depth + 1);
       _remove(index);
     }
+  }
+
+  bool _branchBudgetConsumed() {
+    if (speculativeStepBudget == null) {
+      return false;
+    }
+    if (_branches < speculativeStepBudget!) {
+      return false;
+    }
+    _speculativeStepBudgetHit = true;
+    return true;
   }
 
   bool _place(int index, {required bool given}) {

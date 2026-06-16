@@ -98,7 +98,88 @@ void main() {
 
       expect(result.solutionStatus, equals(SolverStatus.multiple));
       expect(result.solutions.length, equals(2));
+      expect(result.solutions.length, lessThanOrEqualTo(2));
       expect(result.telemetry['maxSolutions'], equals(2));
+      expect(result.telemetry['nodes'], isA<int>());
+      expect(result.telemetry['branches'], isA<int>());
+      expect(result.telemetry['backtracks'], isA<int>());
+      expect(result.telemetry['maxDepth'], isA<int>());
+      expect(result.telemetry['candidateCounts'], isA<List<int>>());
+      expect(result.telemetry['averageBranchingFactor'], isA<double>());
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.multiple.name),
+      );
+    });
+
+    test('solver returns unique for a known fixed fixture', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _fixedUniqueBoard();
+
+      final SolverResult<KillerQueensBoard> result = solver.solve(
+        puzzle,
+        SolverContext(rng: SeededRng(202), maxSolutions: 2),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.unique));
+      expect(result.solutions.length, equals(1));
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.unique.name),
+      );
+    });
+
+    test('solver returns noSolution for inconsistent givens', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _impossibleBoard();
+
+      final SolverResult<KillerQueensBoard> result = solver.solve(
+        puzzle,
+        SolverContext(rng: SeededRng(303), maxSolutions: 2),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.noSolution));
+      expect(result.solutions, isEmpty);
+      expect(result.telemetry['inconsistent'], isTrue);
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.noSolution.name),
+      );
+    });
+
+    test('solver returns unknown when branch budget expires before proof', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _multiSolutionBoard(size: 6);
+      SolverResult<KillerQueensBoard>? capped;
+
+      for (int budget = 1; budget <= 64; budget++) {
+        final SolverResult<KillerQueensBoard> result = solver.solve(
+          puzzle,
+          SolverContext(
+            rng: SeededRng(404),
+            maxSolutions: 2,
+            speculativeStepBudget: budget,
+          ),
+        );
+        if (result.solutions.length == 1 &&
+            result.solutionStatus == SolverStatus.unknown) {
+          capped = result;
+          break;
+        }
+      }
+
+      expect(capped, isNotNull);
+      final SolverResult<KillerQueensBoard> result = capped!;
+      expect(result.solutionStatus, equals(SolverStatus.unknown));
+      expect(result.isUnique, isFalse);
+      expect(result.solutions.length, equals(1));
+      expect(result.solutions.length, lessThanOrEqualTo(2));
+      expect(result.telemetry['speculativeStepBudgetHit'], isTrue);
+      expect(result.telemetry['proofIncomplete'], isTrue);
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.unknown.name),
+      );
     });
 
     test(
@@ -186,6 +267,48 @@ KillerQueensBoard _multiSolutionBoard({required int size}) {
     size: size,
     cells: List<int>.filled(cellCount, 0),
     fixed: List<bool>.filled(cellCount, false),
+    cages: <KillerQueensCage>[
+      for (int row = 0; row < size; row++)
+        KillerQueensCage(
+          cells: <int>[for (int col = 0; col < size; col++) row * size + col],
+        ),
+    ],
+  );
+}
+
+KillerQueensBoard _fixedUniqueBoard() {
+  return _boardWithFixedQueens(
+    size: 6,
+    queenCols: const <int>[1, 3, 5, 0, 2, 4],
+    fixedRows: const <int>{0, 1, 2, 3, 4, 5},
+  );
+}
+
+KillerQueensBoard _impossibleBoard() {
+  return _boardWithFixedQueens(
+    size: 6,
+    queenCols: const <int>[1, 1, 5, 0, 2, 4],
+    fixedRows: const <int>{0, 1},
+  );
+}
+
+KillerQueensBoard _boardWithFixedQueens({
+  required int size,
+  required List<int> queenCols,
+  required Set<int> fixedRows,
+}) {
+  final int cellCount = size * size;
+  final List<int> cells = List<int>.filled(cellCount, 0);
+  final List<bool> fixed = List<bool>.filled(cellCount, false);
+  for (final int row in fixedRows) {
+    final int index = row * size + queenCols[row];
+    cells[index] = 1;
+    fixed[index] = true;
+  }
+  return KillerQueensBoard(
+    size: size,
+    cells: cells,
+    fixed: fixed,
     cages: <KillerQueensCage>[
       for (int row = 0; row < size; row++)
         KillerQueensCage(
