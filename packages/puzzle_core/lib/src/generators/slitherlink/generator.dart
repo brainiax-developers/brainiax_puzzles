@@ -22,7 +22,8 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
   PuzzleGenerationResult<SlitherlinkBoard> generate(GeneratorContext context) {
     final int width = context.size.width;
     final int height = context.size.height;
-    if (!_supportedWidths.contains(width) || !_supportedHeights.contains(height)) {
+    if (!_supportedWidths.contains(width) ||
+        !_supportedHeights.contains(height)) {
       throw ArgumentError('Unsupported Slitherlink size: ${width}x$height');
     }
     if (width != height) {
@@ -32,7 +33,8 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
     final Stopwatch stopwatch = Stopwatch()..start();
     final SeededRng rng = context.rng;
     final _DifficultyTuning tuning =
-        _difficultyTunings[context.difficulty.level.toLowerCase()] ?? _defaultTuning;
+        _difficultyTunings[context.difficulty.level.toLowerCase()] ??
+        _defaultTuning;
 
     final LoopSynthesisResult loop = synthesizeLoop(
       width: width,
@@ -95,13 +97,14 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
           maxSolutions: 2,
         ),
       );
-      if (fallbackSolve.solutions.isNotEmpty) {
-        solutionEdges = Uint8List.fromList(fallbackSolve.solutions.first.edges);
-      } else {
-        solutionEdges = Uint8List.fromList(loop.solutionEdges);
+      if (!slitherlinkFallbackSolveAccepted(fallbackSolve)) {
+        throw StateError('Slitherlink fallback puzzle is not provably unique');
       }
+      solutionEdges = Uint8List.fromList(fallbackSolve.solutions.first.edges);
     } else if (verificationResult.solutions.isNotEmpty) {
-      solutionEdges = Uint8List.fromList(verificationResult.solutions.first.edges);
+      solutionEdges = Uint8List.fromList(
+        verificationResult.solutions.first.edges,
+      );
       if (!_edgesMatch(solutionEdges, targetEdges)) {
         fallbackFullClues = true;
         puzzle = SlitherlinkBoard.empty(
@@ -116,20 +119,19 @@ class SlitherlinkPipelineGenerator extends PuzzleGenerator<SlitherlinkBoard> {
             maxSolutions: 2,
           ),
         );
-        if (retrySolve.solutions.isEmpty ||
-            !_edgesMatch(retrySolve.solutions.first.edges, targetEdges)) {
+        if (!slitherlinkRetrySolveAccepted(retrySolve, targetEdges)) {
           throw StateError('Slitherlink generator drifted from target loop');
         }
-        solutionEdges =
-            Uint8List.fromList(retrySolve.solutions.first.edges);
+        solutionEdges = Uint8List.fromList(retrySolve.solutions.first.edges);
       }
     }
 
     stopwatch.stop();
 
-    final int revealedClues =
-        puzzle.clues.where((int? c) => c != null).length;
-    final int removedClues = fallbackFullClues ? 0 : removal.stats.removedClueCount;
+    final int revealedClues = puzzle.clues.where((int? c) => c != null).length;
+    final int removedClues = fallbackFullClues
+        ? 0
+        : removal.stats.removedClueCount;
     final Map<String, Object?> telemetry = <String, Object?>{
       'width': width,
       'height': height,
@@ -172,24 +174,25 @@ const _DifficultyTuning _defaultTuning = _DifficultyTuning(
   maxBacktrackDepth: 2200,
 );
 
-final Map<String, _DifficultyTuning> _difficultyTunings = <String, _DifficultyTuning>{
-  'easy': const _DifficultyTuning(
-    timeBudget: Duration(seconds: 5),
-    maxBacktrackDepth: 1200,
-  ),
-  'medium': const _DifficultyTuning(
-    timeBudget: Duration(seconds: 8),
-    maxBacktrackDepth: 2000,
-  ),
-  'hard': const _DifficultyTuning(
-    timeBudget: Duration(seconds: 12),
-    maxBacktrackDepth: 3200,
-  ),
-  'expert': const _DifficultyTuning(
-    timeBudget: Duration(seconds: 16),
-    maxBacktrackDepth: 4500,
-  ),
-};
+final Map<String, _DifficultyTuning> _difficultyTunings =
+    <String, _DifficultyTuning>{
+      'easy': const _DifficultyTuning(
+        timeBudget: Duration(seconds: 5),
+        maxBacktrackDepth: 1200,
+      ),
+      'medium': const _DifficultyTuning(
+        timeBudget: Duration(seconds: 8),
+        maxBacktrackDepth: 2000,
+      ),
+      'hard': const _DifficultyTuning(
+        timeBudget: Duration(seconds: 12),
+        maxBacktrackDepth: 3200,
+      ),
+      'expert': const _DifficultyTuning(
+        timeBudget: Duration(seconds: 16),
+        maxBacktrackDepth: 4500,
+      ),
+    };
 
 bool _edgesMatch(List<int> a, List<int> b) {
   if (a.length != b.length) {
@@ -201,4 +204,19 @@ bool _edgesMatch(List<int> a, List<int> b) {
     }
   }
   return true;
+}
+
+bool slitherlinkFallbackSolveAccepted(
+  SolverResult<SlitherlinkBoard> fallbackSolve,
+) {
+  return fallbackSolve.isUnique && fallbackSolve.solutions.isNotEmpty;
+}
+
+bool slitherlinkRetrySolveAccepted(
+  SolverResult<SlitherlinkBoard> retrySolve,
+  List<int> targetEdges,
+) {
+  return retrySolve.isUnique &&
+      retrySolve.solutions.isNotEmpty &&
+      _edgesMatch(retrySolve.solutions.first.edges, targetEdges);
 }

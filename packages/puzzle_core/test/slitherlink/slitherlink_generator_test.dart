@@ -1,38 +1,47 @@
 import 'package:puzzle_core/puzzle_core.dart';
 import 'package:test/test.dart';
 
-import 'package:puzzle_core/src/slitherlink/slitherlink_topology.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
-
 void main() {
   group('SlitherlinkPipelineGenerator', () {
-    const SlitherlinkPipelineGenerator generator = SlitherlinkPipelineGenerator();
+    const SlitherlinkPipelineGenerator generator =
+        SlitherlinkPipelineGenerator();
     const SlitherlinkValidator validator = SlitherlinkValidator();
     const SlitherlinkSolver solver = SlitherlinkSolver();
 
-    GeneratorContext _context(String seed, int size, {String difficulty = 'medium'}) =>
-        GeneratorContext(
-          rng: SeededRng(Seed.fromString(seed)),
-          seedStr: seed,
-          seed64: Seed.fromString(seed),
-          size: SizeOpt(id: '${size}x$size', description: '${size}x$size', width: size, height: size),
-          difficulty: DifficultyRequest(level: difficulty),
-        );
+    GeneratorContext contextFor(
+      String seed,
+      int size, {
+      String difficulty = 'medium',
+    }) => GeneratorContext(
+      rng: SeededRng(Seed.fromString(seed)),
+      seedStr: seed,
+      seed64: Seed.fromString(seed),
+      size: SizeOpt(
+        id: '${size}x$size',
+        description: '${size}x$size',
+        width: size,
+        height: size,
+      ),
+      difficulty: DifficultyRequest(level: difficulty),
+    );
 
     test('is deterministic for identical seeds', () {
-      final PuzzleGenerationResult<SlitherlinkBoard> first =
-          generator.generate(_context('slitherlink_deterministic', 5));
-      final PuzzleGenerationResult<SlitherlinkBoard> second =
-          generator.generate(_context('slitherlink_deterministic', 5));
+      final PuzzleGenerationResult<SlitherlinkBoard> first = generator.generate(
+        contextFor('slitherlink_deterministic', 5),
+      );
+      final PuzzleGenerationResult<SlitherlinkBoard> second = generator
+          .generate(contextFor('slitherlink_deterministic', 5));
 
       expect(first.board.clues, equals(second.board.clues));
-      expect(first.snapshot.telemetry['solutionEdges'],
-          equals(second.snapshot.telemetry['solutionEdges']));
+      expect(
+        first.snapshot.telemetry['solutionEdges'],
+        equals(second.snapshot.telemetry['solutionEdges']),
+      );
     });
 
     test('produces a unique, single-loop puzzle', () {
-      final PuzzleGenerationResult<SlitherlinkBoard> result =
-          generator.generate(_context('slitherlink_unique', 6));
+      final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+          .generate(contextFor('slitherlink_unique', 6));
       final SlitherlinkBoard puzzle = result.board;
 
       expect(puzzle.clues.where((int? c) => c != null).length, greaterThan(0));
@@ -55,8 +64,8 @@ void main() {
 
     test('generates 10x10 puzzles within performance budget', () {
       final Stopwatch sw = Stopwatch()..start();
-      final PuzzleGenerationResult<SlitherlinkBoard> result =
-          generator.generate(_context('slitherlink_perf', 10));
+      final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+          .generate(contextFor('slitherlink_perf', 10));
       sw.stop();
 
       expect(sw.elapsed, lessThan(const Duration(seconds: 10)));
@@ -72,19 +81,67 @@ void main() {
     });
 
     test('serializes and deserializes consistently', () {
-      final PuzzleGenerationResult<SlitherlinkBoard> result =
-          generator.generate(_context('slitherlink_serialize', 7));
-      final SlitherlinkBoard roundTrip =
-          SlitherlinkBoard.fromJson(result.board.toJson());
+      final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+          .generate(contextFor('slitherlink_serialize', 7));
+      final SlitherlinkBoard roundTrip = SlitherlinkBoard.fromJson(
+        result.board.toJson(),
+      );
       expect(roundTrip, equals(result.board));
     });
+
+    test('rejects non-unique full-clue fallback solves', () {
+      final SlitherlinkBoard first = _solvedBoard(
+        width: 1,
+        height: 1,
+        edges: <int>[
+          SlitherlinkBoard.edgeOn,
+          SlitherlinkBoard.edgeOn,
+          SlitherlinkBoard.edgeOn,
+          SlitherlinkBoard.edgeOn,
+        ],
+      );
+      final SlitherlinkBoard second = _solvedBoard(
+        width: 1,
+        height: 1,
+        edges: <int>[
+          SlitherlinkBoard.edgeOff,
+          SlitherlinkBoard.edgeOff,
+          SlitherlinkBoard.edgeOff,
+          SlitherlinkBoard.edgeOff,
+        ],
+      );
+
+      final SolverResult<SlitherlinkBoard> fallbackSolve =
+          SolverResult<SlitherlinkBoard>(
+            solutions: <SlitherlinkBoard>[first, second],
+            elapsed: Duration.zero,
+          );
+
+      expect(slitherlinkFallbackSolveAccepted(fallbackSolve), isFalse);
+    });
   });
+}
+
+SlitherlinkBoard _solvedBoard({
+  required int width,
+  required int height,
+  required List<int> edges,
+}) {
+  return SlitherlinkBoard(
+    width: width,
+    height: height,
+    clues: List<int?>.filled(width * height, null),
+    edges: edges,
+  );
 }
 
 void _expectSingleLoop(SlitherlinkBoard solution) {
   final SlitherlinkTopology topology = solution.topology;
   final List<int> degree = List<int>.filled(topology.vertexCount, 0);
-  final List<int> parent = List<int>.generate(topology.vertexCount, (int i) => i);
+  final List<int> parent = List<int>.generate(
+    topology.vertexCount,
+    (int i) => i,
+  );
   int find(int x) {
     if (parent[x] != x) {
       parent[x] = find(parent[x]);
@@ -117,8 +174,11 @@ void _expectSingleLoop(SlitherlinkBoard solution) {
   final List<int> activeVertices = <int>[];
   for (int v = 0; v < degree.length; v++) {
     final int deg = degree[v];
-    expect(deg == 0 || deg == 2, isTrue,
-        reason: 'Every vertex must have degree 0 or 2 in a single loop.');
+    expect(
+      deg == 0 || deg == 2,
+      isTrue,
+      reason: 'Every vertex must have degree 0 or 2 in a single loop.',
+    );
     if (deg > 0) {
       activeVertices.add(v);
     }
@@ -127,10 +187,16 @@ void _expectSingleLoop(SlitherlinkBoard solution) {
   expect(activeVertices, isNotEmpty);
   final int root = find(activeVertices.first);
   for (final int v in activeVertices) {
-    expect(find(v), root,
-        reason: 'All active vertices should belong to the same component.');
+    expect(
+      find(v),
+      root,
+      reason: 'All active vertices should belong to the same component.',
+    );
   }
 
-  expect(onEdges, equals(activeVertices.length),
-      reason: 'A single cycle has matching edge and vertex counts.');
+  expect(
+    onEdges,
+    equals(activeVertices.length),
+    reason: 'A single cycle has matching edge and vertex counts.',
+  );
 }
