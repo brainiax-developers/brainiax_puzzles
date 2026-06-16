@@ -61,10 +61,8 @@ class SlitherlinkUniqueness {
       }
     }
     final int maxDepth = (result.telemetry['maxDepth'] as int?) ?? 0;
-    final int? speculativeSteps = result.telemetry['speculativeSteps'] as int?;
-    final int? budget = context.speculativeStepBudget;
     final bool hitSpeculativeBudget =
-        budget != null && speculativeSteps != null && speculativeSteps >= budget;
+        result.telemetry['speculativeStepBudgetHit'] as bool? ?? false;
     return SlitherlinkUniquenessResult(
       solutionCount: result.solutions.length,
       elapsed: stopwatch.elapsed,

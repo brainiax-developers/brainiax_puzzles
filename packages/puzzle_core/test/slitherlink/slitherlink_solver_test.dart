@@ -1,8 +1,6 @@
 import 'package:puzzle_core/puzzle_core.dart';
 import 'package:test/test.dart';
 
-import 'package:puzzle_core/src/util/seeded_rng.dart';
-
 void main() {
   group('SlitherlinkSolver', () {
     test('solves generated puzzles and respects uniqueness', () {
@@ -65,6 +63,33 @@ void main() {
       );
 
       expect(result.hasSolution, isFalse);
+    });
+
+    test('reports unknown when speculative search budget is exhausted', () {
+      final SlitherlinkPipelineGenerator generator =
+          const SlitherlinkPipelineGenerator();
+      final GeneratorContext context = GeneratorContext(
+        rng: SeededRng(Seed.fromString('slitherlink_budget_unknown')),
+        seedStr: 'slitherlink_budget_unknown',
+        seed64: Seed.fromString('slitherlink_budget_unknown'),
+        size: const SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6),
+        difficulty: const DifficultyRequest(level: 'hard'),
+      );
+
+      final SlitherlinkBoard puzzle = generator.generate(context).board;
+      final SlitherlinkSolver solver = const SlitherlinkSolver();
+      final SolverResult<SlitherlinkBoard> result = solver.solve(
+        puzzle,
+        SolverContext(
+          rng: SeededRng(Seed.fromString('slitherlink_budget_unknown_solver')),
+          maxSolutions: 2,
+          speculativeStepBudget: 0,
+        ),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.unknown));
+      expect(result.isUnique, isFalse);
+      expect(result.telemetry['speculativeStepBudgetHit'], isTrue);
     });
   });
 }
