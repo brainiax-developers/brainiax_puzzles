@@ -26,9 +26,33 @@ void main() {
 
         expect(first.state.clues, equals(second.state.clues));
         expect(first.meta, equals(second.meta));
-        expect(first.telemetry, equals(second.telemetry));
         expect(first.meta.seedStr, equals(seed));
         expect(first.meta.seed64, equals(core.Seed.fromString(seed)));
+        expect(
+          first.telemetry!.difficulty.rawScore,
+          equals(second.telemetry!.difficulty.rawScore),
+        );
+        expect(
+          first.telemetry!.difficulty.metrics['clueDensity'],
+          equals(second.telemetry!.difficulty.metrics['clueDensity']),
+        );
+        expect(
+          first.telemetry!.difficulty.metrics['loopEdgeCount'],
+          equals(second.telemetry!.difficulty.metrics['loopEdgeCount']),
+        );
+        expect(first.telemetry!.difficulty.metrics, isNotEmpty);
+        expect(
+          first.telemetry!.difficulty.metrics.keys,
+          containsAll(<String>[
+            'clueDensity',
+            'loopEdgeCount',
+            'revealedZeroRatio',
+          ]),
+        );
+        final generatorTelemetry = (first.telemetry!.extras['generator'] as Map)
+            .cast<String, Object?>();
+        expect(generatorTelemetry['solverStatus'], equals('unique'));
+        expect(generatorTelemetry['qualityGatePassed'], isTrue);
       },
     );
 

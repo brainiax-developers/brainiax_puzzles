@@ -6,13 +6,16 @@ import 'dart:typed_data';
 import '../../engine/slitherlink/line_builder.dart';
 import '../../engine/slitherlink/solver.dart';
 import '../../engine/slitherlink/solver_adapter.dart';
+import '../../difficulty/telemetry.dart';
 import '../../models/slitherlink_models.dart';
 import '../../slitherlink/slitherlink_board.dart';
+import '../../slitherlink/slitherlink_difficulty.dart';
 import '../../slitherlink/slitherlink_topology.dart';
 import '../../solver/solver.dart';
 import '../../util/seeded_rng.dart';
 import 'clues.dart';
 import 'difficulty.dart';
+import 'quality.dart';
 import 'removal.dart';
 
 class SlitherlinkGenerator {
@@ -39,22 +42,17 @@ class SlitherlinkGenerator {
   }) async {
     final bool deterministicMode = seed != null;
     final SlitherlinkDifficultyTuning tuning = _profile.resolve(difficulty);
-    final Duration effectiveBudget = deterministicMode
-        ? const Duration(days: 1)
-        : timeBudget.inMicroseconds > 0
-        ? Duration(
-            microseconds: math.min(
-              timeBudget.inMicroseconds,
-              tuning.generationTimeBudget.inMicroseconds,
-            ),
-          )
-        : tuning.generationTimeBudget;
     final int restartBudget = math.min(maxRestarts, tuning.maxRestarts);
+    final Duration effectiveBudget = _deterministicBudget(
+      timeBudget,
+      tuning,
+      restartBudget,
+    );
     final Stopwatch stopwatch = Stopwatch()..start();
 
     StateError? lastError;
     for (int attempt = 0; attempt < restartBudget; attempt++) {
-      if (stopwatch.elapsed > effectiveBudget) {
+      if (!deterministicMode && stopwatch.elapsed > effectiveBudget) {
         break;
       }
       final int attemptSeed = _resolveSeed(seed, attempt);
@@ -66,7 +64,7 @@ class SlitherlinkGenerator {
           variant: variant,
           tuning: tuning,
           seed: attemptSeed,
-          deterministicMode: deterministicMode,
+          useTimeBudget: !deterministicMode,
         );
         _fallbackCache[_FallbackKey(width, height, difficulty, variant, seed)] =
             puzzle;
@@ -95,12 +93,26 @@ class SlitherlinkGenerator {
     required SlitherlinkVariant variant,
     required SlitherlinkDifficultyTuning tuning,
     required int seed,
-    required bool deterministicMode,
+    required bool useTimeBudget,
   }) {
+    final SlitherlinkQualityProfile qualityProfile =
+        slitherlinkQualityProfileFor(
+          width: width,
+          height: height,
+          difficulty: difficulty.name,
+        );
     final LoopSynthesisResult loop = synthesizeLoop(
       width: width,
       height: height,
       rng: SeededRng(seed ^ 0x9e3779b97f4a7c15),
+      constraints: LoopSynthesisConstraints(
+        minLoopEdgeCount: qualityProfile.minLoopEdgeCount,
+        minTouchedRows: qualityProfile.minTouchedRows,
+        minTouchedCols: qualityProfile.minTouchedCols,
+        minBoundingBoxWidth: qualityProfile.minBoundingBoxWidth,
+        minBoundingBoxHeight: qualityProfile.minBoundingBoxHeight,
+        maxFullZeroRatio: qualityProfile.maxFullZeroRatio,
+      ),
     );
     final List<int> fullClues = deriveClues(
       solutionEdges: loop.solutionEdges,
@@ -111,16 +123,34 @@ class SlitherlinkGenerator {
     final Uint8List solverSolutionBuffer = Uint8List.fromList(
       loop.solutionEdges,
     );
+    if (tuning.solverMaxDepth <= 0) {
+      throw StateError('Slitherlink solver could not prove uniqueness');
+    }
+    final SlitherlinkQualityMetrics loopMetrics =
+        SlitherlinkQualityMetrics.analyze(
+          width: width,
+          height: height,
+          solutionEdges: loop.solutionEdges,
+          fullClues: fullClues,
+          revealedClues: List<int?>.from(fullClues),
+        );
+    final String? loopRejectReason = qualityProfile.loopRejectReason(
+      loopMetrics,
+    );
+    if (loopRejectReason != null) {
+      throw StateError(loopRejectReason);
+    }
     final ClueRemovalConfig config = ClueRemovalConfig(
       width: width,
       height: height,
-      timeBudget: deterministicMode
-          ? const Duration(days: 1)
-          : tuning.removalTimeBudget,
+      timeBudget: tuning.removalTimeBudget,
       maxBacktrackDepth: tuning.solverMaxDepth,
       binarySearchFraction: tuning.binarySearchFraction,
-      targetClueFraction: tuning.targetClueFraction,
-      maxFailedRemovals: tuning.maxFailedRemovals,
+      targetClueFraction: qualityProfile.targetClueDensity,
+      maxFailedRemovals: math.max(tuning.maxFailedRemovals, width * height),
+      qualityProfile: qualityProfile,
+      requireQualityGate: true,
+      useTimeBudget: useTimeBudget,
     );
     final ClueRemovalResult removal = removeClues(
       fullClues: fullClues,
@@ -134,6 +164,20 @@ class SlitherlinkGenerator {
       height: height,
       clues: removal.clues,
     );
+    final SlitherlinkQualityMetrics finalMetrics =
+        SlitherlinkQualityMetrics.analyze(
+          width: width,
+          height: height,
+          solutionEdges: targetEdges,
+          fullClues: fullClues,
+          revealedClues: removal.clues,
+        );
+    final String? finalRejectReason = qualityProfile.finalRejectReason(
+      finalMetrics,
+    );
+    if (finalRejectReason != null) {
+      throw StateError(finalRejectReason);
+    }
     final SolverResult<SlitherlinkBoard> solverResult = _solver.solve(
       board,
       SolverContext(
@@ -152,6 +196,24 @@ class SlitherlinkGenerator {
     if (!_edgesMatch(solution.edges, targetEdges)) {
       throw StateError('Generated clues drifted from target loop');
     }
+    final Map<String, Object?> generatorTelemetry = _buildGeneratorTelemetry(
+      width: width,
+      height: height,
+      difficulty: difficulty,
+      qualityProfile: qualityProfile,
+      qualityMetrics: finalMetrics,
+      removal: removal,
+      solverResult: solverResult,
+    );
+    final DifficultyTelemetry difficultyTelemetry =
+        const SlitherlinkDifficultyScorer().score(
+          puzzle: board,
+          solution: solution,
+          context: DifficultyContext(
+            generatorTelemetry: generatorTelemetry,
+            solverTelemetry: solverResult.telemetry,
+          ),
+        );
     final List<EdgeHint> entrances = _computeEntrances(
       variant: variant,
       solution: solution,
@@ -165,6 +227,11 @@ class SlitherlinkGenerator {
       entrances: entrances,
       seed: seed,
       difficulty: difficulty,
+      telemetry: <String, Object?>{
+        ...generatorTelemetry,
+        'difficultyRawScore': difficultyTelemetry.rawScore,
+        'difficultyMetrics': difficultyTelemetry.metrics,
+      },
     );
     return puzzle;
   }
@@ -246,6 +313,62 @@ class SlitherlinkGenerator {
     final String signature = 'slitherlink:$rnd:$salt';
     return Seed.fromString(signature);
   }
+}
+
+Duration _deterministicBudget(
+  Duration requested,
+  SlitherlinkDifficultyTuning tuning,
+  int restartBudget,
+) {
+  final int perAttemptUs = math.max(
+    requested.inMicroseconds,
+    tuning.generationTimeBudget.inMicroseconds +
+        tuning.removalTimeBudget.inMicroseconds,
+  );
+  return Duration(microseconds: perAttemptUs * math.max(1, restartBudget));
+}
+
+Map<String, Object?> _buildGeneratorTelemetry({
+  required int width,
+  required int height,
+  required SlitherlinkDifficulty difficulty,
+  required SlitherlinkQualityProfile qualityProfile,
+  required SlitherlinkQualityMetrics qualityMetrics,
+  required ClueRemovalResult removal,
+  required SolverResult<SlitherlinkBoard> solverResult,
+}) {
+  final int revealedClues = qualityMetrics.revealedClues
+      .where((int? clue) => clue != null)
+      .length;
+  final int totalCells = width * height;
+  return <String, Object?>{
+    'width': width,
+    'height': height,
+    'difficulty': difficulty.name,
+    'generator': 'spanning_tree_cycle_scored_v2',
+    'revealedClues': revealedClues,
+    'hiddenClues': totalCells - revealedClues,
+    'clueHistogram': qualityMetrics.revealedClueHistogram,
+    ...qualityMetrics.toTelemetry(),
+    'solverStatus': solverResult.solutionStatus.name,
+    'solutionCount': solverResult.solutions.length,
+    'speculativeSteps': solverResult.telemetry['speculativeSteps'] ?? 0,
+    'maxDepth': solverResult.telemetry['maxDepth'] ?? 0,
+    'localAssignments': solverResult.telemetry['localAssignments'] ?? 0,
+    'globalAssignments': solverResult.telemetry['globalAssignments'] ?? 0,
+    'totalAssignments': solverResult.telemetry['totalAssignments'] ?? 0,
+    'solverTelemetry': solverResult.telemetry,
+    'solverCalls': removal.stats.solverCalls,
+    'removalMaxDepth': removal.stats.maxDepthHit,
+    'removedClues': removal.stats.removedClueCount,
+    'removalHitTimeBudget': removal.stats.hitTimeBudget,
+    'removalQualityGatePassed': removal.stats.qualityGatePassed,
+    if (removal.stats.qualityRejectReason != null)
+      'removalQualityRejectReason': removal.stats.qualityRejectReason,
+    'qualityProfile': qualityProfile.toTelemetry(),
+    'qualityGatePassed': true,
+    'qualityRejectReason': null,
+  };
 }
 
 class GenerateSlitherlinkRequest {

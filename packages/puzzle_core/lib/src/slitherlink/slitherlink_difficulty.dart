@@ -18,6 +18,8 @@ class SlitherlinkDifficultyScorer extends DifficultyScorer<SlitherlinkBoard> {
     final double speculativeSteps = _asDouble(telemetry['speculativeSteps']);
     final double maxDepth = _asDouble(telemetry['maxDepth']);
     final Map<String, Object?> clueHistogram =
+        (generation['revealedClueHistogram'] as Map?)
+            ?.cast<String, Object?>() ??
         (generation['clueHistogram'] as Map?)?.cast<String, Object?>() ??
         const <String, Object?>{};
 
@@ -57,6 +59,13 @@ class SlitherlinkDifficultyScorer extends DifficultyScorer<SlitherlinkBoard> {
       'speculationPenalty': speculationPenalty,
       'depthPenalty': depthPenalty,
       'rawScore': rawScore,
+      'revealedZeroRatio': _asDouble(generation['revealedZeroRatio']),
+      'nonZeroRevealedClues': _asDouble(generation['nonZeroRevealedClues']),
+      'loopCoverageRatio': _asDouble(generation['loopCoverageRatio']),
+      'loopTouchedRows': _asDouble(generation['loopTouchedRows']),
+      'loopTouchedCols': _asDouble(generation['loopTouchedCols']),
+      'loopBoundingBoxWidth': _asDouble(generation['loopBoundingBoxWidth']),
+      'loopBoundingBoxHeight': _asDouble(generation['loopBoundingBoxHeight']),
     };
 
     return DifficultyTelemetry(

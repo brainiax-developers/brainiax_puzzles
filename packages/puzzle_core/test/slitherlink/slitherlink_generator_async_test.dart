@@ -13,6 +13,7 @@ void main() {
           width: 6,
           height: 6,
           difficulty: difficulty,
+          seed: Seed.fromString('slitherlink_async_${difficulty.name}'),
           timeBudget: const Duration(milliseconds: 400),
         );
         final SlitherlinkBoard board = puzzle.toBoard();

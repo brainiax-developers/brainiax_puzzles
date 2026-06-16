@@ -40,6 +40,13 @@ class SlitherlinkOnDemandService {
       height: puzzle.height,
     );
     final core.DifficultyScore score = _scoreFromDifficulty(puzzle.difficulty);
+    final Map<String, Object?> generatorTelemetry = Map<String, Object?>.from(
+      puzzle.telemetry,
+    );
+    final Map<String, num> metrics = _difficultyMetrics(generatorTelemetry);
+    final double rawScore =
+        (generatorTelemetry['difficultyRawScore'] as num?)?.toDouble() ??
+        score.value;
     final core.PuzzleMetadata meta = core.PuzzleMetadata(
       engineVersion: 'slitherlink_on_demand_1',
       rngId: core.SeededRng.rngId,
@@ -50,11 +57,12 @@ class SlitherlinkOnDemandService {
     );
     final core.GenerationTelemetry telemetry = core.GenerationTelemetry(
       difficulty: core.DifficultyTelemetry(
-        rawScore: score.value,
+        rawScore: rawScore,
         bucket: score.level,
-        metrics: const <String, num>{},
+        metrics: metrics,
       ),
       extras: <String, Object?>{
+        'generator': generatorTelemetry,
         'variant': puzzle.variant.name,
         'entrances': puzzle.entrances
             .map((core.EdgeHint e) => e.toJson())
@@ -94,6 +102,38 @@ class SlitherlinkOnDemandService {
       case core.SlitherlinkDifficulty.expert:
         return const core.DifficultyScore(value: 1.2, level: 'expert');
     }
+  }
+
+  Map<String, num> _difficultyMetrics(Map<String, Object?> telemetry) {
+    final Object? rawMetrics = telemetry['difficultyMetrics'];
+    if (rawMetrics is Map) {
+      return rawMetrics.map(
+        (key, value) => MapEntry(key.toString(), value as num),
+      );
+    }
+    final Map<String, num> metrics = <String, num>{};
+    for (final String key in <String>[
+      'clueDensity',
+      'revealedZeroRatio',
+      'nonZeroRevealedClues',
+      'loopEdgeCount',
+      'loopCoverageRatio',
+      'loopTouchedRows',
+      'loopTouchedCols',
+      'loopBoundingBoxWidth',
+      'loopBoundingBoxHeight',
+      'speculativeSteps',
+      'maxDepth',
+      'localAssignments',
+      'globalAssignments',
+      'totalAssignments',
+    ]) {
+      final Object? value = telemetry[key];
+      if (value is num) {
+        metrics[key] = value;
+      }
+    }
+    return metrics;
   }
 }
 

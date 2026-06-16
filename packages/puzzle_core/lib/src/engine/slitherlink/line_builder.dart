@@ -17,17 +17,36 @@ class LoopSynthesisResult {
   final int loopLength;
 }
 
+class LoopSynthesisConstraints {
+  const LoopSynthesisConstraints({
+    required this.minLoopEdgeCount,
+    required this.minTouchedRows,
+    required this.minTouchedCols,
+    required this.minBoundingBoxWidth,
+    required this.minBoundingBoxHeight,
+    required this.maxFullZeroRatio,
+  });
+
+  final int minLoopEdgeCount;
+  final int minTouchedRows;
+  final int minTouchedCols;
+  final int minBoundingBoxWidth;
+  final int minBoundingBoxHeight;
+  final double maxFullZeroRatio;
+}
+
 LoopSynthesisResult synthesizeLoop({
   required int width,
   required int height,
   required SeededRng rng,
+  LoopSynthesisConstraints? constraints,
 }) {
   final _LoopBuilder builder = _LoopBuilder(
     width: width,
     height: height,
     rng: rng,
   );
-  final Set<int> loopEdges = builder.buildLoop();
+  final Set<int> loopEdges = builder.buildLoop(constraints: constraints);
   final Uint8List edges = builder.encodeLoop(loopEdges);
   return LoopSynthesisResult(
     width: width,
@@ -38,13 +57,10 @@ LoopSynthesisResult synthesizeLoop({
 }
 
 class _LoopBuilder {
-  _LoopBuilder({
-    required this.width,
-    required this.height,
-    required this.rng,
-  })  : rows = height + 1,
-        cols = width + 1,
-        vertexCount = (height + 1) * (width + 1);
+  _LoopBuilder({required this.width, required this.height, required this.rng})
+    : rows = height + 1,
+      cols = width + 1,
+      vertexCount = (height + 1) * (width + 1);
 
   final int width;
   final int height;
@@ -53,18 +69,21 @@ class _LoopBuilder {
   final int vertexCount;
   final SeededRng rng;
 
-  late final List<List<int>> _treeAdj =
-      List<List<int>>.generate(vertexCount, (_) => <int>[]);
+  late final List<List<int>> _treeAdj = List<List<int>>.generate(
+    vertexCount,
+    (_) => <int>[],
+  );
   final Set<int> _treeEdges = <int>{};
 
-  Set<int> buildLoop() {
+  Set<int> buildLoop({LoopSynthesisConstraints? constraints}) {
     _growTree();
     final List<_Edge> candidates = _allEdges()
         .where((edge) => !_treeEdges.contains(edge.key))
         .toList();
     rng.shuffle(candidates);
 
-    const int minCycleLength = 8;
+    final int minCycleLength = constraints?.minLoopEdgeCount ?? 8;
+    _LoopCandidate? best;
     for (final _Edge candidate in candidates) {
       final List<int> path = _pathBetween(candidate.a, candidate.b);
       if (path.isEmpty) {
@@ -77,16 +96,31 @@ class _LoopBuilder {
         loop.add(_edgeKey(u, v));
       }
       loop.add(candidate.key);
-      if (loop.length >= minCycleLength) {
-        return loop;
+      if (loop.length < minCycleLength) {
+        continue;
       }
+      final _LoopCandidate scored = _scoreLoop(loop, constraints);
+      if (constraints != null && !scored.passesConstraints) {
+        continue;
+      }
+      if (best == null || scored.score > best.score) {
+        best = scored;
+      }
+    }
+    if (best != null) {
+      return best.edges;
+    }
+    if (constraints != null) {
+      throw StateError('No Slitherlink loop candidate passed quality gates');
     }
     return _perimeterLoop();
   }
 
   Uint8List encodeLoop(Set<int> loopEdges) {
-    final SlitherlinkEdgeWriter writer =
-        SlitherlinkEdgeWriter(width: width, height: height);
+    final SlitherlinkEdgeWriter writer = SlitherlinkEdgeWriter(
+      width: width,
+      height: height,
+    );
     final Uint8List buffer = Uint8List(writer.edgeCount);
     for (final int key in loopEdges) {
       final int a = key >> 32;
@@ -117,9 +151,9 @@ class _LoopBuilder {
 
     while (stack.isNotEmpty) {
       final int current = stack.last;
-      final List<int> unvisited = _neighbors(current)
-          .where((neighbor) => !visited[neighbor])
-          .toList();
+      final List<int> unvisited = _neighbors(
+        current,
+      ).where((neighbor) => !visited[neighbor]).toList();
       if (unvisited.isEmpty) {
         stack.removeLast();
         continue;
@@ -155,8 +189,9 @@ class _LoopBuilder {
         ..add(vertex);
       while (stack.isNotEmpty) {
         final int current = stack.last;
-        final List<int> unvisited =
-            _neighbors(current).where((n) => !visited[n]).toList();
+        final List<int> unvisited = _neighbors(
+          current,
+        ).where((n) => !visited[n]).toList();
         if (unvisited.isEmpty) {
           stack.removeLast();
           continue;
@@ -245,21 +280,132 @@ class _LoopBuilder {
     }
     // Right edge
     for (int row = 0; row < height; row++) {
-      loop.add(
-        _edgeKey(_vertex(row, cols - 1), _vertex(row + 1, cols - 1)),
-      );
+      loop.add(_edgeKey(_vertex(row, cols - 1), _vertex(row + 1, cols - 1)));
     }
     return loop;
+  }
+
+  _LoopCandidate _scoreLoop(
+    Set<int> loopEdges,
+    LoopSynthesisConstraints? constraints,
+  ) {
+    final Set<int> touchedRows = <int>{};
+    final Set<int> touchedCols = <int>{};
+    int minRow = rows;
+    int maxRow = -1;
+    int minCol = cols;
+    int maxCol = -1;
+    int boundaryEdges = 0;
+    for (final int key in loopEdges) {
+      final int a = key >> 32;
+      final int b = key & 0xffffffff;
+      final int ar = _rowOf(a);
+      final int ac = _colOf(a);
+      final int br = _rowOf(b);
+      final int bc = _colOf(b);
+      if (ar == 0 && br == 0 ||
+          ar == height && br == height ||
+          ac == 0 && bc == 0 ||
+          ac == width && bc == width) {
+        boundaryEdges++;
+      }
+      for (final int vertex in <int>[a, b]) {
+        final int row = _rowOf(vertex);
+        final int col = _colOf(vertex);
+        touchedRows.add(row);
+        touchedCols.add(col);
+        minRow = math.min(minRow, row);
+        maxRow = math.max(maxRow, row);
+        minCol = math.min(minCol, col);
+        maxCol = math.max(maxCol, col);
+      }
+    }
+
+    final int bboxWidth = maxCol - minCol + 1;
+    final int bboxHeight = maxRow - minRow + 1;
+    final Map<int, int> clueHistogram = _fullClueHistogram(loopEdges);
+    final int zeroClues = clueHistogram[0] ?? 0;
+    final int totalCells = width * height;
+    final double zeroRatio = totalCells == 0 ? 0.0 : zeroClues / totalCells;
+    final int nonZeroClues = totalCells - zeroClues;
+    final double coverage = loopEdges.length / edgeCount;
+    final double bboxCoverage =
+        (bboxWidth * bboxHeight) / math.max(1, (width + 1) * (height + 1));
+    final bool perimeterHeavy = boundaryEdges / loopEdges.length > 0.72;
+    final bool cornerLocal =
+        bboxWidth <= math.max(3, (width + 1) ~/ 2) &&
+        bboxHeight <= math.max(3, (height + 1) ~/ 2) &&
+        ((minRow == 0 || maxRow == height) && (minCol == 0 || maxCol == width));
+    final double score =
+        loopEdges.length * 4.0 +
+        coverage * 120.0 +
+        bboxCoverage * 90.0 +
+        (touchedRows.length + touchedCols.length) * 5.0 +
+        nonZeroClues * 1.5 -
+        zeroRatio * 85.0 -
+        (perimeterHeavy ? 45.0 : 0.0) -
+        (cornerLocal ? 35.0 : 0.0);
+
+    final bool passesConstraints =
+        constraints == null ||
+        (loopEdges.length >= constraints.minLoopEdgeCount &&
+            touchedRows.length >= constraints.minTouchedRows &&
+            touchedCols.length >= constraints.minTouchedCols &&
+            bboxWidth >= constraints.minBoundingBoxWidth &&
+            bboxHeight >= constraints.minBoundingBoxHeight &&
+            zeroRatio <= constraints.maxFullZeroRatio);
+    return _LoopCandidate(
+      edges: Set<int>.from(loopEdges),
+      score: score,
+      passesConstraints: passesConstraints,
+    );
+  }
+
+  Map<int, int> _fullClueHistogram(Set<int> loopEdges) {
+    final Map<int, int> histogram = <int, int>{0: 0, 1: 0, 2: 0, 3: 0};
+    for (int row = 0; row < height; row++) {
+      for (int col = 0; col < width; col++) {
+        final int top = _edgeKey(_vertex(row, col), _vertex(row, col + 1));
+        final int bottom = _edgeKey(
+          _vertex(row + 1, col),
+          _vertex(row + 1, col + 1),
+        );
+        final int left = _edgeKey(_vertex(row, col), _vertex(row + 1, col));
+        final int right = _edgeKey(
+          _vertex(row, col + 1),
+          _vertex(row + 1, col + 1),
+        );
+        int count = 0;
+        if (loopEdges.contains(top)) count++;
+        if (loopEdges.contains(right)) count++;
+        if (loopEdges.contains(bottom)) count++;
+        if (loopEdges.contains(left)) count++;
+        histogram[count] = (histogram[count] ?? 0) + 1;
+      }
+    }
+    return histogram;
   }
 
   int _vertex(int row, int col) => row * cols + col;
   int _rowOf(int vertex) => vertex ~/ cols;
   int _colOf(int vertex) => vertex % cols;
+  int get edgeCount => rows * width + cols * height;
+}
+
+class _LoopCandidate {
+  const _LoopCandidate({
+    required this.edges,
+    required this.score,
+    required this.passesConstraints,
+  });
+
+  final Set<int> edges;
+  final double score;
+  final bool passesConstraints;
 }
 
 class _Edge {
-  _Edge(this.a, this.b)
-      : key = _edgeKey(a, b);
+  _Edge(this.a, this.b) : key = _edgeKey(a, b);
 
   final int a;
   final int b;
@@ -273,12 +419,10 @@ int _edgeKey(int a, int b) {
 }
 
 class SlitherlinkEdgeWriter {
-  SlitherlinkEdgeWriter({
-    required this.width,
-    required this.height,
-  })  : horizontalEdgeCount = (height + 1) * width,
-        verticalEdgeCount = (width + 1) * height,
-        edgeCount = (height + 1) * width + (width + 1) * height;
+  SlitherlinkEdgeWriter({required this.width, required this.height})
+    : horizontalEdgeCount = (height + 1) * width,
+      verticalEdgeCount = (width + 1) * height,
+      edgeCount = (height + 1) * width + (width + 1) * height;
 
   final int width;
   final int height;

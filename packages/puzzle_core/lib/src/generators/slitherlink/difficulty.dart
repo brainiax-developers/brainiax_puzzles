@@ -6,8 +6,7 @@ class SlitherlinkDifficultyProfile {
   const SlitherlinkDifficultyProfile(this._tunings);
 
   SlitherlinkDifficultyTuning resolve(SlitherlinkDifficulty difficulty) =>
-      _tunings[difficulty] ??
-      _tunings[SlitherlinkDifficulty.medium]!;
+      _tunings[difficulty] ?? _tunings[SlitherlinkDifficulty.medium]!;
 }
 
 class SlitherlinkDifficultyTuning {
@@ -33,39 +32,39 @@ class SlitherlinkDifficultyTuning {
 SlitherlinkDifficultyProfile defaultSlitherlinkDifficultyProfile() {
   return SlitherlinkDifficultyProfile({
     SlitherlinkDifficulty.easy: const SlitherlinkDifficultyTuning(
-      generationTimeBudget: Duration(milliseconds: 250),
-      removalTimeBudget: Duration(milliseconds: 160),
-      solverMaxDepth: 600,
+      generationTimeBudget: Duration(milliseconds: 500),
+      removalTimeBudget: Duration(milliseconds: 320),
+      solverMaxDepth: 1200,
       targetClueFraction: 0.65,
       binarySearchFraction: 0.3,
-      maxFailedRemovals: 18,
-      maxRestarts: 16,
-    ),
-    SlitherlinkDifficulty.medium: const SlitherlinkDifficultyTuning(
-      generationTimeBudget: Duration(milliseconds: 320),
-      removalTimeBudget: Duration(milliseconds: 210),
-      solverMaxDepth: 900,
-      targetClueFraction: 0.55,
-      binarySearchFraction: 0.35,
-      maxFailedRemovals: 24,
-      maxRestarts: 24,
-    ),
-    SlitherlinkDifficulty.hard: const SlitherlinkDifficultyTuning(
-      generationTimeBudget: Duration(milliseconds: 400),
-      removalTimeBudget: Duration(milliseconds: 260),
-      solverMaxDepth: 1500,
-      targetClueFraction: 0.45,
-      binarySearchFraction: 0.4,
-      maxFailedRemovals: 30,
+      maxFailedRemovals: 75,
       maxRestarts: 32,
     ),
+    SlitherlinkDifficulty.medium: const SlitherlinkDifficultyTuning(
+      generationTimeBudget: Duration(milliseconds: 650),
+      removalTimeBudget: Duration(milliseconds: 420),
+      solverMaxDepth: 2000,
+      targetClueFraction: 0.55,
+      binarySearchFraction: 0.35,
+      maxFailedRemovals: 90,
+      maxRestarts: 36,
+    ),
+    SlitherlinkDifficulty.hard: const SlitherlinkDifficultyTuning(
+      generationTimeBudget: Duration(milliseconds: 800),
+      removalTimeBudget: Duration(milliseconds: 560),
+      solverMaxDepth: 3200,
+      targetClueFraction: 0.45,
+      binarySearchFraction: 0.4,
+      maxFailedRemovals: 120,
+      maxRestarts: 40,
+    ),
     SlitherlinkDifficulty.expert: const SlitherlinkDifficultyTuning(
-      generationTimeBudget: Duration(milliseconds: 520),
-      removalTimeBudget: Duration(milliseconds: 320),
-      solverMaxDepth: 2200,
+      generationTimeBudget: Duration(milliseconds: 1000),
+      removalTimeBudget: Duration(milliseconds: 700),
+      solverMaxDepth: 4500,
       targetClueFraction: 0.38,
       binarySearchFraction: 0.45,
-      maxFailedRemovals: 36,
+      maxFailedRemovals: 150,
       maxRestarts: 40,
     ),
   });

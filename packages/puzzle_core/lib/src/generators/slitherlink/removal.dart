@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../../engine/slitherlink/solver_adapter.dart';
 import '../../util/seeded_rng.dart';
+import 'quality.dart';
 
 class ClueRemovalConfig {
   const ClueRemovalConfig({
@@ -13,6 +14,9 @@ class ClueRemovalConfig {
     required this.binarySearchFraction,
     required this.targetClueFraction,
     required this.maxFailedRemovals,
+    this.qualityProfile,
+    this.requireQualityGate = false,
+    this.useTimeBudget = true,
   });
 
   final int width;
@@ -22,6 +26,9 @@ class ClueRemovalConfig {
   final double binarySearchFraction;
   final double targetClueFraction;
   final int maxFailedRemovals;
+  final SlitherlinkQualityProfile? qualityProfile;
+  final bool requireQualityGate;
+  final bool useTimeBudget;
 }
 
 class ClueRemovalStats {
@@ -32,6 +39,8 @@ class ClueRemovalStats {
     required this.removedClueCount,
     required this.hitTimeBudget,
     required this.failedRemovalCount,
+    required this.qualityGatePassed,
+    this.qualityRejectReason,
   });
 
   final int solverCalls;
@@ -40,13 +49,12 @@ class ClueRemovalStats {
   final int removedClueCount;
   final bool hitTimeBudget;
   final int failedRemovalCount;
+  final bool qualityGatePassed;
+  final String? qualityRejectReason;
 }
 
 class ClueRemovalResult {
-  const ClueRemovalResult({
-    required this.clues,
-    required this.stats,
-  });
+  const ClueRemovalResult({required this.clues, required this.stats});
 
   final List<int?> clues;
   final ClueRemovalStats stats;
@@ -61,8 +69,7 @@ ClueRemovalResult removeClues({
 }) {
   final Stopwatch stopwatch = Stopwatch()..start();
   final List<int?> working = List<int?>.from(fullClues);
-  final List<int> candidates = List<int>.generate(fullClues.length, (int i) => i);
-  rng.shuffle(candidates);
+  final List<int> candidates = _orderedRemovalCandidates(fullClues, rng);
 
   int solverCalls = 0;
   int maxDepthHit = 0;
@@ -83,7 +90,7 @@ ClueRemovalResult removeClues({
     madeProgress = false;
     int idx = 0;
     while (idx < candidates.length) {
-      if (stopwatch.elapsed > config.timeBudget) {
+      if (_timeExpired(stopwatch, config)) {
         timeBudgetHit = true;
         break;
       }
@@ -107,7 +114,7 @@ ClueRemovalResult removeClues({
       int high = math.min(remaining, dynamicCap);
       int best = 0;
       while (low <= high) {
-        if (stopwatch.elapsed > config.timeBudget) {
+        if (_timeExpired(stopwatch, config)) {
           timeBudgetHit = true;
           break;
         }
@@ -161,11 +168,28 @@ ClueRemovalResult removeClues({
         idx += best;
       }
     }
-  } while (
-      madeProgress &&
+  } while (madeProgress &&
       !timeBudgetHit &&
       !densitySatisfied &&
       failedRemovalCount < config.maxFailedRemovals);
+
+  String? qualityRejectReason;
+  bool qualityGatePassed = true;
+  final SlitherlinkQualityProfile? qualityProfile = config.qualityProfile;
+  if (qualityProfile != null) {
+    _repairFinalQuality(
+      working: working,
+      fullClues: fullClues,
+      qualityProfile: qualityProfile,
+    );
+    qualityRejectReason = qualityProfile.finalClueSetRejectReason(working);
+    qualityGatePassed = qualityRejectReason == null;
+    if (!qualityGatePassed && config.requireQualityGate) {
+      throw StateError(
+        'Slitherlink clue removal failed quality gate: $qualityRejectReason',
+      );
+    }
+  }
 
   stopwatch.stop();
   final ClueRemovalStats stats = ClueRemovalStats(
@@ -175,8 +199,118 @@ ClueRemovalResult removeClues({
     removedClueCount: removedClueCount,
     hitTimeBudget: timeBudgetHit,
     failedRemovalCount: failedRemovalCount,
+    qualityGatePassed: qualityGatePassed,
+    qualityRejectReason: qualityRejectReason,
   );
   return ClueRemovalResult(clues: working, stats: stats);
+}
+
+bool _timeExpired(Stopwatch stopwatch, ClueRemovalConfig config) {
+  return config.useTimeBudget && stopwatch.elapsed > config.timeBudget;
+}
+
+List<int> _orderedRemovalCandidates(List<int> fullClues, SeededRng rng) {
+  final Map<int, List<_RemovalCandidate>> buckets =
+      <int, List<_RemovalCandidate>>{
+        0: <_RemovalCandidate>[],
+        1: <_RemovalCandidate>[],
+        2: <_RemovalCandidate>[],
+        3: <_RemovalCandidate>[],
+        4: <_RemovalCandidate>[],
+      };
+  for (int index = 0; index < fullClues.length; index++) {
+    final _RemovalCandidate candidate = _RemovalCandidate(
+      index: index,
+      priority: _removalPriority(fullClues[index]),
+      tieBreak: rng.nextInt64(),
+    );
+    buckets[candidate.priority]!.add(candidate);
+  }
+  for (final List<_RemovalCandidate> bucket in buckets.values) {
+    bucket.sort((a, b) => a.tieBreak.compareTo(b.tieBreak));
+  }
+  final List<int> ordered = <int>[];
+  while (buckets.values.any(
+    (List<_RemovalCandidate> bucket) => bucket.isNotEmpty,
+  )) {
+    _takeCandidate(buckets[0]!, ordered);
+    _takeCandidate(buckets[1]!, ordered);
+    _takeCandidate(buckets[0]!, ordered);
+    _takeCandidate(buckets[2]!, ordered);
+    _takeCandidate(buckets[0]!, ordered);
+    _takeCandidate(buckets[3]!, ordered);
+    _takeCandidate(buckets[4]!, ordered);
+  }
+  return ordered;
+}
+
+void _takeCandidate(List<_RemovalCandidate> bucket, List<int> ordered) {
+  if (bucket.isEmpty) {
+    return;
+  }
+  ordered.add(bucket.removeLast().index);
+}
+
+int _removalPriority(int clue) {
+  switch (clue) {
+    case 0:
+      return 0;
+    case 1:
+      return 1;
+    case 2:
+      return 2;
+    case 3:
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+void _repairFinalQuality({
+  required List<int?> working,
+  required List<int> fullClues,
+  required SlitherlinkQualityProfile qualityProfile,
+}) {
+  String? reason = qualityProfile.finalClueSetRejectReason(working);
+  if (reason == null) {
+    return;
+  }
+  final List<int> restoreCandidates = <int>[];
+  for (int index = 0; index < working.length; index++) {
+    if (working[index] == null && fullClues[index] > 0) {
+      restoreCandidates.add(index);
+    }
+  }
+  restoreCandidates.sort((a, b) {
+    final int clueCompare = fullClues[b].compareTo(fullClues[a]);
+    if (clueCompare != 0) {
+      return clueCompare;
+    }
+    return a.compareTo(b);
+  });
+
+  for (final int index in restoreCandidates) {
+    if (reason == 'clue_density_above_target') {
+      return;
+    }
+    working[index] = fullClues[index];
+    reason = qualityProfile.finalClueSetRejectReason(working);
+    if (reason == null) {
+      return;
+    }
+  }
+}
+
+class _RemovalCandidate {
+  const _RemovalCandidate({
+    required this.index,
+    required this.priority,
+    required this.tieBreak,
+  });
+
+  final int index;
+  final int priority;
+  final int tieBreak;
 }
 
 class _BatchResult {
@@ -229,7 +363,7 @@ _BatchResult _tryRemoveBatch({
     );
   }
   bool abort = false;
-  if (stopwatch.elapsed > config.timeBudget) {
+  if (_timeExpired(stopwatch, config)) {
     abort = true;
   }
   bool unique = false;
@@ -246,7 +380,7 @@ _BatchResult _tryRemoveBatch({
     );
     maxDepthHit = math.max(maxDepthHit, result.maxDepth);
     unique = !result.hitSpeculativeBudget && result.solutionCount == 1;
-    if (stopwatch.elapsed > config.timeBudget) {
+    if (_timeExpired(stopwatch, config)) {
       abort = true;
     }
     if (!unique) {

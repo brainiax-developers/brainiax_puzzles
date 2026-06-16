@@ -11,17 +11,13 @@ class EdgeHint {
   final int y;
   final Direction dir;
 
-  const EdgeHint({
-    required this.x,
-    required this.y,
-    required this.dir,
-  });
+  const EdgeHint({required this.x, required this.y, required this.dir});
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'x': x,
-        'y': y,
-        'dir': dir.name,
-      };
+    'x': x,
+    'y': y,
+    'dir': dir.name,
+  };
 
   factory EdgeHint.fromJson(Map<String, Object?> json) {
     final String dirName = json['dir'] as String? ?? Direction.north.name;
@@ -44,6 +40,7 @@ class SlitherlinkPuzzle {
   final List<EdgeHint> entrances;
   final int? seed;
   final SlitherlinkDifficulty difficulty;
+  final Map<String, Object?> telemetry;
 
   SlitherlinkPuzzle({
     required this.width,
@@ -53,25 +50,24 @@ class SlitherlinkPuzzle {
     List<EdgeHint> entrances = const <EdgeHint>[],
     this.seed,
     this.difficulty = SlitherlinkDifficulty.medium,
-  })  : clues = List<int?>.unmodifiable(List<int?>.from(clues)),
-        entrances =
-            List<EdgeHint>.unmodifiable(List<EdgeHint>.from(entrances));
+    Map<String, Object?> telemetry = const <String, Object?>{},
+  }) : clues = List<int?>.unmodifiable(List<int?>.from(clues)),
+       entrances = List<EdgeHint>.unmodifiable(List<EdgeHint>.from(entrances)),
+       telemetry = Map<String, Object?>.unmodifiable(telemetry);
 
-  SlitherlinkBoard toBoard() => SlitherlinkBoard.empty(
-        width: width,
-        height: height,
-        clues: clues,
-      );
+  SlitherlinkBoard toBoard() =>
+      SlitherlinkBoard.empty(width: width, height: height, clues: clues);
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'width': width,
-        'height': height,
-        'clues': clues,
-        'variant': variant.name,
-        'entrances': entrances.map((EdgeHint e) => e.toJson()).toList(),
-        if (seed != null) 'seed': seed,
-        'difficulty': difficulty.name,
-      };
+    'width': width,
+    'height': height,
+    'clues': clues,
+    'variant': variant.name,
+    'entrances': entrances.map((EdgeHint e) => e.toJson()).toList(),
+    if (seed != null) 'seed': seed,
+    'difficulty': difficulty.name,
+    if (telemetry.isNotEmpty) 'telemetry': telemetry,
+  };
 
   factory SlitherlinkPuzzle.fromJson(Map<String, Object?> json) {
     final String variantName =
@@ -80,7 +76,7 @@ class SlitherlinkPuzzle {
         json['difficulty'] as String? ?? SlitherlinkDifficulty.medium.name;
     final Iterable<Map<String, Object?>> rawEntrances =
         (json['entrances'] as Iterable?)?.cast<Map<String, Object?>>() ??
-            const <Map<String, Object?>>[];
+        const <Map<String, Object?>>[];
     return SlitherlinkPuzzle(
       width: json['width'] as int? ?? 0,
       height: json['height'] as int? ?? 0,
@@ -95,6 +91,9 @@ class SlitherlinkPuzzle {
         (SlitherlinkDifficulty d) => d.name == difficultyName,
         orElse: () => SlitherlinkDifficulty.medium,
       ),
+      telemetry: Map<String, Object?>.from(
+        json['telemetry'] as Map? ?? const <String, Object?>{},
+      ),
     );
   }
 
@@ -104,6 +103,7 @@ class SlitherlinkPuzzle {
     List<EdgeHint>? entrances,
     int? seed,
     SlitherlinkDifficulty? difficulty,
+    Map<String, Object?>? telemetry,
   }) {
     return SlitherlinkPuzzle(
       width: width,
@@ -113,6 +113,7 @@ class SlitherlinkPuzzle {
       entrances: entrances ?? this.entrances,
       seed: seed ?? this.seed,
       difficulty: difficulty ?? this.difficulty,
+      telemetry: telemetry ?? this.telemetry,
     );
   }
 }

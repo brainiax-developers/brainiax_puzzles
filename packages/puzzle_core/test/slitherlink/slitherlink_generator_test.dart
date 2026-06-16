@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:puzzle_core/src/engine/slitherlink/solver_adapter.dart';
+import 'package:puzzle_core/src/generators/slitherlink/removal.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -37,6 +41,35 @@ void main() {
         first.snapshot.telemetry['solutionEdges'],
         equals(second.snapshot.telemetry['solutionEdges']),
       );
+    });
+
+    test('different seeds normally produce different clue layouts', () {
+      final PuzzleGenerationResult<SlitherlinkBoard> first = generator.generate(
+        contextFor('slitherlink_different_seed_a', 5, difficulty: 'easy'),
+      );
+      final PuzzleGenerationResult<SlitherlinkBoard> second = generator
+          .generate(
+            contextFor('slitherlink_different_seed_b', 5, difficulty: 'easy'),
+          );
+
+      expect(first.board.clues, isNot(equals(second.board.clues)));
+    });
+
+    test('5x5 easy generation passes loop and clue quality gates', () {
+      final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+          .generate(
+            contextFor('slitherlink_easy_quality', 5, difficulty: 'easy'),
+          );
+      final Map<String, Object?> telemetry = result.snapshot.telemetry;
+
+      expect(telemetry['loopEdgeCount'], greaterThanOrEqualTo(16));
+      expect(telemetry['loopTouchedRows'], greaterThanOrEqualTo(4));
+      expect(telemetry['loopTouchedCols'], greaterThanOrEqualTo(4));
+      expect(telemetry['loopBoundingBoxWidth'], greaterThanOrEqualTo(4));
+      expect(telemetry['loopBoundingBoxHeight'], greaterThanOrEqualTo(4));
+      expect((telemetry['revealedZeroRatio'] as num), lessThanOrEqualTo(0.50));
+      expect(telemetry['nonZeroRevealedClues'], greaterThanOrEqualTo(6));
+      expect(telemetry['qualityGatePassed'], isTrue);
     });
 
     test('produces a unique, single-loop puzzle', () {
@@ -106,6 +139,110 @@ void main() {
       final Map<String, Object?> histogram = (telemetry['clueHistogram'] as Map)
           .cast<String, Object?>();
       expect(histogram.keys, containsAll(<String>['0', '1', '2', '3']));
+    });
+
+    test('5x5 easy regression seeds avoid tiny and zero-heavy puzzles', () {
+      final SlitherlinkQualityProfile profile = slitherlinkQualityProfileFor(
+        width: 5,
+        height: 5,
+        difficulty: 'easy',
+      );
+      for (int i = 0; i < 20; i++) {
+        final String seed = 'slitherlink_easy_regression_$i';
+        final PuzzleGenerationResult<SlitherlinkBoard> result = generator
+            .generate(contextFor(seed, 5, difficulty: 'easy'));
+        final Map<String, Object?> telemetry = result.snapshot.telemetry;
+
+        expect(
+          telemetry['loopEdgeCount'],
+          greaterThanOrEqualTo(profile.minLoopEdgeCount),
+          reason: seed,
+        );
+        expect(
+          telemetry['loopTouchedRows'],
+          greaterThanOrEqualTo(profile.minTouchedRows),
+          reason: seed,
+        );
+        expect(
+          telemetry['loopTouchedCols'],
+          greaterThanOrEqualTo(profile.minTouchedCols),
+          reason: seed,
+        );
+        expect(
+          telemetry['loopBoundingBoxWidth'],
+          greaterThanOrEqualTo(profile.minBoundingBoxWidth),
+          reason: seed,
+        );
+        expect(
+          telemetry['loopBoundingBoxHeight'],
+          greaterThanOrEqualTo(profile.minBoundingBoxHeight),
+          reason: seed,
+        );
+        expect(
+          telemetry['revealedZeroRatio'] as num,
+          lessThanOrEqualTo(profile.maxRevealedZeroRatio),
+          reason: seed,
+        );
+        expect(
+          telemetry['nonZeroRevealedClues'],
+          greaterThanOrEqualTo(profile.minNonZeroRevealedClues),
+          reason: seed,
+        );
+
+        final SolverResult<SlitherlinkBoard> solved = solver.solve(
+          result.board,
+          SolverContext(
+            rng: SeededRng(Seed.fromString('$seed:solver')),
+            maxSolutions: 2,
+          ),
+        );
+        expect(
+          solved.solutionStatus,
+          isNot(SolverStatus.unknown),
+          reason: seed,
+        );
+        expect(solved.isUnique, isTrue, reason: seed);
+      }
+    });
+
+    test('clue removal rejects final clue sets that fail quality gates', () {
+      final SlitherlinkQualityProfile profile = slitherlinkQualityProfileFor(
+        width: 5,
+        height: 5,
+        difficulty: 'easy',
+      );
+
+      expect(
+        () => removeClues(
+          fullClues: List<int>.filled(25, 0),
+          rng: SeededRng(Seed.fromString('slitherlink_bad_removal')),
+          config: ClueRemovalConfig(
+            width: 5,
+            height: 5,
+            timeBudget: Duration.zero,
+            maxBacktrackDepth: 1,
+            binarySearchFraction: 0.4,
+            targetClueFraction: profile.targetClueDensity,
+            maxFailedRemovals: 1,
+            qualityProfile: profile,
+            requireQualityGate: true,
+          ),
+          uniqueness: const SlitherlinkUniqueness(SlitherlinkSolver()),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('Slitherlink deterministic generation has no day-long budget', () {
+      final String apiSource = File(
+        'packages/puzzle_core/lib/src/generators/slitherlink/api.dart',
+      ).readAsStringSync();
+      final String generatorSource = File(
+        'packages/puzzle_core/lib/src/generators/slitherlink/generator.dart',
+      ).readAsStringSync();
+
+      expect(apiSource, isNot(contains('Duration(days: 1)')));
+      expect(generatorSource, isNot(contains('Duration(days: 1)')));
     });
 
     test('exposes rich difficulty telemetry on generated puzzles', () {
@@ -178,7 +315,17 @@ const List<String> _slitherlinkTelemetryKeys = <String>[
   'revealedClues',
   'hiddenClues',
   'clueHistogram',
+  'fullClueHistogram',
+  'revealedClueHistogram',
   'loopEdgeCount',
+  'loopCoverageRatio',
+  'loopTouchedRows',
+  'loopTouchedCols',
+  'loopBoundingBoxWidth',
+  'loopBoundingBoxHeight',
+  'revealedZeroRatio',
+  'nonZeroRevealedClues',
+  'qualityGatePassed',
   'speculativeSteps',
   'maxDepth',
   'localAssignments',

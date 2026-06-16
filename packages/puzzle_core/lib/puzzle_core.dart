@@ -1,8 +1,8 @@
 /// Puzzle Core - On-device deterministic puzzle generation system.
-/// 
+///
 /// This package provides a stable API for puzzle engines with deterministic
 /// generation, registry management, and metadata tracking.
-/// 
+///
 /// Key features:
 /// - On-device deterministic generation (no network, no wall-clock timings)
 /// - 64-bit integer arithmetic for RNG (SplitMix64 seeding + xoroshiro128 core)
@@ -60,6 +60,7 @@ export 'src/slitherlink/slitherlink_validator.dart';
 export 'src/slitherlink/slitherlink_topology.dart';
 export 'src/generators/slitherlink/api.dart';
 export 'src/generators/slitherlink/difficulty.dart';
+export 'src/generators/slitherlink/quality.dart';
 
 // Mathdoku engine implementation
 export 'src/mathdoku/mathdoku_board.dart';
