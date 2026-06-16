@@ -43,7 +43,7 @@ class KillerQueensBoard {
   }) : cells = List<int>.unmodifiable(cells),
        fixed = List<bool>.unmodifiable(fixed),
        cages = List<KillerQueensCage>.unmodifiable(cages),
-       _cageByCell = buildCageByCell(size, cages) {
+       _cageByCell = _buildCageByCellTolerant(size, cages) {
     if (size <= 0) {
       throw ArgumentError('Killer Queens board must have positive size');
     }
@@ -179,6 +179,28 @@ class KillerQueensBoard {
     for (int i = 0; i < cellCount; i++) {
       if (cageByCell[i] == -1) {
         throw ArgumentError('Cell $i missing cage assignment');
+      }
+    }
+    return List<int>.unmodifiable(cageByCell);
+  }
+
+  static List<int> _buildCageByCellTolerant(
+    int size,
+    List<KillerQueensCage> cages,
+  ) {
+    if (size <= 0) {
+      return const <int>[];
+    }
+
+    final int cellCount = size * size;
+    final List<int> cageByCell = List<int>.filled(cellCount, -1);
+    for (int cageIndex = 0; cageIndex < cages.length; cageIndex++) {
+      final KillerQueensCage cage = cages[cageIndex];
+      for (final int cell in cage.cells) {
+        if (cell < 0 || cell >= cellCount || cageByCell[cell] != -1) {
+          continue;
+        }
+        cageByCell[cell] = cageIndex;
       }
     }
     return List<int>.unmodifiable(cageByCell);
