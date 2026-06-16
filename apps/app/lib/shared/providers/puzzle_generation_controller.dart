@@ -74,16 +74,19 @@ class PuzzleGenerationController
 
     try {
       if (puzzleType == app.PuzzleType.slitherlinkLoop) {
+        final String resolvedSeed =
+            seed ?? SeedService().generateRandomSeed(puzzleType.key);
         final core.GeneratedPuzzle<dynamic> generated =
             await _generateSlitherlinkOnDemand(
               difficulty: difficulty,
               size: resolvedSize,
+              seed: resolvedSeed,
             );
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
             'difficulty=$difficulty size=${resolvedSize.id} '
-            'seed=on-demand elapsedMs=${stopwatch.elapsedMilliseconds}',
+            'seed=$resolvedSeed elapsedMs=${stopwatch.elapsedMilliseconds}',
           );
         }
         if (token == _generationToken) {
@@ -332,12 +335,14 @@ class PuzzleGenerationController
   Future<core.GeneratedPuzzle<dynamic>> _generateSlitherlinkOnDemand({
     required String difficulty,
     required core.SizeOpt size,
+    required String seed,
   }) async {
     final service = ref.read(slitherlinkOnDemandProvider);
     return service.nextPuzzle(
       difficulty: difficulty,
       width: size.width,
       height: size.height,
+      seed: seed,
     );
   }
 

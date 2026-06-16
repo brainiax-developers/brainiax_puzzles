@@ -7,6 +7,7 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:app/shared/models/puzzle_type.dart';
 import 'package:app/shared/providers/puzzle_generation_controller.dart';
 import 'package:app/shared/services/generation_isolate.dart';
+import 'package:app/shared/services/slitherlink_on_demand_service.dart';
 
 void main() {
   const iterationsForBenchmark = 30;
@@ -160,6 +161,43 @@ void main() {
     expect(controller.state.error, same(timeout));
   });
 
+  test(
+    'passes the resolved seed into Slitherlink on-demand generation',
+    () async {
+      core.EngineRegistry().register(core.SlitherlinkEngine());
+      final service = _RecordingSlitherlinkOnDemandService(
+        result: _slitherlinkPuzzle(
+          seedStr: 'seed:slitherlink',
+          seed64: core.Seed.fromString('seed:slitherlink'),
+        ),
+      );
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [slitherlinkOnDemandProvider.overrideWithValue(service)],
+      );
+      final controller = container.read(
+        puzzleGenerationControllerProvider.notifier,
+      );
+
+      final puzzle = await controller.generate(
+        puzzleType: PuzzleType.slitherlinkLoop,
+        difficulty: 'hard',
+        size: '7x5',
+        seed: 'seed:slitherlink',
+      );
+
+      expect(service.lastDifficulty, equals('hard'));
+      expect(service.lastWidth, equals(7));
+      expect(service.lastHeight, equals(5));
+      expect(service.lastSeed, equals('seed:slitherlink'));
+      expect(puzzle.meta.seedStr, equals('seed:slitherlink'));
+      expect(
+        puzzle.meta.seed64,
+        equals(core.Seed.fromString('seed:slitherlink')),
+      );
+    },
+  );
+
   test('meets phase-2 puzzle generation SLA (p95)', () async {
     final controller = container.read(
       puzzleGenerationControllerProvider.notifier,
@@ -247,4 +285,61 @@ core.GeneratedPuzzle<dynamic> _stubPuzzle({
     size: size,
     difficulty: difficulty,
   );
+}
+
+core.GeneratedPuzzle<core.SlitherlinkBoard> _slitherlinkPuzzle({
+  required String seedStr,
+  required int seed64,
+}) {
+  const size = core.SizeOpt(id: '7x5', description: '7x5', width: 7, height: 5);
+  const difficulty = core.DifficultyScore(value: 0.9, level: 'hard');
+  final board = core.SlitherlinkBoard.empty(
+    width: size.width,
+    height: size.height,
+    clues: List<int?>.filled(size.width * size.height, null),
+  );
+  return core.GeneratedPuzzle<core.SlitherlinkBoard>(
+    state: board,
+    meta: core.PuzzleMetadata(
+      engineVersion: 'test',
+      rngId: core.SeededRng.rngId,
+      size: size,
+      difficulty: difficulty,
+      seedStr: seedStr,
+      seed64: seed64,
+    ),
+    telemetry: core.GenerationTelemetry(
+      difficulty: core.DifficultyTelemetry(
+        rawScore: difficulty.value,
+        bucket: difficulty.level,
+        metrics: const <String, num>{},
+      ),
+      extras: const <String, Object?>{},
+    ),
+  );
+}
+
+class _RecordingSlitherlinkOnDemandService extends SlitherlinkOnDemandService {
+  _RecordingSlitherlinkOnDemandService({required this.result});
+
+  final core.GeneratedPuzzle<core.SlitherlinkBoard> result;
+  String? lastDifficulty;
+  int? lastWidth;
+  int? lastHeight;
+  String? lastSeed;
+
+  @override
+  Future<core.GeneratedPuzzle<core.SlitherlinkBoard>> nextPuzzle({
+    required String difficulty,
+    required int width,
+    required int height,
+    required String seed,
+    Duration timeBudget = const Duration(milliseconds: 350),
+  }) async {
+    lastDifficulty = difficulty;
+    lastWidth = width;
+    lastHeight = height;
+    lastSeed = seed;
+    return result;
+  }
 }

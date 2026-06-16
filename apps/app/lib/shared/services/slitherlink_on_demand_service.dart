@@ -10,26 +10,29 @@ class SlitherlinkOnDemandService {
     required String difficulty,
     required int width,
     required int height,
+    required String seed,
     Duration timeBudget = const Duration(milliseconds: 350),
   }) async {
     final core.SlitherlinkDifficulty resolved = _parseDifficulty(difficulty);
+    final int seed64 = core.Seed.fromString(seed);
     final core.GenerateSlitherlinkRequest request =
         core.GenerateSlitherlinkRequest(
-      width: width,
-      height: height,
-      difficulty: resolved,
-      timeBudget: timeBudget,
-    );
-    final core.SlitherlinkPuzzle puzzle =
-        await core.generateSlitherlinkInIsolate(
-      request,
-    );
-    return _wrapPuzzle(puzzle);
+          width: width,
+          height: height,
+          difficulty: resolved,
+          seed64: seed64,
+          timeBudget: timeBudget,
+        );
+    final core.SlitherlinkPuzzle puzzle = await core
+        .generateSlitherlinkInIsolate(request);
+    return _wrapPuzzle(puzzle, seed: seed, seed64: seed64);
   }
 
   core.GeneratedPuzzle<core.SlitherlinkBoard> _wrapPuzzle(
-    core.SlitherlinkPuzzle puzzle,
-  ) {
+    core.SlitherlinkPuzzle puzzle, {
+    required String seed,
+    required int seed64,
+  }) {
     final core.SizeOpt size = core.SizeOpt(
       id: '${puzzle.width}x${puzzle.height}',
       description: '${puzzle.width}x${puzzle.height}',
@@ -37,13 +40,12 @@ class SlitherlinkOnDemandService {
       height: puzzle.height,
     );
     final core.DifficultyScore score = _scoreFromDifficulty(puzzle.difficulty);
-    final int seed64 = puzzle.seed ?? core.Seed.fromString('${puzzle.width}x${puzzle.height}:${score.level}');
     final core.PuzzleMetadata meta = core.PuzzleMetadata(
       engineVersion: 'slitherlink_on_demand_1',
       rngId: core.SeededRng.rngId,
       size: size,
       difficulty: score,
-      seedStr: 'slitherlink:$seed64',
+      seedStr: seed,
       seed64: seed64,
     );
     final core.GenerationTelemetry telemetry = core.GenerationTelemetry(
@@ -54,8 +56,9 @@ class SlitherlinkOnDemandService {
       ),
       extras: <String, Object?>{
         'variant': puzzle.variant.name,
-        'entrances':
-            puzzle.entrances.map((core.EdgeHint e) => e.toJson()).toList(),
+        'entrances': puzzle.entrances
+            .map((core.EdgeHint e) => e.toJson())
+            .toList(),
       },
     );
     return core.GeneratedPuzzle<core.SlitherlinkBoard>(
@@ -94,7 +97,6 @@ class SlitherlinkOnDemandService {
   }
 }
 
-final slitherlinkOnDemandProvider =
-    Provider<SlitherlinkOnDemandService>((ref) {
+final slitherlinkOnDemandProvider = Provider<SlitherlinkOnDemandService>((ref) {
   return SlitherlinkOnDemandService();
 });

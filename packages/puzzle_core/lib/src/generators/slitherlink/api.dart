@@ -16,11 +16,10 @@ import 'difficulty.dart';
 import 'removal.dart';
 
 class SlitherlinkGenerator {
-  SlitherlinkGenerator({
-    SlitherlinkDifficultyProfile? profile,
-  })  : _profile = profile ?? defaultSlitherlinkDifficultyProfile(),
-        _solver = const SlitherlinkSolver(),
-        _uniqueness = SlitherlinkUniqueness(const SlitherlinkSolver());
+  SlitherlinkGenerator({SlitherlinkDifficultyProfile? profile})
+    : _profile = profile ?? defaultSlitherlinkDifficultyProfile(),
+      _solver = const SlitherlinkSolver(),
+      _uniqueness = SlitherlinkUniqueness(const SlitherlinkSolver());
 
   final SlitherlinkDifficultyProfile _profile;
   final SlitherlinkSolver _solver;
@@ -38,8 +37,11 @@ class SlitherlinkGenerator {
     Duration timeBudget = const Duration(milliseconds: 350),
     int maxRestarts = 40,
   }) async {
+    final bool deterministicMode = seed != null;
     final SlitherlinkDifficultyTuning tuning = _profile.resolve(difficulty);
-    final Duration effectiveBudget = timeBudget.inMicroseconds > 0
+    final Duration effectiveBudget = deterministicMode
+        ? const Duration(days: 1)
+        : timeBudget.inMicroseconds > 0
         ? Duration(
             microseconds: math.min(
               timeBudget.inMicroseconds,
@@ -64,8 +66,9 @@ class SlitherlinkGenerator {
           variant: variant,
           tuning: tuning,
           seed: attemptSeed,
+          deterministicMode: deterministicMode,
         );
-        _fallbackCache[_FallbackKey(width, height, difficulty, variant)] =
+        _fallbackCache[_FallbackKey(width, height, difficulty, variant, seed)] =
             puzzle;
         return puzzle;
       } catch (err) {
@@ -75,7 +78,7 @@ class SlitherlinkGenerator {
     }
 
     final SlitherlinkPuzzle? fallback =
-        _fallbackCache[_FallbackKey(width, height, difficulty, variant)];
+        _fallbackCache[_FallbackKey(width, height, difficulty, variant, seed)];
     if (fallback != null) {
       return fallback;
     }
@@ -92,6 +95,7 @@ class SlitherlinkGenerator {
     required SlitherlinkVariant variant,
     required SlitherlinkDifficultyTuning tuning,
     required int seed,
+    required bool deterministicMode,
   }) {
     final LoopSynthesisResult loop = synthesizeLoop(
       width: width,
@@ -104,11 +108,15 @@ class SlitherlinkGenerator {
       height: height,
     );
     final Uint8List targetEdges = Uint8List.fromList(loop.solutionEdges);
-    final Uint8List solverSolutionBuffer = Uint8List.fromList(loop.solutionEdges);
+    final Uint8List solverSolutionBuffer = Uint8List.fromList(
+      loop.solutionEdges,
+    );
     final ClueRemovalConfig config = ClueRemovalConfig(
       width: width,
       height: height,
-      timeBudget: tuning.removalTimeBudget,
+      timeBudget: deterministicMode
+          ? const Duration(days: 1)
+          : tuning.removalTimeBudget,
       maxBacktrackDepth: tuning.solverMaxDepth,
       binarySearchFraction: tuning.binarySearchFraction,
       targetClueFraction: tuning.targetClueFraction,
@@ -230,8 +238,8 @@ class SlitherlinkGenerator {
     if (explicitSeed != null) {
       return (explicitSeed ^ salt) & 0xffffffffffffffff;
     }
-    final int rnd = (_random.nextInt(0x7fffffff) << 17) ^
-        _random.nextInt(0x7fffffff);
+    final int rnd =
+        (_random.nextInt(0x7fffffff) << 17) ^ _random.nextInt(0x7fffffff);
     final String signature = 'slitherlink:$rnd:$salt';
     return Seed.fromString(signature);
   }
@@ -242,7 +250,7 @@ class GenerateSlitherlinkRequest {
   final int height;
   final SlitherlinkDifficulty difficulty;
   final SlitherlinkVariant variant;
-  final int? seed;
+  final int? seed64;
   final Duration timeBudget;
   final int maxRestarts;
 
@@ -251,7 +259,7 @@ class GenerateSlitherlinkRequest {
     required this.height,
     required this.difficulty,
     this.variant = SlitherlinkVariant.classicLoop,
-    this.seed,
+    this.seed64,
     this.timeBudget = const Duration(milliseconds: 350),
     this.maxRestarts = 40,
   });
@@ -267,7 +275,7 @@ Future<SlitherlinkPuzzle> generateSlitherlinkInIsolate(
       height: request.height,
       difficulty: request.difficulty,
       variant: request.variant,
-      seed: request.seed,
+      seed: request.seed64,
       timeBudget: request.timeBudget,
       maxRestarts: request.maxRestarts,
     );
@@ -279,8 +287,15 @@ class _FallbackKey {
   final int height;
   final SlitherlinkDifficulty difficulty;
   final SlitherlinkVariant variant;
+  final int? seed64;
 
-  const _FallbackKey(this.width, this.height, this.difficulty, this.variant);
+  const _FallbackKey(
+    this.width,
+    this.height,
+    this.difficulty,
+    this.variant,
+    this.seed64,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -288,11 +303,12 @@ class _FallbackKey {
         other.width == width &&
         other.height == height &&
         other.difficulty == difficulty &&
-        other.variant == variant;
+        other.variant == variant &&
+        other.seed64 == seed64;
   }
 
   @override
-  int get hashCode => Object.hash(width, height, difficulty, variant);
+  int get hashCode => Object.hash(width, height, difficulty, variant, seed64);
 }
 
 bool _edgesMatch(List<int> a, List<int> b) {
