@@ -1,124 +1,71 @@
 # Killer Queens Difficulty Changes
 
 ## Overview
-This document summarizes the changes made to the Killer Queens puzzle game to enhance difficulty differentiation and map grid sizes to difficulty levels.
 
-## Grid Size Changes
+Killer Queens difficulty scoring now uses measured solver and region metrics
+instead of primarily relying on board size, average cage size, and fixed queen
+counts. The current thresholds are provisional and are only regression-covered
+by the fixed seeds in `packages/puzzle_core/test/killer_queens_engine_test.dart`;
+they should not be treated as broad player-facing calibration.
 
-The grid sizes have been updated to correspond directly with difficulty levels:
+## Scoring Inputs
 
-| Difficulty | Old Size | New Size | Change |
-|------------|----------|----------|--------|
-| Easy       | Variable | **6x6**  | Fixed to smaller grid |
-| Medium     | Variable | **8x8**  | Fixed to medium grid |
-| Hard       | Variable | **10x10** | Fixed to larger grid |
-| Expert     | Variable | **12x12** | Fixed to largest grid |
+The scorer reads the solver telemetry produced during pipeline verification:
 
-## Generator Changes
+- solver nodes
+- branches
+- backtracks
+- average branching factor, when present
 
-### File: `killer_queens_generator.dart`
+It also measures region geometry from the puzzle cages:
 
-1. **Grid Size Mapping**: Added `_getTargetSizeForDifficulty()` method that maps difficulty levels to specific grid sizes.
+- region area variance
+- singleton or near-singleton region count
+- average region perimeter-to-area ratio
+- board size
 
-2. **Dynamic Attempt Calculation**: Added `_calculateMaxAttempts()` method that scales generation attempts based on difficulty and grid size:
-   - Easy: base attempts (32 + size*2)
-   - Medium: 1.2x base attempts
-   - Hard: 1.5x base attempts  
-   - Expert: 1.8x base attempts
+Generator telemetry contributes accepted generation attempts. Fixed queens are
+still reported as an informational metric, but they are not a scoring driver.
 
-3. **Initial Cage Size Ranges** (more distinct):
-   - Easy: (2, 2) - Uniform small cages
-   - Medium: (2, 3) - Slight variety
-   - Hard: (2, 4) - More variety
-   - Expert: (3, 5) - Larger, more complex cages
+## Current Formula
 
-4. **Final Cage Size Ranges** (enhanced):
-   - Easy: size-0 to size+1 (smaller cages)
-   - Medium: size-1 to size+2
-   - Hard: size-2 to size+3
-   - Expert: size-3 to size+4 (much larger cages)
+The raw score combines:
 
-5. **Givens Ranges** (more distinctive):
-   - Easy: 70% minimum (was 65%)
-   - Medium: 55% minimum (was 50%)
-   - Hard: 40% minimum (was 35%)
-   - Expert: 25% minimum (unchanged)
+- solver search cost from nodes, branches, and backtracks
+- branching factor pressure
+- region area variance
+- singleton or near-singleton region pressure
+- average region perimeter-to-area ratio
+- smaller board-size and accepted-attempt modifiers
 
-## Difficulty Scoring Changes
+The scorer emits each component in `DifficultyTelemetry.metrics` alongside the
+raw score so future calibration can compare solver behavior against the final
+bucket.
 
-### File: `killer_queens_difficulty.dart`
+## Thresholds
 
-Enhanced the difficulty scoring algorithm to better differentiate between difficulty levels:
+`packages/puzzle_core/assets/killer_queens_difficulty_thresholds.json` contains
+provisional thresholds for the measured-score range:
 
-1. **Size Score**: Grid size now contributes significantly to difficulty:
-   - Formula: `(size - 4) * 0.8`
-   - 6x6 = 1.6, 8x8 = 3.2, 10x10 = 4.8, 12x12 = 6.4
+| Bucket | Max Inclusive |
+|--------|---------------|
+| easy   | 8.5           |
+| medium | 11.7          |
+| hard   | 14.5          |
+| expert | 9999.0        |
 
-2. **Cage Complexity**: Larger average cage sizes increase difficulty:
-   - Formula: `(avgCageSize - 2.0) * 1.2`
+These values were chosen to keep the checked fixed seeds stable after the
+scoring change. They are not a claim that Killer Queens difficulty is fully
+calibrated.
 
-3. **Givens Adjustment**: Inverted scale where fewer givens = harder:
-   - Formula: `(1.0 - givensRatio) * 4.0`
-   - More weight on the lack of givens
+## Uniqueness
 
-4. **Additional Metrics**: Added new telemetry fields:
-   - `givensRatio`: Percentage of queens that are given
-   - `sizeScore`: Contribution of grid size to difficulty
-   - `cageComplexity`: Contribution of cage sizes to difficulty
-   - `givensAdjustment`: Contribution of givens ratio to difficulty
+Generation still runs the solver with `maxSolutions: 2` and rejects boards that
+are unsolved, non-unique, or have unknown uniqueness in the production pipeline.
+The difficulty scorer itself does not use hidden solution-only shortcuts and
+does not infer difficulty from the solution layout.
 
-## Difficulty Threshold Changes
-
-### File: `killer_queens_difficulty_thresholds.json`
-
-Updated thresholds to match the new scoring system:
-
-| Bucket | Old Max | New Max | Change |
-|--------|---------|---------|--------|
-| easy   | 7.0     | **5.5** | Lower threshold for smaller grids |
-| medium | 11.5    | **9.5** | Adjusted for medium grids |
-| hard   | 15.5    | **13.5** | Adjusted for larger grids |
-| expert | 9999.0  | 9999.0  | Unchanged (catch-all) |
-
-## App Registry Changes
-
-### File: `apps/app/lib/shared/services/puzzle_registry.dart`
-
-Updated the Killer Queens metadata to reflect the new supported sizes:
-```dart
-supportedSizes: ['6x6', '8x8', '10x10', '12x12']
-```
-
-## Testing
-
-Created comprehensive test suite in `killer_queens_difficulty_sizes_test.dart` that verifies:
-
-1. ✅ Correct grid sizes generated for each difficulty
-2. ✅ Easy puzzles have more givens (≥65%)
-3. ✅ Expert puzzles have fewer givens (≤65%)
-4. ✅ Easy puzzles have smaller cage sizes
-5. ✅ Expert puzzles have larger cage sizes
-6. ✅ All difficulties have exactly `size` number of cages
-
-All existing Killer Queens tests continue to pass.
-
-## Benefits
-
-1. **Progressive Difficulty**: Each difficulty level now has a distinct grid size, making progression clearer to players.
-
-2. **Better Differentiation**: Multiple parameters (grid size, cage sizes, givens ratio) work together to create more distinct difficulty levels.
-
-3. **Balanced Complexity**: Larger grids (Expert) naturally have more complexity, while smaller grids (Easy) are more approachable.
-
-4. **Predictable Performance**: Generation attempts scale with difficulty, ensuring quality puzzles across all levels.
-
-5. **Consistent Experience**: Players can expect a consistent challenge level when selecting a difficulty.
-
-## Implementation Details
-
-All changes maintain:
-- Deterministic puzzle generation (same seed = same puzzle)
-- Unique solutions for all generated puzzles
-- Valid board configurations according to Killer Queens rules
-- One queen per row, per column, per cage
-- No adjacent queens (including diagonals)
+Tests cover deterministic generation, uniqueness checks for selected seeds, and
+stable measured difficulty telemetry for selected seeds. They do not prove that
+all possible generated boards are calibrated or globally unique outside those
+pipeline checks.

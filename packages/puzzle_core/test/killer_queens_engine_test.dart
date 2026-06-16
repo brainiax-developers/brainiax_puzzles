@@ -258,7 +258,147 @@ void main() {
       }
       expect(cageSignatures.length, greaterThan(1));
     });
+
+    test('fixed seeds emit stable measured difficulty scores', () {
+      const List<_DifficultyScoreCase> cases = <_DifficultyScoreCase>[
+        _DifficultyScoreCase(
+          seedStr: 'killer_queens_score_easy',
+          requested: DifficultyScore(value: 0.2, level: 'easy'),
+          rawScore: 8.26,
+          bucket: 'easy',
+          boardSize: 6,
+          solverNodes: 1,
+          branches: 1,
+          backtracks: 0,
+          averageBranchingFactor: 1.0,
+          regionAreaVariance: 0.0,
+          nearSingletonRegionCount: 0,
+          averageRegionPerimeterToAreaRatio: 2.111111111111111,
+          acceptedGenerationAttempts: 1,
+        ),
+        _DifficultyScoreCase(
+          seedStr: 'killer_queens_score_medium',
+          requested: DifficultyScore(value: 0.5, level: 'medium'),
+          rawScore: 11.586785714285712,
+          bucket: 'medium',
+          boardSize: 8,
+          solverNodes: 3,
+          branches: 3,
+          backtracks: 1,
+          averageBranchingFactor: 1.0,
+          regionAreaVariance: 1.5,
+          nearSingletonRegionCount: 0,
+          averageRegionPerimeterToAreaRatio: 1.8982142857142859,
+          acceptedGenerationAttempts: 17,
+        ),
+        _DifficultyScoreCase(
+          seedStr: 'killer_queens_score_hard',
+          requested: DifficultyScore(value: 0.75, level: 'hard'),
+          rawScore: 11.705433566433568,
+          bucket: 'hard',
+          boardSize: 10,
+          solverNodes: 4,
+          branches: 4,
+          backtracks: 1,
+          averageBranchingFactor: 1.0,
+          regionAreaVariance: 2.0,
+          nearSingletonRegionCount: 0,
+          averageRegionPerimeterToAreaRatio: 1.7252408702408701,
+          acceptedGenerationAttempts: 9,
+        ),
+        _DifficultyScoreCase(
+          seedStr: 'killer_queens_score_expert',
+          requested: DifficultyScore(value: 0.95, level: 'expert'),
+          rawScore: 11.713797036297038,
+          bucket: 'hard',
+          boardSize: 12,
+          solverNodes: 4,
+          branches: 4,
+          backtracks: 0,
+          averageBranchingFactor: 1.0,
+          regionAreaVariance: 4.833333333333333,
+          nearSingletonRegionCount: 0,
+          averageRegionPerimeterToAreaRatio: 1.602109464609465,
+          acceptedGenerationAttempts: 8,
+        ),
+      ];
+
+      for (final _DifficultyScoreCase scoreCase in cases) {
+        final int seed64 = Seed.fromString(scoreCase.seedStr);
+        final GeneratedPuzzle<KillerQueensBoard> puzzle = engine.generate(
+          seedStr: scoreCase.seedStr,
+          seed64: seed64,
+          size: size,
+          difficulty: scoreCase.requested,
+        );
+        final DifficultyTelemetry difficultyTelemetry =
+            puzzle.telemetry!.difficulty;
+        final Map<String, num> metrics = difficultyTelemetry.metrics;
+
+        expect(difficultyTelemetry.rawScore, closeTo(scoreCase.rawScore, 1e-9));
+        expect(difficultyTelemetry.bucket, equals(scoreCase.bucket));
+        expect(metrics['rawScore'], closeTo(scoreCase.rawScore, 1e-9));
+        expect(metrics['boardSize'], equals(scoreCase.boardSize));
+        expect(metrics['solverNodes'], equals(scoreCase.solverNodes));
+        expect(metrics['branches'], equals(scoreCase.branches));
+        expect(metrics['backtracks'], equals(scoreCase.backtracks));
+        expect(
+          metrics['averageBranchingFactor'],
+          equals(scoreCase.averageBranchingFactor),
+        );
+        expect(
+          metrics['regionAreaVariance'],
+          closeTo(scoreCase.regionAreaVariance, 1e-9),
+        );
+        expect(
+          metrics['nearSingletonRegionCount'],
+          equals(scoreCase.nearSingletonRegionCount),
+        );
+        expect(
+          metrics['averageRegionPerimeterToAreaRatio'],
+          closeTo(scoreCase.averageRegionPerimeterToAreaRatio, 1e-9),
+        );
+        expect(
+          metrics['acceptedGenerationAttempts'],
+          equals(scoreCase.acceptedGenerationAttempts),
+        );
+        expect(metrics, isNot(containsPair('sizeScore', anything)));
+        expect(metrics, isNot(containsPair('givensAdjustment', anything)));
+      }
+    });
   });
+}
+
+class _DifficultyScoreCase {
+  const _DifficultyScoreCase({
+    required this.seedStr,
+    required this.requested,
+    required this.rawScore,
+    required this.bucket,
+    required this.boardSize,
+    required this.solverNodes,
+    required this.branches,
+    required this.backtracks,
+    required this.averageBranchingFactor,
+    required this.regionAreaVariance,
+    required this.nearSingletonRegionCount,
+    required this.averageRegionPerimeterToAreaRatio,
+    required this.acceptedGenerationAttempts,
+  });
+
+  final String seedStr;
+  final DifficultyScore requested;
+  final double rawScore;
+  final String bucket;
+  final int boardSize;
+  final int solverNodes;
+  final int branches;
+  final int backtracks;
+  final double averageBranchingFactor;
+  final double regionAreaVariance;
+  final int nearSingletonRegionCount;
+  final double averageRegionPerimeterToAreaRatio;
+  final int acceptedGenerationAttempts;
 }
 
 KillerQueensBoard _multiSolutionBoard({required int size}) {
