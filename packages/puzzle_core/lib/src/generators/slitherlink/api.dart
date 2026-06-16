@@ -142,7 +142,10 @@ class SlitherlinkGenerator {
         speculativeStepBudget: tuning.solverMaxDepth,
       ),
     );
-    if (!solverResult.isUnique || solverResult.solutions.isEmpty) {
+    if (solverResult.solutionStatus == SolverStatus.unknown) {
+      throw StateError('Slitherlink solver could not prove uniqueness');
+    }
+    if (!solverResult.isUnique || solverResult.solutions.length != 1) {
       throw StateError('Slitherlink uniqueness failed');
     }
     final SlitherlinkBoard solution = solverResult.solutions.first;
