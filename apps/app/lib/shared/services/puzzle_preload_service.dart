@@ -76,10 +76,11 @@ class PuzzlePreloadService {
             final diffScore = _parseDifficulty(difficulty);
 
             // Generate on a background isolate to avoid jank.
-            final Duration attemptTimeout =
-                metadata.type == PuzzleType.kakuroClassic
-                ? const Duration(seconds: 3)
-                : const Duration(seconds: 2);
+            final Duration attemptTimeout = puzzleGenerationTimeoutFor(
+              engineId: metadata.type.key,
+              difficulty: difficulty,
+              preload: true,
+            );
             final generated = await _worker.generate(
               PuzzleGenerationRequest(
                 engineId: metadata.type.key,
@@ -175,6 +176,8 @@ class PuzzlePreloadService {
           surface: surface,
         );
         return _parseSize(sizeId);
+      case PuzzleType.killerQueens:
+        return killerQueensAppSizeForDifficulty(difficulty);
       default:
         final sizeStr = metadata.supportedSizes.isNotEmpty
             ? metadata.supportedSizes.first

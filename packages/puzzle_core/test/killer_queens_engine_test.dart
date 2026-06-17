@@ -66,8 +66,8 @@ void main() {
           reason: spec.level,
         );
         expect(
-          first.telemetry!.extras['generator'],
-          equals(second.telemetry!.extras['generator']),
+          _stableGeneratorTelemetry(first),
+          equals(_stableGeneratorTelemetry(second)),
           reason: spec.level,
         );
         expect(
@@ -577,6 +577,17 @@ void main() {
       }
     });
   });
+}
+
+Map<String, Object?> _stableGeneratorTelemetry(
+  GeneratedPuzzle<KillerQueensBoard> puzzle,
+) {
+  final Map<String, Object?> telemetry = Map<String, Object?>.from(
+    puzzle.telemetry!.extras['generator'] as Map,
+  );
+  telemetry.remove('elapsedMs');
+  telemetry.remove('solverElapsedMs');
+  return telemetry;
 }
 
 class _KillerQueensDifficultyCase {

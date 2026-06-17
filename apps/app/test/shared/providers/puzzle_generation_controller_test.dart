@@ -246,10 +246,43 @@ void main() {
       );
     },
   );
+
+  test('uses app-safe Killer Queens Expert profile and timeout', () async {
+    core.EngineRegistry().register(
+      core.StubPuzzleEngine(engineId: PuzzleType.killerQueens.key),
+    );
+    final worker = _QueuedPuzzleGenerationWorker();
+    final puzzle = _stubPuzzle(
+      engineId: PuzzleType.killerQueens.key,
+      seedStr: 'killer-queens-expert',
+      seed64: core.Seed.fromString('killer-queens-expert'),
+    );
+    worker.queue(Future<core.GeneratedPuzzle<dynamic>>.value(puzzle));
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [puzzleGenerationWorkerProvider.overrideWithValue(worker)],
+    );
+    final controller = container.read(
+      puzzleGenerationControllerProvider.notifier,
+    );
+
+    await controller.generate(
+      puzzleType: PuzzleType.killerQueens,
+      difficulty: 'expert',
+      size: '12x12',
+      seed: 'killer-queens-expert',
+    );
+
+    expect(worker.requests.single.size.id, equals('10x10'));
+    expect(worker.requests.single.difficulty.level, equals('expert'));
+    expect(worker.timeouts.single, equals(killerQueensPuzzleGenerationTimeout));
+  });
 }
 
 class _QueuedPuzzleGenerationWorker implements PuzzleGenerationWorker {
   final List<Future<core.GeneratedPuzzle<dynamic>> Function()> _results = [];
+  final List<PuzzleGenerationRequest> requests = <PuzzleGenerationRequest>[];
+  final List<Duration?> timeouts = <Duration?>[];
 
   void queue(Future<core.GeneratedPuzzle<dynamic>> result) {
     _results.add(() => result);
@@ -264,6 +297,8 @@ class _QueuedPuzzleGenerationWorker implements PuzzleGenerationWorker {
     PuzzleGenerationRequest request, {
     Duration? timeout,
   }) {
+    requests.add(request);
+    timeouts.add(timeout);
     if (_results.isEmpty) {
       return Future<core.GeneratedPuzzle<dynamic>>.error(
         StateError('No queued generation result'),
@@ -274,12 +309,15 @@ class _QueuedPuzzleGenerationWorker implements PuzzleGenerationWorker {
 }
 
 core.GeneratedPuzzle<dynamic> _stubPuzzle({
+  String engineId = '',
   required String seedStr,
   required int seed64,
 }) {
   const size = core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
   const difficulty = core.DifficultyScore(value: 0.6, level: 'medium');
-  return core.StubPuzzleEngine(engineId: PuzzleType.sudokuClassic.key).generate(
+  return core.StubPuzzleEngine(
+    engineId: engineId.isEmpty ? PuzzleType.sudokuClassic.key : engineId,
+  ).generate(
     seedStr: seedStr,
     seed64: seed64,
     size: size,

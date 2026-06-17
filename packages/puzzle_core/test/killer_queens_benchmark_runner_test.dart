@@ -9,7 +9,7 @@ void main() {
     () async {
       final ProcessResult result = await Process.run('dart', <String>[
         'run',
-        'bin/benchmark_runner.dart',
+        'packages/puzzle_core/bin/benchmark_runner.dart',
         '--engine',
         'killer_queens',
         '--count',
@@ -73,6 +73,10 @@ void main() {
           detail as Map,
         );
         expect(iteration['acceptedGenerationAttempts'], isA<num>());
+        expect(iteration['elapsedMs'], isA<num>());
+        expect(iteration['attempts'], isA<num>());
+        expect(iteration['rejectedMultiple'], isA<num>());
+        expect(iteration['rejectedUnknown'], isA<num>());
         expect(iteration['solverNodes'], isA<num>());
         expect(iteration['solverBacktracks'], isA<num>());
         expect(iteration['solverElapsedMs'], isA<num>());
@@ -80,5 +84,64 @@ void main() {
       }
     },
     timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'killer queens benchmark can report every app difficulty profile',
+    () async {
+      final ProcessResult result = await Process.run('dart', <String>[
+        'run',
+        'packages/puzzle_core/bin/benchmark_runner.dart',
+        '--engine',
+        'killer_queens',
+        '--count',
+        '1',
+        '--difficulty',
+        'all',
+        '--size',
+        'app',
+        '--iteration-cap-ms',
+        '8000',
+      ]);
+
+      expect(result.exitCode, equals(0), reason: '${result.stderr}');
+      final Map<String, Object?> json = Map<String, Object?>.from(
+        jsonDecode(result.stdout as String) as Map,
+      );
+      final Map<String, Object?> extras = Map<String, Object?>.from(
+        json['extras'] as Map,
+      );
+      final Map<String, Object?> difficultyResults = Map<String, Object?>.from(
+        extras['difficultyResults'] as Map,
+      );
+      final Map<String, Object?> generationMs = Map<String, Object?>.from(
+        extras['generationMs'] as Map,
+      );
+
+      expect(json['success'], isTrue);
+      expect(json['p50Ms'], isA<num>());
+      expect(json['p95Ms'], isA<num>());
+      expect(json['p99Ms'], isA<num>());
+      expect(generationMs.keys, containsAll(<String>['p50', 'p95', 'p99']));
+      expect(
+        difficultyResults.keys,
+        containsAll(<String>['easy', 'medium', 'hard', 'expert']),
+      );
+
+      for (final String difficulty in <String>[
+        'easy',
+        'medium',
+        'hard',
+        'expert',
+      ]) {
+        final Map<String, Object?> resultJson = Map<String, Object?>.from(
+          difficultyResults[difficulty] as Map,
+        );
+        expect(resultJson['p50Ms'], isA<num>(), reason: difficulty);
+        expect(resultJson['p95Ms'], isA<num>(), reason: difficulty);
+        expect(resultJson['p99Ms'], isA<num>(), reason: difficulty);
+      }
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 }

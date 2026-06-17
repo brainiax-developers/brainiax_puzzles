@@ -4,6 +4,69 @@ import 'dart:isolate';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
+const Duration defaultPuzzleGenerationTimeout = Duration(seconds: 2);
+const Duration kakuroPuzzleGenerationTimeout = Duration(seconds: 8);
+const Duration killerQueensPuzzleGenerationTimeout = Duration(seconds: 12);
+
+Duration puzzleGenerationTimeoutFor({
+  required String engineId,
+  String? difficulty,
+  bool preload = false,
+}) {
+  switch (engineId) {
+    case 'kakuro_classic':
+      return preload
+          ? const Duration(seconds: 3)
+          : kakuroPuzzleGenerationTimeout;
+    case 'killer_queens':
+      return killerQueensPuzzleGenerationTimeout;
+    default:
+      return defaultPuzzleGenerationTimeout;
+  }
+}
+
+core.SizeOpt killerQueensAppSizeForDifficulty(String difficulty) {
+  switch (difficulty.toLowerCase()) {
+    case 'easy':
+      return const core.SizeOpt(
+        id: '6x6',
+        description: '6x6',
+        width: 6,
+        height: 6,
+      );
+    case 'medium':
+      return const core.SizeOpt(
+        id: '8x8',
+        description: '8x8',
+        width: 8,
+        height: 8,
+      );
+    case 'hard':
+      return const core.SizeOpt(
+        id: '10x10',
+        description: '10x10',
+        width: 10,
+        height: 10,
+      );
+    case 'expert':
+      // TODO(killer-queens): Restore 12x12 Expert in the app after the
+      // uniqueness-checked generator meets mobile p95 reliably.
+      return const core.SizeOpt(
+        id: '10x10',
+        description: '10x10',
+        width: 10,
+        height: 10,
+      );
+    default:
+      return const core.SizeOpt(
+        id: '8x8',
+        description: '8x8',
+        width: 8,
+        height: 8,
+      );
+  }
+}
+
 /// Input for puzzle generation that can be sent to a worker implementation.
 class PuzzleGenerationRequest {
   const PuzzleGenerationRequest({

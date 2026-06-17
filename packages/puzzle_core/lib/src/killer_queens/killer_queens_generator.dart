@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../api_types.dart';
 import '../generators/generator.dart';
 import '../solver/solver.dart';
 import '../util/seeded_rng.dart';
@@ -12,8 +13,11 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
   const KillerQueensGenerator();
 
   /// Map difficulty levels to grid sizes.
-  /// Easy: 6x6, Medium: 8x8, Hard: 10x10, Expert: 12x12
-  static int _getTargetSizeForDifficulty(String difficulty) {
+  /// Easy: 6x6, Medium: 8x8, Hard: 10x10, Expert: 10x10 or 12x12.
+  static int _getTargetSizeForDifficulty(
+    String difficulty,
+    SizeOpt requestedSize,
+  ) {
     switch (difficulty) {
       case 'easy':
         return 6;
@@ -22,6 +26,10 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
       case 'hard':
         return 10;
       case 'expert':
+        if (requestedSize.width == requestedSize.height &&
+            (requestedSize.width == 10 || requestedSize.width == 12)) {
+          return requestedSize.width;
+        }
         return 12;
       default:
         return 8; // Default to medium if unknown
@@ -50,12 +58,15 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
 
   @override
   PuzzleGenerationResult<KillerQueensBoard> generate(GeneratorContext context) {
-    // Map difficulty to grid size - ALWAYS use difficulty-based sizing
-    // Grid size is determined by difficulty level, not the size parameter
+    final Stopwatch stopwatch = Stopwatch()..start();
+    // Map difficulty to grid size. Expert may use the app-safe 10x10 profile
+    // or the benchmark/engine 12x12 profile.
     final String difficultyLevel = context.difficulty.level.toLowerCase();
-    final int targetSize = _getTargetSizeForDifficulty(difficultyLevel);
+    final int targetSize = _getTargetSizeForDifficulty(
+      difficultyLevel,
+      context.size,
+    );
 
-    // Use the target size based on difficulty (ignore context.size for Killer Queens)
     final int width = targetSize;
     final int height = targetSize;
 
@@ -81,6 +92,9 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
     int attempt = 0;
     int initialCageCount = 0;
     int uniquenessChecks = 0;
+    int rejectedMultiple = 0;
+    int rejectedUnknown = 0;
+    Map<String, Object?> lastSolverTelemetry = const <String, Object?>{};
     SolverStatus? lastSolverStatus;
     final KillerQueensSolver solver = const KillerQueensSolver();
 
@@ -118,7 +132,11 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
         rng: context.rng,
       );
       uniquenessChecks += refined?.checks ?? 0;
+      rejectedMultiple += refined?.rejectedMultiple ?? 0;
+      rejectedUnknown += refined?.rejectedUnknown ?? 0;
       lastSolverStatus = refined?.status;
+      lastSolverTelemetry =
+          refined?.solverTelemetry ?? const <String, Object?>{};
       if (lastSolverStatus != SolverStatus.unique) {
         continue;
       }
@@ -148,11 +166,19 @@ class KillerQueensGenerator extends PuzzleGenerator<KillerQueensBoard> {
       snapshot: GenerationSnapshot(
         telemetry: <String, Object?>{
           'tier': tier.tier,
+          'selectedSize': '${width}x$height',
+          'elapsedMs': stopwatch.elapsedMilliseconds,
           'attempts': attempt,
+          'rejectedMultiple': rejectedMultiple,
+          'rejectedUnknown': rejectedUnknown,
           'givens': 0,
           'cageCount': cages.length,
           'initialCageCount': initialCageCount,
           'uniquenessChecks': uniquenessChecks,
+          'solverNodes': _asInt(lastSolverTelemetry['nodes']),
+          'solverBacktracks': _asInt(lastSolverTelemetry['backtracks']),
+          'solverBranches': _asInt(lastSolverTelemetry['branches']),
+          'solverElapsedMs': _asDouble(lastSolverTelemetry['elapsedMs']),
           'solutionStatus': SolverStatus.unique.name,
         },
       ),
@@ -165,11 +191,17 @@ class _UniqueRegionResult {
     required this.cages,
     required this.checks,
     required this.status,
+    required this.rejectedMultiple,
+    required this.rejectedUnknown,
+    required this.solverTelemetry,
   });
 
   final List<KillerQueensCage> cages;
   final int checks;
   final SolverStatus status;
+  final int rejectedMultiple;
+  final int rejectedUnknown;
+  final Map<String, Object?> solverTelemetry;
 }
 
 class _TierParameters {
@@ -304,7 +336,10 @@ _UniqueRegionResult? _refineCagesForUniqueSolution({
 
   List<KillerQueensCage> current = _cagesFromAssignment(size, assignment);
   int checks = 0;
+  int rejectedMultiple = 0;
+  int rejectedUnknown = 0;
   SolverStatus status = SolverStatus.unknown;
+  Map<String, Object?> solverTelemetry = const <String, Object?>{};
 
   for (int step = 0; step <= maxRefinementSteps; step++) {
     checks += 1;
@@ -319,21 +354,35 @@ _UniqueRegionResult? _refineCagesForUniqueSolution({
         maxSolutions: 2,
       ),
     );
+    solverTelemetry = <String, Object?>{
+      ...result.telemetry,
+      'elapsedMs': result.elapsed.inMicroseconds / 1000.0,
+    };
     status = result.solutionStatus;
     if (status == SolverStatus.unique) {
       return _UniqueRegionResult(
         cages: current,
         checks: checks,
         status: status,
+        rejectedMultiple: rejectedMultiple,
+        rejectedUnknown: rejectedUnknown,
+        solverTelemetry: solverTelemetry,
       );
     }
     if (status != SolverStatus.multiple) {
+      if (status == SolverStatus.unknown) {
+        rejectedUnknown += 1;
+      }
       return _UniqueRegionResult(
         cages: current,
         checks: checks,
         status: status,
+        rejectedMultiple: rejectedMultiple,
+        rejectedUnknown: rejectedUnknown,
+        solverTelemetry: solverTelemetry,
       );
     }
+    rejectedMultiple += 1;
 
     bool moved = false;
     for (final KillerQueensBoard solution in result.solutions) {
@@ -359,11 +408,21 @@ _UniqueRegionResult? _refineCagesForUniqueSolution({
         cages: current,
         checks: checks,
         status: status,
+        rejectedMultiple: rejectedMultiple,
+        rejectedUnknown: rejectedUnknown,
+        solverTelemetry: solverTelemetry,
       );
     }
   }
 
-  return _UniqueRegionResult(cages: current, checks: checks, status: status);
+  return _UniqueRegionResult(
+    cages: current,
+    checks: checks,
+    status: status,
+    rejectedMultiple: rejectedMultiple,
+    rejectedUnknown: rejectedUnknown,
+    solverTelemetry: solverTelemetry,
+  );
 }
 
 bool _reassignCellToRejectSolution({
@@ -943,4 +1002,18 @@ List<int> _solveLayout(int size, List<KillerQueensCage> cages, SeededRng rng) {
     return const <int>[];
   }
   return List<int>.from(queens)..sort();
+}
+
+int _asInt(Object? value) {
+  if (value is num) {
+    return value.toInt();
+  }
+  return 0;
+}
+
+double _asDouble(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return 0.0;
 }

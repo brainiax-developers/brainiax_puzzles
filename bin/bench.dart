@@ -27,7 +27,7 @@ void main(List<String> arguments) async {
     ..addOption(
       'difficulty',
       abbr: 'd',
-      help: 'Difficulty level (easy, medium, hard)',
+      help: 'Difficulty level (easy, medium, hard, expert, all)',
       defaultsTo: 'medium',
     )
     ..addOption(

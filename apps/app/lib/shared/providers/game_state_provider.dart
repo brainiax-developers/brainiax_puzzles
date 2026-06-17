@@ -36,13 +36,16 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     // Parse parameters
     final difficultyScore = _parseDifficulty(difficulty);
-    final sizeOpt = _parseSize(size);
+    final sizeOpt = engineId == 'killer_queens'
+        ? killerQueensAppSizeForDifficulty(difficulty)
+        : _parseSize(size);
     final seed64 = Seed.fromString(seed);
 
     // Generate puzzle on a background isolate to keep UI responsive.
-    final Duration timeout = engineId == 'kakuro_classic'
-        ? const Duration(seconds: 8)
-        : const Duration(seconds: 2);
+    final Duration timeout = puzzleGenerationTimeoutFor(
+      engineId: engineId,
+      difficulty: difficulty,
+    );
     final puzzle = await ref
         .read(puzzleGenerationWorkerProvider)
         .generate(
@@ -70,7 +73,7 @@ class GameStateNotifier extends Notifier<GameState?> {
       engineId: engineId,
       seed: seed,
       difficulty: difficulty,
-      size: size,
+      size: sizeOpt.id,
       puzzle: puzzle,
       isSolved: false,
       startTime: DateTime.now(),

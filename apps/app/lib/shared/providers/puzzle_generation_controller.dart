@@ -14,8 +14,6 @@ import '../services/slitherlink_on_demand_service.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
 const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
-const Duration _kakuroGenerationCap = Duration(seconds: 8);
-const Duration _defaultGenerationCap = Duration(seconds: 2);
 const int _maxGenerationAttempts = 3;
 
 /// Riverpod controller responsible for generating puzzles asynchronously.
@@ -60,7 +58,9 @@ class PuzzleGenerationController
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSize = size != null
+    final resolvedSize = puzzleType == app.PuzzleType.killerQueens
+        ? killerQueensAppSizeForDifficulty(difficulty)
+        : size != null
         ? _parseSize(size)
         : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
@@ -108,7 +108,10 @@ class PuzzleGenerationController
         if (attemptTimeout <= Duration.zero) {
           lastError = TimeoutException(
             'Generation budget exceeded for ${puzzleType.key}',
-            _kakuroGenerationCap,
+            puzzleGenerationTimeoutFor(
+              engineId: puzzleType.key,
+              difficulty: difficulty,
+            ),
           );
           break;
         }
@@ -233,6 +236,8 @@ class PuzzleGenerationController
           surface: surface,
         );
         return _parseSize(sizeId);
+      case app.PuzzleType.killerQueens:
+        return killerQueensAppSizeForDifficulty(difficulty);
       default:
         return _defaultSizeFor(puzzleType);
     }
@@ -358,10 +363,11 @@ class PuzzleGenerationController
     required Duration elapsed,
   }) {
     if (puzzleType == app.PuzzleType.kakuroClassic) {
-      final Duration remaining = _kakuroGenerationCap - elapsed;
+      final Duration remaining =
+          puzzleGenerationTimeoutFor(engineId: puzzleType.key) - elapsed;
       return remaining <= Duration.zero ? Duration.zero : remaining;
     }
-    return _defaultGenerationCap;
+    return puzzleGenerationTimeoutFor(engineId: puzzleType.key);
   }
 
   void _assertProfileAllowedForProduction({

@@ -65,6 +65,27 @@ void main() {
       expect(puzzle.state.cells.length, equals(144));
     });
 
+    test('Expert difficulty can use the temporary app-safe 10x10 profile', () {
+      const String seedStr = 'kq_expert_app_safe_test';
+      final int seed64 = Seed.fromString(seedStr);
+      final puzzle = engine.generate(
+        seedStr: seedStr,
+        seed64: seed64,
+        size: SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10),
+        difficulty: DifficultyScore(value: 1.0, level: 'expert'),
+      );
+
+      expect(puzzle.state.size, equals(10));
+      expect(puzzle.state.cells.where((int value) => value == 1), isEmpty);
+      expect(puzzle.state.fixed.where((bool value) => value), isEmpty);
+
+      final solved = const KillerQueensSolver().solve(
+        puzzle.state,
+        SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
+      );
+      expect(solved.solutionStatus, equals(SolverStatus.unique));
+    });
+
     test('All puzzles start empty and keep unique region solutions', () {
       final configs = [
         {'level': 'easy', 'size': 6},

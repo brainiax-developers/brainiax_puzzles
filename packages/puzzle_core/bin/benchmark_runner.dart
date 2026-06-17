@@ -363,6 +363,13 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   List<String>? explicitSeedCorpus,
   bool enforceExperimentalKakuroGate = false,
 }) async {
+  if (engineId == 'killer_queens' && difficulty.toLowerCase() == 'all') {
+    return _benchmarkKillerQueensDifficultyProfiles(
+      count: count,
+      iterationCapMs: iterationCapMs,
+    );
+  }
+
   final registry = EngineRegistry();
   PuzzleEngine<dynamic, dynamic>? engine = registry.getEngine(engineId);
   const KakuroSolver kakuroSolver = KakuroSolver();
@@ -458,6 +465,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final List<int> killerQueensSolveTimes = <int>[];
   final List<int> killerQueensAcceptedAttempts = <int>[];
   final List<int> killerQueensPipelineAttempts = <int>[];
+  final List<int> killerQueensRejectedMultiple = <int>[];
+  final List<int> killerQueensRejectedUnknown = <int>[];
   final List<int> killerQueensSolverNodes = <int>[];
   final List<int> killerQueensSolverBacktracks = <int>[];
   final List<int> killerQueensSolverBranches = <int>[];
@@ -811,6 +820,18 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       }
 
       final KillerQueensBoard board = puzzle.state as KillerQueensBoard;
+      final int generatorElapsedMs = _asInt(
+        generatorTelemetry['elapsedMs'],
+        fallback: generationMs.round(),
+      );
+      final int generationRejectedMultiple = _asInt(
+        generatorTelemetry['rejectedMultiple'],
+        fallback: 0,
+      );
+      final int generationRejectedUnknown = _asInt(
+        generatorTelemetry['rejectedUnknown'],
+        fallback: 0,
+      );
       final Map<String, num> difficultyMetrics =
           puzzle.telemetry?.difficulty.metrics ?? const <String, num>{};
       final int acceptedAttempts =
@@ -819,6 +840,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
           (puzzle.telemetry?.extras['attempt'] as num?)?.toInt() ?? 0;
       killerQueensAcceptedAttempts.add(acceptedAttempts);
       killerQueensPipelineAttempts.add(pipelineAttempt);
+      killerQueensRejectedMultiple.add(generationRejectedMultiple);
+      killerQueensRejectedUnknown.add(generationRejectedUnknown);
+      detail['elapsedMs'] = generatorElapsedMs;
+      detail['attempts'] = acceptedAttempts;
+      detail['rejectedMultiple'] = generationRejectedMultiple;
+      detail['rejectedUnknown'] = generationRejectedUnknown;
       detail['acceptedGenerationAttempts'] = acceptedAttempts;
       detail['pipelineAttempt'] = pipelineAttempt;
 
@@ -1013,6 +1040,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         'pipelineAttempts': _summarizeIntSamples(
           List<int>.from(killerQueensPipelineAttempts)..sort(),
         ),
+        'rejectedMultiple': _summarizeIntSamples(
+          List<int>.from(killerQueensRejectedMultiple)..sort(),
+        ),
+        'rejectedUnknown': _summarizeIntSamples(
+          List<int>.from(killerQueensRejectedUnknown)..sort(),
+        ),
         'solverMetrics': <String, Object?>{
           'nodes': _summarizeIntSamples(
             List<int>.from(killerQueensSolverNodes)..sort(),
@@ -1154,6 +1187,78 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
     iterations: totalIterations,
     extras: extras,
+  );
+}
+
+Future<EngineBenchmarkResult> _benchmarkKillerQueensDifficultyProfiles({
+  required int count,
+  required int iterationCapMs,
+}) async {
+  final Map<String, Object?> difficultyResults = <String, Object?>{};
+  final List<int> aggregateGenerationTimes = <int>[];
+  final List<String> failures = <String>[];
+  int totalIterations = 0;
+  final Stopwatch totalStopwatch = Stopwatch()..start();
+
+  for (final _KillerQueensBenchmarkProfile profile
+      in _killerQueensBenchmarkProfiles) {
+    final EngineBenchmarkResult result = await _benchmarkEngine(
+      engineId: 'killer_queens',
+      count: count,
+      difficulty: profile.difficulty,
+      size: profile.sizeId,
+      iterationCapMs: iterationCapMs,
+    );
+    difficultyResults[profile.difficulty] = result.toJson();
+    totalIterations += result.iterations;
+    if (!result.success) {
+      failures.add('${profile.difficulty}: ${result.error ?? 'failed'}');
+    }
+
+    final Map<String, Object?> extras = result.extras;
+    final Object? durations = extras['iterationDurationsMs'];
+    if (durations is List) {
+      for (final Object? duration in durations) {
+        if (duration is num) {
+          aggregateGenerationTimes.add((duration * 1000).round());
+        }
+      }
+    }
+  }
+
+  totalStopwatch.stop();
+  aggregateGenerationTimes.sort();
+  final int p50 = _percentile(aggregateGenerationTimes, 0.50);
+  final int p95 = _percentile(aggregateGenerationTimes, 0.95);
+  final int p99 = _percentile(aggregateGenerationTimes, 0.99);
+
+  return EngineBenchmarkResult(
+    engineId: 'killer_queens',
+    success: failures.isEmpty,
+    error: failures.isEmpty
+        ? null
+        : 'Killer Queens all-difficulty benchmark had failures: ${failures.join('; ')}',
+    p50Ms: p50 / 1000.0,
+    p95Ms: p95 / 1000.0,
+    p99Ms: p99 / 1000.0,
+    totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+    iterations: totalIterations,
+    extras: <String, Object?>{
+      'benchmarkMode': 'killer_queens_all_difficulties',
+      'benchmarkNote':
+          'Expert uses the app-safe 10x10 profile until 12x12 generation is optimized for mobile p95.',
+      'difficultyProfiles': <Map<String, Object?>>[
+        for (final _KillerQueensBenchmarkProfile profile
+            in _killerQueensBenchmarkProfiles)
+          profile.toJson(),
+      ],
+      'generationMs': <String, double>{
+        'p50': p50 / 1000.0,
+        'p95': p95 / 1000.0,
+        'p99': p99 / 1000.0,
+      },
+      'difficultyResults': difficultyResults,
+    },
   );
 }
 
@@ -1795,6 +1900,31 @@ class _SlitherlinkBenchmarkScenario {
   final String difficulty;
   final List<String> seedCorpus;
 }
+
+class _KillerQueensBenchmarkProfile {
+  const _KillerQueensBenchmarkProfile({
+    required this.difficulty,
+    required this.sizeId,
+  });
+
+  final String difficulty;
+  final String sizeId;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'difficulty': difficulty,
+    'size': sizeId,
+  };
+}
+
+const List<_KillerQueensBenchmarkProfile> _killerQueensBenchmarkProfiles =
+    <_KillerQueensBenchmarkProfile>[
+      _KillerQueensBenchmarkProfile(difficulty: 'easy', sizeId: '6x6'),
+      _KillerQueensBenchmarkProfile(difficulty: 'medium', sizeId: '8x8'),
+      _KillerQueensBenchmarkProfile(difficulty: 'hard', sizeId: '10x10'),
+      // TODO(killer-queens): switch Expert back to 12x12 after generator
+      // optimization makes uniqueness-checked generation mobile-safe.
+      _KillerQueensBenchmarkProfile(difficulty: 'expert', sizeId: '10x10'),
+    ];
 
 List<String> _buildSlitherlinkSeedCorpus(String scenarioName, int count) {
   return List<String>.generate(
