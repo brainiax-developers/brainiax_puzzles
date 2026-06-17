@@ -368,8 +368,11 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   const KakuroSolver kakuroSolver = KakuroSolver();
   const SlitherlinkSolver slitherlinkSolver = SlitherlinkSolver();
   const SlitherlinkValidator slitherlinkValidator = SlitherlinkValidator();
+  const KillerQueensSolver killerQueensSolver = KillerQueensSolver();
+  const KillerQueensValidator killerQueensValidator = KillerQueensValidator();
   final bool measureKakuroUniqueness = engineId == 'kakuro_classic';
   final bool measureSlitherlinkCorrectness = engineId == 'slitherlink_loop';
+  final bool measureKillerQueensCorrectness = engineId == 'killer_queens';
 
   // Parse size
   final sizeParts = size.split('x');
@@ -452,6 +455,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final times = <int>[];
   final List<int> uniquenessSolveTimes = <int>[];
   final List<int> slitherlinkSolveTimes = <int>[];
+  final List<int> killerQueensSolveTimes = <int>[];
+  final List<int> killerQueensAcceptedAttempts = <int>[];
+  final List<int> killerQueensPipelineAttempts = <int>[];
+  final List<int> killerQueensSolverNodes = <int>[];
+  final List<int> killerQueensSolverBacktracks = <int>[];
+  final List<int> killerQueensSolverBranches = <int>[];
   final List<Map<String, Object?>> iterationDetails = <Map<String, Object?>>[];
   int primaryAcceptCount = 0;
   int repairedAcceptCount = 0;
@@ -468,6 +477,11 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   int slitherlinkUnknownCount = 0;
   int slitherlinkNoSolutionCount = 0;
   int slitherlinkValidationFailureCount = 0;
+  int killerQueensUniqueCount = 0;
+  int killerQueensMultiSolutionCount = 0;
+  int killerQueensUnknownCount = 0;
+  int killerQueensNoSolutionCount = 0;
+  int killerQueensValidationFailureCount = 0;
   int difficultyMatchSamples = 0;
   int difficultyMatchCount = 0;
   final Map<String, int> measuredDifficultyDistribution = <String, int>{};
@@ -787,6 +801,87 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
       slitherlinkUniqueCount++;
     }
+    if (measureKillerQueensCorrectness) {
+      if (puzzle == null || puzzle.state is! KillerQueensBoard) {
+        killerQueensValidationFailureCount++;
+        detail['status'] = 'generation_failed';
+        detail['error'] = 'Killer Queens benchmark expected KillerQueensBoard';
+        iterationDetails.add(detail);
+        continue;
+      }
+
+      final KillerQueensBoard board = puzzle.state as KillerQueensBoard;
+      final Map<String, num> difficultyMetrics =
+          puzzle.telemetry?.difficulty.metrics ?? const <String, num>{};
+      final int acceptedAttempts =
+          (difficultyMetrics['acceptedGenerationAttempts'] ?? 0).toInt();
+      final int pipelineAttempt =
+          (puzzle.telemetry?.extras['attempt'] as num?)?.toInt() ?? 0;
+      killerQueensAcceptedAttempts.add(acceptedAttempts);
+      killerQueensPipelineAttempts.add(pipelineAttempt);
+      detail['acceptedGenerationAttempts'] = acceptedAttempts;
+      detail['pipelineAttempt'] = pipelineAttempt;
+
+      final Stopwatch solveWatch = Stopwatch()..start();
+      final SolverResult<KillerQueensBoard> solved = killerQueensSolver.solve(
+        board,
+        SolverContext(rng: SeededRng(seed64 ^ 0x4b1d5eed), maxSolutions: 2),
+      );
+      solveWatch.stop();
+      final int solveMicros = solveWatch.elapsedMicroseconds;
+      killerQueensSolveTimes.add(solveMicros);
+      final int solverNodes = _asInt(solved.telemetry['nodes'], fallback: 0);
+      final int solverBacktracks = _asInt(
+        solved.telemetry['backtracks'],
+        fallback: 0,
+      );
+      final int solverBranches = _asInt(
+        solved.telemetry['branches'],
+        fallback: 0,
+      );
+      killerQueensSolverNodes.add(solverNodes);
+      killerQueensSolverBacktracks.add(solverBacktracks);
+      killerQueensSolverBranches.add(solverBranches);
+      detail['solveMs'] = solveMicros / 1000.0;
+      detail['solverStatus'] = solved.solutionStatus.name;
+      detail['solverNodes'] = solverNodes;
+      detail['solverBacktracks'] = solverBacktracks;
+      detail['solverBranches'] = solverBranches;
+      detail['solverElapsedMs'] = solved.elapsed.inMicroseconds / 1000.0;
+
+      if (solved.solutionStatus == SolverStatus.unknown) {
+        killerQueensUnknownCount++;
+        detail['status'] = 'solver_unknown';
+        iterationDetails.add(detail);
+        continue;
+      }
+      if (solved.solutionStatus == SolverStatus.multiple) {
+        killerQueensMultiSolutionCount++;
+        detail['status'] = 'multiple_solutions';
+        iterationDetails.add(detail);
+        continue;
+      }
+      if (!solved.hasSolution) {
+        killerQueensNoSolutionCount++;
+        detail['status'] = 'no_solution';
+        iterationDetails.add(detail);
+        continue;
+      }
+
+      final ValidationSummary validation = killerQueensValidator
+          .validateSolution(board, solved.solutions.first);
+      detail['solutionValidationMs'] =
+          validation.elapsed.inMicroseconds / 1000.0;
+      if (!validation.isValid) {
+        killerQueensValidationFailureCount++;
+        detail['status'] = 'invalid_solution';
+        detail['validationIssues'] = validation.issues;
+        iterationDetails.add(detail);
+        continue;
+      }
+
+      killerQueensUniqueCount++;
+    }
     detail['status'] = 'success';
     iterationDetails.add(detail);
     final double previousSlowestMs =
@@ -806,6 +901,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final int totalIterations = seedCorpus.length;
   final int successfulIterations = measureSlitherlinkCorrectness
       ? slitherlinkUniqueCount
+      : measureKillerQueensCorrectness
+      ? killerQueensUniqueCount
       : totalIterations - generationFailureCount - uniquenessFailureCount;
   final double successRate = totalIterations == 0
       ? 0.0
@@ -883,6 +980,54 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
           'p99': _percentile(sortedTimes, 0.99) / 1000.0,
         },
         'solveDurationsMs': slitherlinkSolveTimes
+            .map((int micros) => micros / 1000.0)
+            .toList(growable: false),
+      },
+    if (measureKillerQueensCorrectness)
+      'killerQueensMetrics': <String, Object?>{
+        'successRate': successRate,
+        'successfulCount': successfulIterations,
+        'generationFailureCount': generationFailureCount,
+        'validationFailureCount': killerQueensValidationFailureCount,
+        'unknownCount': killerQueensUnknownCount,
+        'multiSolutionCount': killerQueensMultiSolutionCount,
+        'noSolutionCount': killerQueensNoSolutionCount,
+        'outcomeCounts': <String, int>{
+          'uniqueCount': killerQueensUniqueCount,
+          'failureCount':
+              generationFailureCount +
+              killerQueensValidationFailureCount +
+              killerQueensNoSolutionCount,
+          'unknownCount': killerQueensUnknownCount,
+          'multiSolutionCount': killerQueensMultiSolutionCount,
+          'noSolutionCount': killerQueensNoSolutionCount,
+        },
+        'generationMs': <String, double>{
+          'p50': _percentile(sortedTimes, 0.50) / 1000.0,
+          'p95': _percentile(sortedTimes, 0.95) / 1000.0,
+          'p99': _percentile(sortedTimes, 0.99) / 1000.0,
+        },
+        'acceptedGenerationAttempts': _summarizeIntSamples(
+          List<int>.from(killerQueensAcceptedAttempts)..sort(),
+        ),
+        'pipelineAttempts': _summarizeIntSamples(
+          List<int>.from(killerQueensPipelineAttempts)..sort(),
+        ),
+        'solverMetrics': <String, Object?>{
+          'nodes': _summarizeIntSamples(
+            List<int>.from(killerQueensSolverNodes)..sort(),
+          ),
+          'backtracks': _summarizeIntSamples(
+            List<int>.from(killerQueensSolverBacktracks)..sort(),
+          ),
+          'branches': _summarizeIntSamples(
+            List<int>.from(killerQueensSolverBranches)..sort(),
+          ),
+          'elapsedMs': _summarizeIntSamplesMicros(
+            List<int>.from(killerQueensSolveTimes)..sort(),
+          ),
+        },
+        'solveDurationsMs': killerQueensSolveTimes
             .map((int micros) => micros / 1000.0)
             .toList(growable: false),
       },
@@ -974,6 +1119,29 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     extras['benchmarkMode'] = 'slitherlink_supported_sizes_calibration';
     extras['benchmarkNote'] =
         'Slitherlink corpus reports correctness and latency metrics without enforcing device-dependent hard thresholds.';
+  }
+  if (measureKillerQueensCorrectness) {
+    extras['benchmarkMode'] = 'killer_queens_production_perf_gate';
+    extras['benchmarkNote'] =
+        'Killer Queens benchmark enforces generated puzzle uniqueness and records generation p50/p95/p99 plus solver nodes, backtracks, and elapsed time.';
+    if (generationFailureCount > 0 ||
+        killerQueensValidationFailureCount > 0 ||
+        killerQueensUnknownCount > 0 ||
+        killerQueensMultiSolutionCount > 0 ||
+        killerQueensNoSolutionCount > 0) {
+      return EngineBenchmarkResult(
+        engineId: engineId,
+        success: false,
+        error:
+            'Killer Queens benchmark had failures: generation=$generationFailureCount, validation=$killerQueensValidationFailureCount, unknown=$killerQueensUnknownCount, multiple=$killerQueensMultiSolutionCount, noSolution=$killerQueensNoSolutionCount',
+        p50Ms: p50 / 1000.0,
+        p95Ms: p95 / 1000.0,
+        p99Ms: p99 / 1000.0,
+        totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+        iterations: totalIterations,
+        extras: extras,
+      );
+    }
   }
 
   return EngineBenchmarkResult(

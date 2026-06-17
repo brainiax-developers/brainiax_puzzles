@@ -128,10 +128,26 @@ Benchmark results are saved as JSON:
 
 ## Performance Metrics
 
+- **P50**: 50th percentile generation time
 - **P95**: 95th percentile generation time
 - **P99**: 99th percentile generation time
 - **Total Time**: Total time for all iterations
 - **Iterations**: Number of successful iterations
+
+## Killer Queens Perf Gate
+
+Run the production Killer Queens gate with:
+
+```bash
+dart run packages/puzzle_core/bin/benchmark_runner.dart --engine killer_queens --count 50 --difficulty medium --size 8x8
+```
+
+The Killer Queens benchmark fails if any generated puzzle is unsolved,
+multi-solution, solver-unknown, or solution-invalid. Its JSON output includes
+top-level `p50Ms`, `p95Ms`, and `p99Ms`, plus
+`extras.killerQueensMetrics.generationMs` with p50/p95/p99 generation times.
+`extras.killerQueensMetrics` also records accepted generation attempts, solver
+nodes, backtracks, branches, elapsed solve time, and outcome counts.
 
 ## Regression Thresholds
 

@@ -3,10 +3,12 @@
 ## Overview
 
 Killer Queens difficulty scoring now uses measured solver and region metrics
-instead of primarily relying on board size, average cage size, and fixed queen
-counts. The current thresholds are provisional and are only regression-covered
-by the fixed seeds in `packages/puzzle_core/test/killer_queens_engine_test.dart`;
-they should not be treated as broad player-facing calibration.
+instead of primarily relying on board size or average cage size. Normal
+generated puzzles reveal only the colored regions; they do not include fixed
+queen givens. The current thresholds are provisional and are only
+regression-covered by the fixed seeds in
+`packages/puzzle_core/test/killer_queens_engine_test.dart`; they should not be
+treated as broad player-facing calibration.
 
 ## Scoring Inputs
 
@@ -25,7 +27,8 @@ It also measures region geometry from the puzzle cages:
 - board size
 
 Generator telemetry contributes accepted generation attempts. Fixed queens are
-still reported as an informational metric, but they are not a scoring driver.
+reported as an informational metric and should be zero for normal generated
+puzzles; they are not a scoring driver.
 
 ## Current Formula
 

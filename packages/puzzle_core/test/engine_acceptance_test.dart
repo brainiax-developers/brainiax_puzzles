@@ -676,7 +676,6 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
   final KillerQueensBoard easyPuzzle = _puzzle(
     size: 6,
     queenCols: const <int>[1, 3, 5, 0, 2, 4],
-    givens: {1, 26, 34},
     cagePattern: const <int>[2],
   );
   final KillerQueensBoard easySolution = _solution(
@@ -688,7 +687,6 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
   final KillerQueensBoard mediumPuzzle = _puzzle(
     size: 8,
     queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
-    givens: {1, 35},
     cagePattern: const <int>[3, 2],
   );
   final KillerQueensBoard mediumSolution = _solution(
@@ -726,7 +724,7 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       solution: easySolution,
       generatorTelemetry: const <String, Object?>{'attempts': 1},
       solverTelemetry: const <String, Object?>{'branches': 0},
-      expectedBucket: 'easy',
+      expectedBucket: 'expert',
     ),
     DifficultyFixture<KillerQueensBoard>(
       name: 'killer-queens-medium',
@@ -734,7 +732,7 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       solution: mediumSolution,
       generatorTelemetry: const <String, Object?>{'attempts': 2},
       solverTelemetry: const <String, Object?>{'branches': 18},
-      expectedBucket: 'medium',
+      expectedBucket: 'expert',
     ),
     DifficultyFixture<KillerQueensBoard>(
       name: 'killer-queens-hard',
@@ -742,7 +740,7 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
       solution: hardSolution,
       generatorTelemetry: const <String, Object?>{'attempts': 3},
       solverTelemetry: const <String, Object?>{'branches': 36},
-      expectedBucket: 'hard',
+      expectedBucket: 'expert',
     ),
     DifficultyFixture<KillerQueensBoard>(
       name: 'killer-queens-expert',

@@ -65,20 +65,18 @@ void main() {
       expect(puzzle.state.cells.length, equals(144));
     });
 
-    test('All puzzles keep difficulty-bounded givens and unique solutions', () {
+    test('All puzzles start empty and keep unique region solutions', () {
       final configs = [
-        {'level': 'easy', 'size': 6, 'minGivens': 5, 'maxGivens': 6},
-        {'level': 'medium', 'size': 8, 'minGivens': 6, 'maxGivens': 8},
-        {'level': 'hard', 'size': 10, 'minGivens': 7, 'maxGivens': 10},
-        {'level': 'expert', 'size': 12, 'minGivens': 8, 'maxGivens': 12},
+        {'level': 'easy', 'size': 6},
+        {'level': 'medium', 'size': 8},
+        {'level': 'hard', 'size': 10},
+        {'level': 'expert', 'size': 12},
       ];
 
       for (final config in configs) {
         final level = config['level'] as String;
         final size = config['size'] as int;
-        final minGivens = config['minGivens'] as int;
-        final maxGivens = config['maxGivens'] as int;
-        final seedStr = 'kq_${level}_givens';
+        final seedStr = 'kq_${level}_empty_start';
         final seed64 = Seed.fromString(seedStr);
 
         final puzzle = engine.generate(
@@ -93,11 +91,15 @@ void main() {
           difficulty: DifficultyScore(value: 0.5, level: level),
         );
 
-        final givensCount = puzzle.state.fixed.where((f) => f).length;
         expect(
-          givensCount,
-          inInclusiveRange(minGivens, maxGivens),
-          reason: '$level should keep enough givens for uniqueness',
+          puzzle.state.cells.where((int value) => value == 1),
+          isEmpty,
+          reason: '$level should not reveal solution queens',
+        );
+        expect(
+          puzzle.state.fixed.where((bool value) => value),
+          isEmpty,
+          reason: '$level should not mark fixed queen cells',
         );
 
         final solved = const KillerQueensSolver().solve(
