@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../services/generation_isolate.dart';
+import '../models/puzzle_input_moves.dart';
 import 'engine_provider.dart';
 
 /// Provider for current game state.
@@ -138,6 +139,10 @@ class GameStateNotifier extends Notifier<GameState?> {
       return _makeKillerQueensMove(move, engine);
     }
 
+    if (move is NonogramBatchMove) {
+      return _makeNonogramBatchMove(move, engine);
+    }
+
     // Validate move
     final result = engine.validateMove(
       currentState: state!.puzzle.state,
@@ -196,23 +201,14 @@ class GameStateNotifier extends Notifier<GameState?> {
   Future<bool> _makeKillerQueensMove(dynamic move, PuzzleEngine engine) async {
     if (state == null) return false;
 
-    // Apply move directly without validation (create new board state)
     final currentBoard = state!.puzzle.state as KillerQueensBoard;
-    final int index = currentBoard.indexFor(move.row, move.col);
-
-    final List<int> updatedCells = List<int>.from(currentBoard.cells);
-    final List<bool> updatedFixed = List<bool>.from(currentBoard.fixed);
-    if (updatedCells[index] == move.value) {
+    final KillerQueensBoard? updatedBoard = _applyKillerQueensMoveToBoard(
+      currentBoard,
+      move as KillerQueensMove,
+    );
+    if (updatedBoard == null || updatedBoard == currentBoard) {
       return false;
     }
-    updatedCells[index] = move.value;
-
-    final KillerQueensBoard updatedBoard = KillerQueensBoard(
-      size: currentBoard.size,
-      cells: updatedCells,
-      fixed: updatedFixed,
-      cages: currentBoard.cages,
-    );
 
     // Create move record
     final gameMoveAction = GameMoveAction(
@@ -255,6 +251,144 @@ class GameStateNotifier extends Notifier<GameState?> {
     _conflictCheckTimer = Timer(const Duration(seconds: 2), () {
       _checkAndShowKillerQueensConflicts();
     });
+    return true;
+  }
+
+  KillerQueensBoard? _applyKillerQueensMoveToBoard(
+    KillerQueensBoard board,
+    KillerQueensMove move,
+  ) {
+    if (move.row < 0 ||
+        move.row >= board.size ||
+        move.col < 0 ||
+        move.col >= board.size) {
+      throw RangeError('Cell out of range');
+    }
+    if (move.value < 0 || move.value > 2) {
+      throw ArgumentError('Value must be 0, 1, or 2');
+    }
+
+    final int index = board.indexFor(move.row, move.col);
+    if (board.fixed[index]) {
+      return null;
+    }
+
+    final List<int> updatedCells = List<int>.from(board.cells);
+    bool changed = false;
+
+    void setCellIfChanged(int cellIndex, int value) {
+      if (updatedCells[cellIndex] == value) {
+        return;
+      }
+      updatedCells[cellIndex] = value;
+      changed = true;
+    }
+
+    if (move.value == 1) {
+      setCellIfChanged(index, 1);
+
+      void crossIfAllowed(int row, int col) {
+        if (row < 0 || row >= board.size || col < 0 || col >= board.size) {
+          return;
+        }
+        final int cellIndex = board.indexFor(row, col);
+        if (cellIndex == index ||
+            board.fixed[cellIndex] ||
+            updatedCells[cellIndex] == 1) {
+          return;
+        }
+        setCellIfChanged(cellIndex, 2);
+      }
+
+      for (int col = 0; col < board.size; col++) {
+        crossIfAllowed(move.row, col);
+      }
+      for (int row = 0; row < board.size; row++) {
+        crossIfAllowed(row, move.col);
+      }
+      for (final int dr in const <int>[-1, 1]) {
+        for (final int dc in const <int>[-1, 1]) {
+          crossIfAllowed(move.row + dr, move.col + dc);
+        }
+      }
+    } else if (move.value == 2) {
+      if (updatedCells[index] == 1) {
+        return null;
+      }
+      setCellIfChanged(index, 2);
+    } else {
+      setCellIfChanged(index, 0);
+    }
+
+    if (!changed) {
+      return null;
+    }
+
+    return KillerQueensBoard(
+      size: board.size,
+      cells: updatedCells,
+      fixed: board.fixed,
+      cages: board.cages,
+    );
+  }
+
+  Future<bool> _makeNonogramBatchMove(
+    NonogramBatchMove move,
+    PuzzleEngine engine,
+  ) async {
+    if (state == null || move.isEmpty) return false;
+    if (state!.puzzle.state is! NonogramBoard) return false;
+
+    NonogramBoard workingBoard = state!.puzzle.state as NonogramBoard;
+    bool changed = false;
+
+    for (final NonogramMove cellMove in move.moves) {
+      final result = engine.validateMove(
+        currentState: workingBoard,
+        move: cellMove,
+      );
+      if (!result.isValid) {
+        throw Exception('Invalid move: ${result.errorMessage}');
+      }
+      if (result.newState == null || result.newState == workingBoard) {
+        continue;
+      }
+      workingBoard = result.newState as NonogramBoard;
+      changed = true;
+    }
+
+    if (!changed) {
+      return false;
+    }
+
+    final gameMoveAction = GameMoveAction(
+      move: move,
+      timestamp: DateTime.now(),
+      actionIndex: _currentActionIndex + 1,
+    );
+
+    if (_currentActionIndex < _actionHistory.length - 1) {
+      _actionHistory.removeRange(
+        _currentActionIndex + 1,
+        _actionHistory.length,
+      );
+    }
+    _actionHistory.add(gameMoveAction);
+    _currentActionIndex = _actionHistory.length - 1;
+
+    final newPuzzle = GeneratedPuzzle(
+      state: workingBoard,
+      meta: state!.puzzle.meta,
+      telemetry: state!.puzzle.telemetry,
+    );
+
+    final isSolved = engine.isSolved(workingBoard);
+
+    state = state!.copyWith(
+      puzzle: newPuzzle,
+      isSolved: isSolved,
+      lastMoveTime: DateTime.now(),
+    );
     return true;
   }
 
@@ -498,18 +632,51 @@ class GameStateNotifier extends Notifier<GameState?> {
       final action = _actionHistory[i];
 
       if (action is GameMoveAction) {
-        final result = engine.validateMove(
-          currentState: currentPuzzle.state,
-          move: action.move,
-        );
+        Object? newState;
+        if (state!.engineId == 'killer_queens' &&
+            currentPuzzle.state is KillerQueensBoard &&
+            action.move is KillerQueensMove) {
+          newState = _applyKillerQueensMoveToBoard(
+            currentPuzzle.state as KillerQueensBoard,
+            action.move as KillerQueensMove,
+          );
+        } else if (action.move is NonogramBatchMove &&
+            currentPuzzle.state is NonogramBoard) {
+          var workingBoard = currentPuzzle.state as NonogramBoard;
+          bool changed = false;
+          for (final NonogramMove cellMove
+              in (action.move as NonogramBatchMove).moves) {
+            final result = engine.validateMove(
+              currentState: workingBoard,
+              move: cellMove,
+            );
+            if (result.isValid &&
+                result.newState != null &&
+                result.newState != workingBoard) {
+              workingBoard = result.newState as NonogramBoard;
+              changed = true;
+            }
+          }
+          if (changed) {
+            newState = workingBoard;
+          }
+        } else {
+          final result = engine.validateMove(
+            currentState: currentPuzzle.state,
+            move: action.move,
+          );
+          if (result.isValid && result.newState != null) {
+            newState = result.newState!;
+          }
+        }
 
-        if (result.isValid && result.newState != null) {
+        if (newState != null) {
           currentPuzzle = GeneratedPuzzle(
-            state: result.newState!,
+            state: newState,
             meta: currentPuzzle.meta,
             telemetry: currentPuzzle.telemetry,
           );
-          isSolved = engine.isSolved(result.newState!);
+          isSolved = engine.isSolved(newState);
 
           // Clear notes for the cell that was filled
           if (action.move is Map<String, dynamic>) {

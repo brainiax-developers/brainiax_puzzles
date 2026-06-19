@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_core/puzzle_core.dart';
@@ -8,7 +7,8 @@ import '../providers/game_state_provider.dart';
 ///
 /// This abstract class defines the interface and common utilities for
 /// rendering different types of puzzles with consistent interaction patterns.
-abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> with TickerProviderStateMixin {
+abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T>
+    with TickerProviderStateMixin {
   /// The current puzzle state being rendered.
   GeneratedPuzzle? get puzzle => widget.puzzle;
 
@@ -59,21 +59,13 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
       vsync: this,
     );
 
-    _selectionAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
+    _selectionAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
 
-    _errorAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
+    _errorAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
   }
 
   @override
@@ -197,6 +189,10 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   /// Get the current error animation value.
   double get errorAnimationValue => _errorAnimation.value;
 
+  /// Some renderers need pan gestures to win before a tap move is applied.
+  @protected
+  bool get deferTapUntilTapUp => false;
+
   /// Build the puzzle content - to be implemented by subclasses.
   Widget buildPuzzleContent(BuildContext context, Size size);
 
@@ -207,15 +203,27 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
   Widget buildCellContent(BuildContext context, Offset position, Size cellSize);
 
   /// Build selection highlight - to be implemented by subclasses.
-  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize);
+  Widget buildSelectionHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  );
 
   /// Build error highlight - to be implemented by subclasses.
-  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize);
+  Widget buildErrorHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  );
 
   /// Build a hint highlight for a single cell. Subclasses should provide
   /// a widget that visually highlights the cell at `position` using the
   /// provided `cellSize`. The default implementation returns SizedBox.shrink().
-  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
+  Widget buildHintHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
     return const SizedBox.shrink();
   }
 
@@ -227,7 +235,12 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
         final cellSize = getCellSize(size);
 
         return GestureDetector(
-          onTapDown: (details) => onTap(details.localPosition),
+          onTapDown: deferTapUntilTapUp
+              ? null
+              : (details) => onTap(details.localPosition),
+          onTapUp: deferTapUntilTapUp
+              ? (details) => onTap(details.localPosition)
+              : null,
           onPanStart: onPanStart,
           onPanUpdate: onPanUpdate,
           onPanEnd: onPanEnd,
@@ -247,7 +260,11 @@ abstract class PuzzleRenderer<T extends PuzzleRendererWidget> extends State<T> w
 
                 // Selection highlights
                 if (_selectedPosition != null)
-                  buildSelectionHighlight(context, _selectedPosition!, cellSize),
+                  buildSelectionHighlight(
+                    context,
+                    _selectedPosition!,
+                    cellSize,
+                  ),
 
                 // Error highlights
                 for (final position in _errorPositions)

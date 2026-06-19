@@ -70,6 +70,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   Offset? _selectedSudokuCell;
   bool _isNoteMode = false;
   bool _isCrossMode = false;
+  KillerQueensInputMode _killerQueensInputMode = KillerQueensInputMode.queen;
   final Set<int> _sudokuHintFilled = <int>{};
   bool _shownSolvedDialog = false;
 
@@ -1324,6 +1325,18 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     Object? previousBoard,
     Object? nextBoard,
   ) {
+    if (move is NonogramBatchMove &&
+        previousBoard is core.NonogramBoard &&
+        nextBoard is core.NonogramBoard) {
+      for (int i = 0; i < previousBoard.cells.length; i++) {
+        if (previousBoard.cells[i] != nextBoard.cells[i] &&
+            (previousBoard.cells[i] == 1 || nextBoard.cells[i] == 1)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (move is core.NonogramMove &&
         previousBoard is core.NonogramBoard &&
         nextBoard is core.NonogramBoard) {
@@ -2327,19 +2340,30 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     // Killer Queens
     if (puzzle.state is core.KillerQueensBoard) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: KillerQueensRendererWidget(
-          puzzle: puzzle,
-          gameState: gameState,
-          onCellSelected: _onCellSelected,
-          onMove: _onMove,
-          onError: _onError,
-          hintCells: _hintPositions,
-          hintAnimationValue: _hintAnimationValue,
-          conflictingCells: gameState?.conflictingCells,
-          isShowingConflicts: gameState?.isShowingConflicts ?? false,
-        ),
+      return Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: KillerQueensRendererWidget(
+                puzzle: puzzle,
+                gameState: gameState,
+                onCellSelected: _onCellSelected,
+                onMove: _onMove,
+                onError: _onError,
+                hintCells: _hintPositions,
+                hintAnimationValue: _hintAnimationValue,
+                inputMode: _killerQueensInputMode,
+                conflictingCells: gameState?.conflictingCells,
+                isShowingConflicts: gameState?.isShowingConflicts ?? false,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: _buildKillerQueensControls(theme),
+          ),
+        ],
       );
     }
 
@@ -2416,6 +2440,51 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       hintAnimationValue: _hintAnimationValue,
       notes: Map.unmodifiable(noteSnapshot),
       hintFilledCells: Set<int>.unmodifiable(_sudokuHintFilled),
+    );
+  }
+
+  Widget _buildKillerQueensControls(ThemeData theme) {
+    final ColorScheme colorScheme = theme.colorScheme;
+    return Semantics(
+      label: 'Killer Queens input mode',
+      child: SegmentedButton<KillerQueensInputMode>(
+        showSelectedIcon: false,
+        style: ButtonStyle(
+          minimumSize: WidgetStateProperty.all(const Size(96, 48)),
+          visualDensity: VisualDensity.standard,
+        ),
+        segments: const <ButtonSegment<KillerQueensInputMode>>[
+          ButtonSegment<KillerQueensInputMode>(
+            value: KillerQueensInputMode.queen,
+            icon: Icon(Icons.star_rounded),
+            label: Text('Queen'),
+            tooltip: 'Queen mode',
+          ),
+          ButtonSegment<KillerQueensInputMode>(
+            value: KillerQueensInputMode.cross,
+            icon: Icon(Icons.close_rounded),
+            label: Text('Cross'),
+            tooltip: 'Cross mode',
+          ),
+          ButtonSegment<KillerQueensInputMode>(
+            value: KillerQueensInputMode.clear,
+            icon: Icon(Icons.backspace_outlined),
+            label: Text('Clear'),
+            tooltip: 'Clear',
+          ),
+        ],
+        selected: <KillerQueensInputMode>{_killerQueensInputMode},
+        onSelectionChanged: (Set<KillerQueensInputMode> selected) {
+          if (selected.isEmpty) return;
+          setState(() {
+            _killerQueensInputMode = selected.first;
+          });
+        },
+        selectedIcon: Icon(
+          Icons.check_rounded,
+          color: colorScheme.onPrimaryContainer,
+        ),
+      ),
     );
   }
 

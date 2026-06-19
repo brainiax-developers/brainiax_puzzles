@@ -8,6 +8,7 @@ import 'package:app/features/daily/daily_providers.dart';
 import 'package:app/shared/providers/game_state_provider.dart';
 import 'package:app/shared/services/puzzle_local_store.dart';
 import 'package:app/shared/widgets/nonogram_renderer.dart';
+import 'package:app/shared/widgets/killer_queens_renderer.dart';
 import 'package:app/shared/widgets/slitherlink_renderer.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
@@ -206,6 +207,48 @@ void main() {
       );
     },
   );
+
+  testWidgets('Killer Queens mode controls show and update selected mode', (
+    tester,
+  ) async {
+    final puzzle = buildKillerQueensPuzzle();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.killerQueens,
+            mode: PuzzleMode.random,
+            puzzleInstance: puzzle,
+            difficulty: 'Easy',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final controls = tester.widget<SegmentedButton<KillerQueensInputMode>>(
+      find.byType(SegmentedButton<KillerQueensInputMode>),
+    );
+    expect(controls.selected, <KillerQueensInputMode>{
+      KillerQueensInputMode.queen,
+    });
+    expect(find.text('Queen'), findsOneWidget);
+    expect(find.text('Cross'), findsOneWidget);
+    expect(find.text('Clear'), findsOneWidget);
+
+    await tester.tap(find.text('Cross'));
+    await tester.pumpAndSettle();
+
+    final updatedControls = tester
+        .widget<SegmentedButton<KillerQueensInputMode>>(
+          find.byType(SegmentedButton<KillerQueensInputMode>),
+        );
+    expect(updatedControls.selected, <KillerQueensInputMode>{
+      KillerQueensInputMode.cross,
+    });
+  });
 
   testWidgets('shows tutorial entry and disabled unsupported hints', (
     tester,
