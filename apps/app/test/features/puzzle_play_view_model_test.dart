@@ -173,6 +173,7 @@ void main() {
 
         PuzzlePlayState state = container.read(provider(session));
         expect(state.moveHistory, hasLength(1));
+        expect(state.moveCount, 1);
         expect(state.isSolved, isFalse);
 
         async.elapse(const Duration(seconds: 1));
@@ -180,6 +181,7 @@ void main() {
         viewModel.undo();
         state = container.read(provider(session));
         expect(state.moveHistory, isEmpty);
+        expect(state.moveCount, 2);
         expect(state.board, equals(session.puzzle.state));
         expect(state.isSolved, isFalse);
         expect(state.isTimerRunning, isTrue);
@@ -195,6 +197,7 @@ void main() {
         state = container.read(provider(session));
         expect(state.board, equals(session.puzzle.state));
         expect(state.moveHistory, isEmpty);
+        expect(state.moveCount, 0);
         expect(state.elapsed, Duration.zero);
         expect(state.isSolved, isFalse);
         expect(state.isTimerRunning, isTrue);

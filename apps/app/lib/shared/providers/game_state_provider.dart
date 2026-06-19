@@ -124,16 +124,18 @@ class GameStateNotifier extends Notifier<GameState?> {
   }
 
   /// Make a move in the current game.
-  Future<void> makeMove(dynamic move) async {
-    if (state == null) return;
+  ///
+  /// Returns true only when the move changed the board state. Rejected moves
+  /// throw, and accepted no-op moves return false so UI stats stay honest.
+  Future<bool> makeMove(dynamic move) async {
+    if (state == null) return false;
 
     final engine = ref.read(engineProvider(state!.engineId));
-    if (engine == null) return;
+    if (engine == null) return false;
 
     // Special handling for Killer Queens: allow invalid moves, check conflicts later
     if (state!.engineId == 'killer_queens') {
-      await _makeKillerQueensMove(move, engine);
-      return;
+      return _makeKillerQueensMove(move, engine);
     }
 
     // Validate move
@@ -144,6 +146,14 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     if (!result.isValid) {
       throw Exception('Invalid move: ${result.errorMessage}');
+    }
+    if (result.newState == null) {
+      return false;
+    }
+
+    final Object newState = result.newState!;
+    if (newState == state!.puzzle.state) {
+      return false;
     }
 
     // Create move record
@@ -165,25 +175,26 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     // Update state
     final newPuzzle = GeneratedPuzzle(
-      state: result.newState!,
+      state: newState,
       meta: state!.puzzle.meta,
       telemetry: state!.puzzle.telemetry,
     );
 
-    final isSolved = engine.isSolved(result.newState!);
+    final isSolved = engine.isSolved(newState);
 
     state = state!.copyWith(
       puzzle: newPuzzle,
       isSolved: isSolved,
       lastMoveTime: DateTime.now(),
     );
+    return true;
   }
 
   Timer? _conflictCheckTimer;
 
   /// Handle Killer Queens moves (allow invalid moves, check conflicts after delay)
-  Future<void> _makeKillerQueensMove(dynamic move, PuzzleEngine engine) async {
-    if (state == null) return;
+  Future<bool> _makeKillerQueensMove(dynamic move, PuzzleEngine engine) async {
+    if (state == null) return false;
 
     // Apply move directly without validation (create new board state)
     final currentBoard = state!.puzzle.state as KillerQueensBoard;
@@ -191,6 +202,9 @@ class GameStateNotifier extends Notifier<GameState?> {
 
     final List<int> updatedCells = List<int>.from(currentBoard.cells);
     final List<bool> updatedFixed = List<bool>.from(currentBoard.fixed);
+    if (updatedCells[index] == move.value) {
+      return false;
+    }
     updatedCells[index] = move.value;
 
     final KillerQueensBoard updatedBoard = KillerQueensBoard(
@@ -241,6 +255,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _conflictCheckTimer = Timer(const Duration(seconds: 2), () {
       _checkAndShowKillerQueensConflicts();
     });
+    return true;
   }
 
   /// Check for Killer Queens conflicts and trigger haptic feedback
@@ -355,8 +370,14 @@ class GameStateNotifier extends Notifier<GameState?> {
   /// Get current action index.
   int get currentActionIndex => _currentActionIndex;
 
+  /// Backward-compatible alias for older tests and callers.
+  int get currentMoveIndex => currentActionIndex;
+
   /// Get action history.
   List<GameAction> get actionHistory => List.unmodifiable(_actionHistory);
+
+  /// Backward-compatible alias for older tests and callers.
+  List<GameAction> get moveHistory => actionHistory;
 
   /// Record a note action (adding/removing a note from a cell).
   void recordNoteAction(int cellIndex, int digit, bool isAdding) {
@@ -428,6 +449,35 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Update game state
     final newNotes = Map<int, Set<int>>.from(state!.notes);
     newNotes.remove(cellIndex);
+    state = state!.copyWith(notes: newNotes);
+  }
+
+  /// Clean up Sudoku pencil marks after a real digit is placed.
+  void cleanupSudokuNotesForPlacement({
+    required int row,
+    required int col,
+    required int digit,
+  }) {
+    if (state == null || digit <= 0) return;
+    if (state!.puzzle.state is! SudokuBoard || state!.notes.isEmpty) return;
+
+    final int placedIndex = row * SudokuBoard.side + col;
+    final Set<int> peers = SudokuBoard.peersOfIndex(placedIndex).toSet();
+    final Map<int, Set<int>> newNotes = <int, Set<int>>{};
+
+    state!.notes.forEach((int index, Set<int> notes) {
+      if (index == placedIndex) {
+        return;
+      }
+      final Set<int> updated = Set<int>.from(notes);
+      if (peers.contains(index)) {
+        updated.remove(digit);
+      }
+      if (updated.isNotEmpty) {
+        newNotes[index] = updated;
+      }
+    });
+
     state = state!.copyWith(notes: newNotes);
   }
 

@@ -26,6 +26,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
 
   final Stopwatch _stopwatch = Stopwatch();
   final List<_HistoryEntry> _history = <_HistoryEntry>[];
+  int _moveCount = 0;
 
   late PuzzlePlaySession _session;
   core.PuzzleValidator<dynamic>? _validator;
@@ -43,6 +44,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   PuzzlePlayState build() {
     _validator = _session.validator ?? _deriveValidator(_session.engine);
     _history.clear();
+    _moveCount = 0;
     _ticker?.cancel();
     _ticker = null;
     _stopwatch
@@ -108,6 +110,9 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     }
 
     final Object newBoard = result.newState!;
+    if (newBoard == currentBoard) {
+      return;
+    }
     final _HistoryEntry entry = _HistoryEntry(
       move: move,
       previousState: currentBoard,
@@ -130,7 +135,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     state = state.copyWith(
       board: newBoard,
       moveHistory: _createMoveRecords(),
-      moveCount: _history.length,
+      moveCount: ++_moveCount,
       isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
@@ -154,6 +159,9 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
 
     final int index = board.indexFor(kqMove.row, kqMove.col);
     final List<int> updatedCells = List<int>.from(board.cells);
+    if (updatedCells[index] == kqMove.value) {
+      return;
+    }
     updatedCells[index] = kqMove.value;
 
     final core.KillerQueensBoard newBoard = core.KillerQueensBoard(
@@ -186,7 +194,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     state = state.copyWith(
       board: newBoard,
       moveHistory: _createMoveRecords(),
-      moveCount: _history.length,
+      moveCount: ++_moveCount,
       isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
@@ -329,7 +337,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     state = state.copyWith(
       board: board,
       moveHistory: _createMoveRecords(),
-      moveCount: _history.length,
+      moveCount: ++_moveCount,
       isSolved: solved,
       elapsed: _stopwatch.elapsed,
       isTimerRunning: _stopwatch.isRunning,
@@ -343,6 +351,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     _stopTimer();
     _stopwatch.reset();
     _history.clear();
+    _moveCount = 0;
 
     final Object? initialBoard = _session.puzzle.state;
     final bool solved = _isSolved(initialBoard);

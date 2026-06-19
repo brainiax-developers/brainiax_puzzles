@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app/features/play/play_screen.dart';
 import 'package:app/features/daily/daily_providers.dart';
 import 'package:app/shared/providers/game_state_provider.dart';
+import 'package:app/shared/services/puzzle_local_store.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:app/shared/models/models.dart';
@@ -54,29 +55,64 @@ void main() {
     final sudokuFinder = find.byType(SudokuRendererWidget);
     expect(sudokuFinder, findsOneWidget);
 
-    final renderBox = tester.renderObject<RenderBox>(sudokuFinder);
-    final topLeft = renderBox.localToGlobal(Offset.zero);
-    final cellSize = renderBox.size.width / core.SudokuBoard.side;
-    final cellCenter = topLeft + Offset(cellSize / 2, cellSize / 2);
-
-    await tester.tapAt(cellCenter);
-    await tester.pump();
-
-    await tester.tap(find.text('5'));
+    tester.widget<SudokuRendererWidget>(sudokuFinder).onMove!(
+      const core.SudokuMove(row: 0, col: 0, digit: 5),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Solved'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
-    final key =
-        'puzzle_local_store.v1.best_time.${PuzzleType.sudokuClassic.key}.easy';
-    expect(prefs.containsKey(key), isTrue);
-    expect(find.textContaining('Streak'), findsOneWidget);
+    final store = SharedPreferencesPuzzleLocalStore(prefs);
+    final records = await store.completionRecords();
+    expect(records, hasLength(1));
+    expect(records.single.puzzleType, PuzzleType.sudokuClassic);
+    expect(records.single.mode, PuzzleMode.random);
+    expect(records.single.difficulty, 'easy');
+    expect(records.single.moveCount, 1);
+    expect(await store.bestTime(PuzzleType.sudokuClassic, 'easy'), isNotNull);
+    expect(find.textContaining('Random Play'), findsOneWidget);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PlayScreen)),
     );
     expect(container.read(gameStateProvider)?.isSolved, isTrue);
+  });
+
+  testWidgets('shows tutorial entry and disabled unsupported hints', (
+    tester,
+  ) async {
+    final engine = TestSudokuEngine();
+    core.EngineRegistry().register(engine);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.sudokuClassic,
+            mode: PuzzleMode.random,
+            puzzleInstance: buildSudokuPuzzle(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hint'), findsOneWidget);
+    final InkWell hintButton = tester.widget<InkWell>(
+      find
+          .ancestor(of: find.text('Hint'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(hintButton.onTap, isNull);
+
+    await tester.tap(find.byTooltip('How to Play'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Classic Sudoku'), findsWidgets);
+    expect(find.text('Full tutorial coming soon.'), findsOneWidget);
   });
 
   testWidgets(

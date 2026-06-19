@@ -54,6 +54,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   int _hintsUsed = 0;
   int _movesCount = 0;
   bool _hasRecordedCompletion = false;
+  bool _completionHandling = false;
   PuzzleCompletionStatus? _completionStatus;
   bool _dailyBlocked = false;
   String? _dailyBlockedMessage;
@@ -62,6 +63,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   // Guard to ensure we only restore persisted session stats once per puzzle.
   bool _statsLoaded = false;
   bool _timerStarted = false;
+  late final PuzzleProgressController _progressController;
 
   // Remember the last logged puzzle so we don't spam logs on every rebuild
   core.GeneratedPuzzle? _lastLoggedPuzzle;
@@ -74,6 +76,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   @override
   void initState() {
     super.initState();
+    _progressController = ref.read(puzzleProgressControllerProvider);
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
 
@@ -350,6 +353,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     return ref.read(dailySeedGeneratorProvider).generate(engineId).seedStr;
   }
 
+  bool _currentEngineSupportsHints() {
+    return ref
+            .read(engineProvider(widget.puzzleType.key))
+            ?.capabilities
+            .supportsHints ??
+        false;
+  }
+
   bool _matchesRoutePuzzleType(core.GeneratedPuzzle<dynamic> puzzle) {
     final Object board = puzzle.state;
     switch (widget.puzzleType) {
@@ -472,6 +483,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     final gameState = ref.read(gameStateProvider);
     if (gameState == null) return;
+    if (!_currentEngineSupportsHints()) {
+      return;
+    }
     final board = gameState.puzzle.state;
 
     if (board is core.SudokuBoard) {
@@ -501,7 +515,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
           hint ??= _computeSudokuHint(board);
           if (hint == null) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
             return;
           }
           final resolvedHint = hint;
@@ -511,15 +525,20 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             col: resolvedHint.col,
             digit: resolvedHint.digit,
           );
-          await ref.read(gameStateProvider.notifier).makeMove(move);
+          final bool changed = await _applyMoveAndPersist(
+            move,
+            handleCompletion: false,
+          );
+          if (!changed) {
+            _showSnackBar('No hint available for this board yet.');
+            return;
+          }
           if (!mounted) return;
           setState(() {
             _sudokuHintFilled.add(
               resolvedHint.row * core.SudokuBoard.side + resolvedHint.col,
             );
-            _movesCount++;
           });
-          _persistMoveCountOnly();
           await _incrementHintCountPersistent();
           // Ensure completion is surfaced even if the listener misses a frame.
           final GameState? latest = ref.read(gameStateProvider);
@@ -529,7 +548,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         } catch (_) {
           // If anything goes wrong, fall back to a no-op with a gentle message.
           if (mounted) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
           }
         }
       }();
@@ -549,12 +568,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               );
 
           if (engineHint == null || engineHint.isEmpty) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
             return;
           }
 
           if (engineHint.cells.isEmpty) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
             return;
           }
 
@@ -566,7 +585,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           }
 
           if (value == null) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
             return;
           }
 
@@ -576,12 +595,15 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             value: value,
           );
 
-          await ref.read(gameStateProvider.notifier).makeMove(move);
+          final bool changed = await _applyMoveAndPersist(
+            move,
+            handleCompletion: false,
+          );
+          if (!changed) {
+            _showSnackBar('No hint available for this board yet.');
+            return;
+          }
           if (!mounted) return;
-          setState(() {
-            _movesCount++;
-          });
-          _persistMoveCountOnly();
           await _incrementHintCountPersistent();
           // Ensure completion is surfaced even if the listener misses a frame.
           final GameState? latest = ref.read(gameStateProvider);
@@ -590,7 +612,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           }
         } catch (_) {
           if (mounted) {
-            _showSnackBar('No hint available');
+            _showSnackBar('No hint available for this board yet.');
           }
         }
       }();
@@ -609,7 +631,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               ),
             );
         if (hint == null || hint.isEmpty) {
-          _showSnackBar('No hint available');
+          _showSnackBar('No hint available for this board yet.');
           return;
         }
 
@@ -625,12 +647,15 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               col: cell.column,
               digit: digit,
             );
-            await ref.read(gameStateProvider.notifier).makeMove(move);
+            final bool changed = await _applyMoveAndPersist(
+              move,
+              handleCompletion: false,
+            );
+            if (!changed) {
+              _showSnackBar('No hint available for this board yet.');
+              return;
+            }
             if (!mounted) return;
-            setState(() {
-              _movesCount++;
-            });
-            _persistMoveCountOnly();
             await _incrementHintCountPersistent();
             // Ensure completion is surfaced even if the listener misses a frame.
             final GameState? latest = ref.read(gameStateProvider);
@@ -653,12 +678,15 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               col: cell.column,
               value: value,
             );
-            await ref.read(gameStateProvider.notifier).makeMove(move);
+            final bool changed = await _applyMoveAndPersist(
+              move,
+              handleCompletion: false,
+            );
+            if (!changed) {
+              _showSnackBar('No hint available for this board yet.');
+              return;
+            }
             if (!mounted) return;
-            setState(() {
-              _movesCount++;
-            });
-            _persistMoveCountOnly();
             await _incrementHintCountPersistent();
             // Ensure completion is surfaced even if the listener misses a frame.
             final GameState? latest = ref.read(gameStateProvider);
@@ -715,8 +743,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             cells.add(col);
           }
         }
-        if (cells.length == 1)
+        if (cells.length == 1) {
           return (row: row, col: cells.first, digit: digit);
+        }
       }
     }
     // Hidden singles in columns
@@ -730,8 +759,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             cells.add(row);
           }
         }
-        if (cells.length == 1)
+        if (cells.length == 1) {
           return (row: cells.first, col: col, digit: digit);
+        }
       }
     }
     // Hidden singles in boxes
@@ -822,7 +852,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       setState(() {
         _movesCount++;
       });
-      _persistMoveCountOnly();
+      unawaited(_saveActiveRunForCurrentState());
     } else {
       _showSnackBar('Nothing to undo');
     }
@@ -884,6 +914,42 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       unawaited(_saveActiveRunForCurrentState());
       _startTimer();
     });
+  }
+
+  Future<void> _showHowToPlayDialog() async {
+    final registry = PuzzleRegistry()..initialize();
+    final metadata = registry.getMetadata(widget.puzzleType);
+    final String description =
+        metadata?.description ?? 'Solve the puzzle using its standard rules.';
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('How to Play'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.puzzleType.displayName,
+                style: Theme.of(dialogContext).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(description),
+              const SizedBox(height: 12),
+              const Text('Full tutorial coming soon.'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _startNewGameAfterCompletion() async {
@@ -996,7 +1062,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'You solved the puzzle. Want to keep the streak going?',
+                            'You solved ${widget.puzzleType.displayName}.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colors.onSurface.withOpacity(0.75),
                             ),
@@ -1013,18 +1079,34 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                     color: colors.onSurface.withOpacity(0.65),
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  _completionStatsText(next, timeText),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurface.withOpacity(0.65),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                          unawaited(_startNewGameAfterCompletion());
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('New Game'),
-                      ),
+                      child: widget.mode == PuzzleMode.daily
+                          ? OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.of(dialogContext).pop();
+                                context.go('/daily');
+                              },
+                              icon: const Icon(Icons.today),
+                              label: const Text('Back to Daily'),
+                            )
+                          : OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.of(dialogContext).pop();
+                                unawaited(_startNewGameAfterCompletion());
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('New Random'),
+                            ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1059,6 +1141,30 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   // Navigation actions (New/Back) removed from UI per UX request.
 
+  String _currentDifficultyLabel(GameState? state) {
+    final String difficulty = state?.difficulty.isNotEmpty == true
+        ? state!.difficulty
+        : widget.difficulty ?? '';
+    if (difficulty.isEmpty) {
+      return 'Unknown difficulty';
+    }
+    return difficulty[0].toUpperCase() + difficulty.substring(1);
+  }
+
+  String _completionStatsText(GameState state, String timeText) {
+    final String modeLabel = widget.mode == PuzzleMode.daily
+        ? 'Daily Challenge'
+        : 'Random Play';
+    return <String>[
+      widget.puzzleType.displayName,
+      modeLabel,
+      _currentDifficultyLabel(state),
+      'Time $timeText',
+      '${_movesCount} moves',
+      if (_hintsUsed > 0) '$_hintsUsed hints',
+    ].join(' - ');
+  }
+
   Future<void> _recordCompletion(GameState gameState, Duration elapsed) async {
     try {
       final controller = ref.read(puzzleCompletionControllerProvider);
@@ -1089,6 +1195,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   /// Centralized completion handler so multiple listeners can invoke the
   /// same follow-up (persist clearing, recording completion, dialog).
   Future<void> _handleCompletion(GameState next) async {
+    if (_completionHandling) {
+      return;
+    }
+    _completionHandling = true;
     _triggerHapticFeedback(HapticFeedbackType.heavy);
     if (mounted) {
       setState(() {
@@ -1097,7 +1207,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       });
     }
     final Duration elapsed = _elapsedTime;
-    // Clear in-progress persistence on completion
+    if (!_hasRecordedCompletion) {
+      _hasRecordedCompletion = true;
+      await _recordCompletion(next, elapsed);
+    }
+
+    // Clear in-progress persistence after completion recording has been
+    // attempted so resume state is not lost before durable stats are written.
     try {
       final prefs = await SharedPreferences.getInstance();
       final progress = PuzzleProgressService(prefs);
@@ -1113,16 +1229,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     } finally {
       ref.read(puzzleProgressControllerProvider).refresh();
     }
-    if (!_hasRecordedCompletion) {
-      _hasRecordedCompletion = true;
-      unawaited(_recordCompletion(next, elapsed));
-    }
 
     // Show completion popup once
     if (!_shownSolvedDialog && mounted) {
       _shownSolvedDialog = true;
       await _showCompletionDialog(next);
     }
+    _completionHandling = false;
   }
 
   void _showSnackBar(String message, {Color? backgroundColor}) {
@@ -1155,6 +1268,53 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     notifier.recordNoteAction(index, digit, isAdding);
   }
 
+  Future<bool> _applyMoveAndPersist(
+    dynamic move, {
+    bool handleCompletion = true,
+  }) async {
+    final notifier = ref.read(gameStateProvider.notifier);
+    final bool changed = await notifier.makeMove(move);
+    if (!changed) {
+      return false;
+    }
+
+    if (move is core.SudokuMove && move.digit > 0) {
+      notifier.cleanupSudokuNotesForPlacement(
+        row: move.row,
+        col: move.col,
+        digit: move.digit,
+      );
+    }
+
+    if (!mounted) {
+      return true;
+    }
+    setState(() {
+      _movesCount++;
+    });
+
+    await _saveActiveRunForCurrentState();
+
+    final gameState = ref.read(gameStateProvider);
+    final board = gameState?.puzzle.state;
+    if (board is core.SudokuBoard) {
+      final bool filled = board.emptyCount == 0;
+      final bool solved = gameState?.isSolved ?? false;
+      if (filled && !solved) {
+        _onError('Incorrect solution');
+      }
+    }
+
+    if (handleCompletion) {
+      final GameState? latest = ref.read(gameStateProvider);
+      if (latest != null && latest.isSolved && !_shownSolvedDialog) {
+        unawaited(_handleCompletion(latest));
+      }
+    }
+
+    return true;
+  }
+
   // Sudoku interaction handlers
   void _onCellSelected(Offset position) {
     _triggerHapticFeedback(HapticFeedbackType.light);
@@ -1163,7 +1323,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     });
   }
 
-  void _onMove(dynamic move) {
+  void _onMove(dynamic move) async {
     _triggerHapticFeedback(HapticFeedbackType.light);
     if (_isNoteMode && move is core.SudokuMove && move.digit != 0) {
       final gameState = ref.read(gameStateProvider);
@@ -1177,45 +1337,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return;
       }
     }
-    final notifier = ref.read(gameStateProvider.notifier);
-    notifier
-        .makeMove(move)
-        .then((_) async {
-          if (!mounted) {
-            return;
-          }
-          setState(() {
-            _movesCount++;
-          });
-
-          // Persist move count immediately (fire-and-forget) so Android back preserves it
-          _persistMoveCountOnly();
-
-          await _saveActiveRunForCurrentState();
-
-          // Detect filled-but-incorrect board for Sudoku and show feedback
-          final gameState = ref.read(gameStateProvider);
-          final board = gameState?.puzzle.state;
-          if (board is core.SudokuBoard) {
-            final bool filled = board.emptyCount == 0;
-            final bool solved = gameState?.isSolved ?? false;
-            if (filled && !solved) {
-              _onError('Incorrect solution');
-            }
-          }
-
-          // Ensure completion is surfaced even if listener misses a frame.
-          final GameState? latest = ref.read(gameStateProvider);
-          if (latest != null && latest.isSolved && !_shownSolvedDialog) {
-            unawaited(_handleCompletion(latest));
-          }
-        })
-        .catchError((Object error) {
-          final String message = error.toString().startsWith('Exception: ')
-              ? error.toString().substring('Exception: '.length)
-              : error.toString();
-          _onError(message);
-        });
+    try {
+      await _applyMoveAndPersist(move);
+    } catch (error) {
+      final String message = error.toString().startsWith('Exception: ')
+          ? error.toString().substring('Exception: '.length)
+          : error.toString();
+      _onError(message);
+    }
   }
 
   void _onError(String error) {
@@ -1532,8 +1661,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     required int digit,
   }) {
     final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.MathdokuBoard)
+    if (gameState == null || gameState.puzzle.state is! core.MathdokuBoard) {
       return;
+    }
 
     final core.MathdokuBoard board =
         gameState.puzzle.state as core.MathdokuBoard;
@@ -1559,7 +1689,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // Persist latest timer/move/hint stats for this puzzle instance so
     // "Continue Game" can restore them on re-entry.
     unawaited(_persistSessionStats());
-    ref.read(puzzleProgressControllerProvider).refresh();
+    _progressController.refresh();
     _pulseController.dispose();
     _hintController.dispose();
     super.dispose();
@@ -1588,22 +1718,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   void _persistTimerOnly() {
     // Fire-and-forget timer persistence for periodic saves
-    () async {
-      try {
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
-        final progress = PuzzleProgressService(prefs);
-        await progress.updateStats(
-          widget.puzzleType,
-          elapsed: _elapsedTime,
-          moveCount: _movesCount,
-          hintsUsed: _hintsUsed,
-        );
-      } catch (_) {}
-    }();
-  }
-
-  void _persistMoveCountOnly() {
-    // Fire-and-forget move count persistence for immediate saves
     () async {
       try {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -1700,6 +1814,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   Widget _buildHeader(ThemeData theme, ColorScheme colorScheme) {
+    final GameState? gameState = ref.watch(gameStateProvider);
+    final bool hintsSupported = _currentEngineSupportsHints();
+    final String difficultyLabel = _currentDifficultyLabel(gameState);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1761,7 +1878,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   ),
                 ),
               ),
-              const SizedBox(width: 48),
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                color: colorScheme.onSurface,
+                tooltip: 'How to Play',
+                onPressed: _showHowToPlayDialog,
+              ),
             ],
           ),
 
@@ -1777,9 +1899,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (widget.difficulty != null)
+              if (difficultyLabel.isNotEmpty)
                 Text(
-                  widget.difficulty!,
+                  difficultyLabel,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurface.withOpacity(0.7),
                   ),
@@ -1797,10 +1919,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 child: _buildActionButton(
                   icon: Icons.lightbulb_outline,
                   label: 'Hint',
-                  onTap: _useHint,
+                  onTap: hintsSupported ? _useHint : null,
                   color: colorScheme.secondary,
                   theme: theme,
                   hintCount: _hintsUsed,
+                  tooltip: hintsSupported
+                      ? 'Get a hint'
+                      : 'Hints are not available for this puzzle yet',
                 ),
               ),
 
@@ -1839,66 +1964,75 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   Widget _buildActionButton({
     required IconData icon,
     required String label,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required Color color,
     required ThemeData theme,
     int? hintCount,
+    String? tooltip,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3), width: 1),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  Icon(icon, color: color, size: 24),
-                  if (hintCount != null)
-                    Positioned(
-                      bottom: -6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          hintCount.toString(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: color.computeLuminance() > 0.5
-                                ? Colors.black
-                                : Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+    final bool enabled = onTap != null;
+    final Color effectiveColor = enabled ? color : theme.disabledColor;
+    return Tooltip(
+      message: tooltip ?? label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+            decoration: BoxDecoration(
+              color: effectiveColor.withOpacity(enabled ? 0.1 : 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: effectiveColor.withOpacity(enabled ? 0.3 : 0.18),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(icon, color: effectiveColor, size: 22),
+                    if (hintCount != null)
+                      Positioned(
+                        bottom: -6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: effectiveColor.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            hintCount.toString(),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: effectiveColor.computeLuminance() > 0.5
+                                  ? Colors.black
+                                  : Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w500,
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: effectiveColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1907,7 +2041,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   Widget _buildCanvasArea(ThemeData theme, ColorScheme colorScheme) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
@@ -2207,7 +2341,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         children: [
           // Puzzle renderer
           Expanded(
-            flex: 4,
+            flex: 3,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: _buildSudokuGrid(puzzle),
@@ -2329,7 +2463,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
   Widget _buildFooter(ThemeData theme, ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
@@ -2397,7 +2531,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
 
           if (_completionStatus != null) ...[
             Align(
