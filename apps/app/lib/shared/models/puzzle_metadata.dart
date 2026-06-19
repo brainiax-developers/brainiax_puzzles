@@ -7,6 +7,7 @@ class PuzzleMetadata {
   const PuzzleMetadata({
     required this.type,
     required this.displayName,
+    required this.description,
     required this.icon,
     required this.accentColors,
     required this.supportedSizes,
@@ -20,6 +21,9 @@ class PuzzleMetadata {
 
   /// Human-readable display name.
   final String displayName;
+
+  /// Short objective or summary shown in selection UI.
+  final String description;
 
   /// Icon placeholder (can be replaced with actual icon later).
   final IconData icon;

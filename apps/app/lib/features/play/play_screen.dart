@@ -385,7 +385,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       final prefs = await SharedPreferences.getInstance();
       final progress = PuzzleProgressService(prefs);
       await progress.clear(widget.puzzleType);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      ref.read(puzzleProgressControllerProvider).refresh();
+    }
   }
 
   void _initializeAnimations() {
@@ -1106,7 +1109,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         isSolved: true,
       );
       await progress.clear(widget.puzzleType);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      ref.read(puzzleProgressControllerProvider).refresh();
+    }
     if (!_hasRecordedCompletion) {
       _hasRecordedCompletion = true;
       unawaited(_recordCompletion(next, elapsed));
@@ -1553,6 +1559,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // Persist latest timer/move/hint stats for this puzzle instance so
     // "Continue Game" can restore them on re-entry.
     unawaited(_persistSessionStats());
+    ref.read(puzzleProgressControllerProvider).refresh();
     _pulseController.dispose();
     _hintController.dispose();
     super.dispose();

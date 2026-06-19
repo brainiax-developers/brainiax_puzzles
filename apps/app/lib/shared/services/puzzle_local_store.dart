@@ -203,8 +203,14 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
   Future<int> totalSolved() async => (await completionRecords()).length;
 
   @override
-  Future<int> completedTodayCount({DateTime? now}) {
-    return completedDailyCount(DailyUtcDate.todayKey(now: now));
+  Future<int> completedTodayCount({DateTime? now}) async {
+    final String todayKey = DailyUtcDate.todayKey(now: now);
+    final records = await completionRecords();
+    return records
+        .where(
+          (record) => DailyUtcDate.keyFor(record.completedAtUtc) == todayKey,
+        )
+        .length;
   }
 
   @override

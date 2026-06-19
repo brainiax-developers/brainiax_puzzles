@@ -1,13 +1,13 @@
 import 'dart:convert';
 
+import 'package:app/shared/models/models.dart';
+import 'package:app/shared/services/favourite_puzzle_service.dart';
+import 'package:app/shared/services/puzzle_local_store.dart';
+import 'package:app/shared/services/puzzle_progress_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../lib/shared/models/models.dart';
-import '../../../lib/shared/services/favourite_puzzle_service.dart';
-import '../../../lib/shared/services/puzzle_local_store.dart';
-import '../../../lib/shared/services/puzzle_progress_service.dart';
 import '../../helpers/test_puzzle_data.dart';
 
 void main() {
@@ -231,6 +231,10 @@ void main() {
       expect(randomRecord.hintsUsed, 3);
       expect(dailyRecord.dailyDateKeyUtc, '2024-06-01');
       expect(await store.totalSolved(), 2);
+      expect(
+        await store.completedTodayCount(now: DateTime.utc(2024, 6, 1, 23)),
+        2,
+      );
     });
 
     test('keeps old SharedPreferences streak keys untouched', () async {

@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/models.dart';
 import '../navigation/app_routes.dart';
+import '../providers/puzzle_local_store_providers.dart';
 
 enum AppShellTab {
   home(
     route: AppRoutes.home,
     label: 'Home',
-    title: 'Home',
+    title: 'Brainiax Puzzles',
     icon: Icons.home_outlined,
     selectedIcon: Icons.home,
   ),
@@ -65,7 +68,7 @@ enum AppShellTab {
   }
 }
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({
     super.key,
     required this.navigationShell,
@@ -76,16 +79,19 @@ class AppShell extends StatefulWidget {
   final String location;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _homeTitleTapCount = 0;
   DateTime? _lastHomeTitleTapAt;
 
   @override
   Widget build(BuildContext context) {
     final AppShellTab currentTab = AppShellTab.fromLocation(widget.location);
+    final AsyncValue<DailyStreakStatus> streakAsync = ref.watch(
+      dailyStreakStatusProvider,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -95,6 +101,15 @@ class _AppShellState extends State<AppShell> {
           child: Text(currentTab.title),
         ),
         actions: [
+          if (currentTab == AppShellTab.home)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: _StreakChip(
+                  streak: streakAsync.asData?.value.currentStreak,
+                ),
+              ),
+            ),
           IconButton(
             onPressed: () => context.push(AppRoutes.settings),
             icon: const Icon(Icons.settings_outlined),
@@ -137,5 +152,39 @@ class _AppShellState extends State<AppShell> {
       _homeTitleTapCount = 0;
       context.push(AppRoutes.bench);
     }
+  }
+}
+
+class _StreakChip extends StatelessWidget {
+  const _StreakChip({this.streak});
+
+  final int? streak;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final String label = streak == null ? '--' : '$streak';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.local_fire_department_outlined, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

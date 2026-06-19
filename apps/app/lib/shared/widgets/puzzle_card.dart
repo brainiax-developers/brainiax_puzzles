@@ -1,133 +1,52 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../models/models.dart';
-import '../services/difficulty_preference_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/puzzle_progress_service.dart';
-import 'package:go_router/go_router.dart';
-import 'daily_surface.dart';
 
-/// A card widget displaying puzzle information with difficulty chips and CTA buttons.
-class PuzzleCard extends StatefulWidget {
+import '../models/models.dart';
+
+class PuzzleCard extends StatelessWidget {
   const PuzzleCard({
     super.key,
     required this.metadata,
-    this.onDailyChallenge,
-    this.onDifficultySelected,
-    this.onRandomPlay,
+    required this.isFavourite,
+    required this.isInProgress,
+    required this.onTap,
+    required this.onToggleFavourite,
+    this.onResume,
   });
 
   final PuzzleMetadata metadata;
-  final VoidCallback? onDailyChallenge;
-  final Function(String difficulty)? onDifficultySelected;
-  final Function(PuzzleType puzzleType, String difficulty)? onRandomPlay;
-
-  @override
-  State<PuzzleCard> createState() => _PuzzleCardState();
-}
-
-class _PuzzleCardState extends State<PuzzleCard> {
-  String? _selectedDifficulty;
-  bool _isLoading = true;
-  bool _hasProgress = false;
-  bool _isCheckingProgress = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferredDifficulty();
-  }
-
-  Future<void> _loadPreferredDifficulty() async {
-    final preferred = await DifficultyPreferenceService.getPreferredDifficulty(
-      widget.metadata.type,
-    );
-    final String resolvedDifficulty =
-        widget.metadata.supportedDifficulties.contains(preferred)
-        ? preferred
-        : (widget.metadata.supportedDifficulties.isNotEmpty
-              ? widget.metadata.supportedDifficulties.first
-              : preferred);
-    // Check for in-progress saved puzzle for this type
-    bool hasProgress = false;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final progress = PuzzleProgressService(prefs);
-      hasProgress = progress.exists(widget.metadata.type);
-    } catch (_) {}
-    if (mounted) {
-      setState(() {
-        _selectedDifficulty = resolvedDifficulty;
-        _isLoading = false;
-        _hasProgress = hasProgress;
-      });
-    }
-  }
-
-  Future<void> _checkAndUpdateProgress() async {
-    if (_isCheckingProgress) return;
-    _isCheckingProgress = true;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final progress = PuzzleProgressService(prefs);
-      final bool exists = progress.exists(widget.metadata.type);
-      if (mounted && exists != _hasProgress) {
-        setState(() {
-          _hasProgress = exists;
-        });
-      }
-    } catch (_) {
-      // ignore
-    } finally {
-      _isCheckingProgress = false;
-    }
-  }
+  final bool isFavourite;
+  final bool isInProgress;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFavourite;
+  final VoidCallback? onResume;
 
   @override
   Widget build(BuildContext context) {
-    // Re-check progress availability after the current frame.
-    // This ensures that when navigating back from Play, the button state
-    // reflects the latest saved progress.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _checkAndUpdateProgress();
-    });
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              widget.metadata.primaryAccentColor.withOpacity(0.1),
-              widget.metadata.secondaryAccentColor.withOpacity(0.05),
-            ],
-          ),
-        ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with icon and title
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
-                      color: widget.metadata.primaryAccentColor.withOpacity(
-                        0.2,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
+                      color: metadata.primaryAccentColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
-                      widget.metadata.icon,
-                      color: widget.metadata.primaryAccentColor,
-                      size: 24,
+                      metadata.icon,
+                      color: metadata.primaryAccentColor,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -136,245 +55,89 @@ class _PuzzleCardState extends State<PuzzleCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.metadata.displayName,
+                          metadata.displayName,
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         Text(
-                          widget.metadata.category.displayName,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withOpacity(0.7),
+                          _categoryLabelFor(metadata.type),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: isFavourite ? 'Remove favourite' : 'Add favourite',
+                    onPressed: onToggleFavourite,
+                    icon: Icon(
+                      isFavourite ? Icons.star : Icons.star_outline,
+                      color: isFavourite ? Colors.amber[700] : null,
+                    ),
+                  ),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // Difficulty selectors or coming-soon message
-              if (_isLoading)
-                const SizedBox(height: 32) // Placeholder while loading
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Difficulty:',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: colorScheme.onSurface.withOpacity(0.7),
+              Text(
+                metadata.description,
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: metadata.supportedDifficulties.map((difficulty) {
+                  return Chip(label: Text(difficulty));
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (isInProgress)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'In Progress',
+                        style: theme.textTheme.labelMedium,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 8,
-                      children: widget.metadata.supportedDifficulties.map((
-                        difficulty,
-                      ) {
-                        // Use chip style for all puzzles (radio behavior with chip visuals)
-                        return _DifficultyChip(
-                          difficulty: difficulty,
-                          color: widget.metadata.primaryAccentColor,
-                          isSelected: _selectedDifficulty == difficulty,
-                          onTap: () => _onDifficultySelected(difficulty),
-                        );
-                      }).toList(),
+                  const Spacer(),
+                  if (onResume != null)
+                    TextButton.icon(
+                      onPressed: onResume,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Continue'),
                     ),
-                  ],
-                ),
-
-              const SizedBox(height: 16),
-
-              DailySurface(puzzleType: widget.metadata.type, compact: true),
-
-              const SizedBox(height: 12),
-
-              // Continue Game (when in-progress exists)
-              if (_hasProgress) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: _ActionButton(
-                    label: 'Continue Game',
-                    icon: Icons.play_circle_fill,
-                    isPrimary: false,
-                    color: widget.metadata.primaryAccentColor,
-                    onPressed: () async {
-                      try {
-                        final prefs = await SharedPreferences.getInstance();
-                        final progress = PuzzleProgressService(prefs);
-                        final run = await progress.loadActiveRun(
-                          widget.metadata.type,
-                        );
-                        final puzzle = progress.load(widget.metadata.type);
-                        if (puzzle != null && mounted) {
-                          if (kDebugMode) {
-                            debugPrint(
-                              '[Navigation][Continue] ${widget.metadata.type.key} '
-                              'seed=${puzzle.meta.seedStr}',
-                            );
-                          }
-                          if (!context.mounted) return;
-                          final mode = run?.mode ?? PuzzleMode.random;
-                          context.push(
-                            '/play/${widget.metadata.type.key}/${mode.key}',
-                            extra: puzzle,
-                          );
-                        }
-                      } catch (_) {}
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              // New Game Button (only show if difficulty is selected)
-              if (_selectedDifficulty != null) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: _ActionButton(
-                    label: 'New Game',
-                    icon: Icons.play_arrow,
-                    isPrimary: true,
-                    color: widget.metadata.primaryAccentColor,
-                    onPressed: () {
-                      if (widget.onRandomPlay != null) {
-                        widget.onRandomPlay!(
-                          widget.metadata.type,
-                          _selectedDifficulty!,
-                        );
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              // Removed legacy Random Puzzle button; Random Play supersedes it
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
   }
-
-  void _onDifficultySelected(String difficulty) {
-    setState(() {
-      _selectedDifficulty = difficulty;
-    });
-
-    // Save the preference
-    DifficultyPreferenceService.setPreferredDifficulty(
-      widget.metadata.type,
-      difficulty,
-    );
-
-    if (widget.onDifficultySelected != null) {
-      widget.onDifficultySelected!(difficulty);
-    }
-  }
 }
 
-/// A chip for difficulty selection (radio button functionality with chip visuals).
-class _DifficultyChip extends StatelessWidget {
-  const _DifficultyChip({
-    required this.difficulty,
-    required this.color,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String difficulty;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? color : color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? color : color.withOpacity(0.3),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Text(
-          difficulty,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: isSelected ? Colors.white : color,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A radio button for difficulty selection.
-// Note: legacy radio button widget removed in favor of chips for all puzzles.
-
-/// An action button for puzzle modes.
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.isPrimary,
-    required this.color,
-    this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool isPrimary;
-  final Color color;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isPrimary ? color : colorScheme.surface,
-        foregroundColor: isPrimary ? Colors.white : color,
-        elevation: isPrimary ? 2 : 0,
-        shadowColor: color.withOpacity(0.3),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(
-            color: isPrimary ? Colors.transparent : color.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
+String _categoryLabelFor(PuzzleType puzzleType) {
+  switch (puzzleType) {
+    case PuzzleType.sudokuClassic:
+    case PuzzleType.kakuroClassic:
+    case PuzzleType.mathdokuClassic:
+    case PuzzleType.takuzuBinary:
+      return 'Numbers';
+    case PuzzleType.nonogramMono:
+    case PuzzleType.slitherlinkLoop:
+    case PuzzleType.killerQueens:
+      return 'Visual';
   }
 }

@@ -1,96 +1,84 @@
 import 'package:app/shared/models/models.dart';
 import 'package:app/shared/widgets/puzzle_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  const PuzzleMetadata metadata = PuzzleMetadata(
+    type: PuzzleType.sudokuClassic,
+    displayName: 'Classic Sudoku',
+    description:
+        'Fill the grid so every row, column, and box contains each number once.',
+    icon: Icons.grid_on,
+    accentColors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+    supportedSizes: ['9x9', '6x6', '4x4'],
+    supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
+    supportsHints: true,
+    category: PuzzleCategory.logic,
+  );
 
-  group('PuzzleCard', () {
-    setUp(() {
-      SharedPreferences.setMockInitialValues({});
-    });
-
-    testWidgets('displays puzzle information and playable actions', (
-      WidgetTester tester,
-    ) async {
-      const PuzzleMetadata metadata = PuzzleMetadata(
-        type: PuzzleType.sudokuClassic,
-        displayName: 'Classic Sudoku',
-        icon: Icons.grid_on,
-        accentColors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-        supportedSizes: ['9x9', '6x6', '4x4'],
-        supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
-        supportsHints: true,
-        category: PuzzleCategory.logic,
-      );
-
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: Scaffold(body: PuzzleCard(metadata: metadata)),
-          ),
+  Widget buildCard({
+    bool isFavourite = false,
+    bool isInProgress = false,
+    VoidCallback? onTap,
+    VoidCallback? onToggleFavourite,
+    VoidCallback? onResume,
+  }) {
+    return MaterialApp(
+      home: Scaffold(
+        body: PuzzleCard(
+          metadata: metadata,
+          isFavourite: isFavourite,
+          isInProgress: isInProgress,
+          onTap: onTap ?? () {},
+          onToggleFavourite: onToggleFavourite ?? () {},
+          onResume: onResume,
         ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Classic Sudoku'), findsOneWidget);
-      expect(find.text('Logic'), findsOneWidget);
-      expect(find.text('Easy'), findsOneWidget);
-      expect(find.text('Medium'), findsOneWidget);
-      expect(find.text('Hard'), findsOneWidget);
-      expect(find.text('Expert'), findsOneWidget);
-      expect(find.text('Start Daily'), findsOneWidget);
-      expect(find.text('New Game'), findsOneWidget);
-    });
-
-    testWidgets(
-      'slitherlink and killer queens are no longer marked coming soon',
-      (WidgetTester tester) async {
-        const List<PuzzleMetadata> playableMetadata = <PuzzleMetadata>[
-          PuzzleMetadata(
-            type: PuzzleType.slitherlinkLoop,
-            displayName: 'Slitherlink Loop',
-            icon: Icons.circle_outlined,
-            accentColors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
-            supportedSizes: ['5x5', '7x7', '10x10'],
-            supportedDifficulties: ['Easy', 'Medium', 'Hard'],
-            supportsHints: true,
-            category: PuzzleCategory.logic,
-          ),
-          PuzzleMetadata(
-            type: PuzzleType.killerQueens,
-            displayName: 'Killer Queens',
-            icon: Icons.catching_pokemon,
-            accentColors: [Color(0xFF26C6DA), Color(0xFF00838F)],
-            supportedSizes: ['6x6', '8x8', '10x10', '12x12'],
-            supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
-            supportsHints: true,
-            category: PuzzleCategory.logic,
-          ),
-        ];
-
-        for (final PuzzleMetadata metadata in playableMetadata) {
-          await tester.pumpWidget(
-            ProviderScope(
-              child: MaterialApp(
-                home: Scaffold(body: PuzzleCard(metadata: metadata)),
-              ),
-            ),
-          );
-          await tester.pumpAndSettle();
-
-          expect(find.text('Coming soon'), findsNothing);
-          expect(
-            find.text('This puzzle will be available in a future update.'),
-            findsNothing,
-          );
-          expect(find.text('Start Daily'), findsOneWidget);
-          expect(find.text('New Game'), findsOneWidget);
-        }
-      },
+      ),
     );
+  }
+
+  testWidgets('shows library card content and difficulty chips', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(buildCard());
+
+    expect(find.text('Classic Sudoku'), findsOneWidget);
+    expect(find.text('Numbers'), findsOneWidget);
+    expect(find.text('Easy'), findsOneWidget);
+    expect(find.text('Medium'), findsOneWidget);
+    expect(find.text('Hard'), findsOneWidget);
+    expect(find.text('Expert'), findsOneWidget);
+    expect(find.text('In Progress'), findsNothing);
+    expect(find.text('Continue'), findsNothing);
+  });
+
+  testWidgets('shows in-progress affordances when a run exists', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(buildCard(isInProgress: true, onResume: () {}));
+
+    expect(find.text('In Progress'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+  });
+
+  testWidgets('star button toggles independently from card tap', (
+    WidgetTester tester,
+  ) async {
+    int cardTaps = 0;
+    int starTaps = 0;
+
+    await tester.pumpWidget(
+      buildCard(
+        onTap: () => cardTaps += 1,
+        onToggleFavourite: () => starTaps += 1,
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.star_outline));
+    await tester.pump();
+
+    expect(starTaps, 1);
+    expect(cardTaps, 0);
   });
 }

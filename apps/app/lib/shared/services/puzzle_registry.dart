@@ -139,6 +139,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Fill the grid so every row, column, and box contains each number once.',
           icon: Icons.grid_on,
           accentColors: const [Color(0xFF2196F3), Color(0xFF1976D2)],
           supportedSizes: ['9x9', '6x6', '4x4'],
@@ -151,6 +153,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Reveal the picture by filling cells to match the row and column clues.',
           icon: Icons.crop_square,
           accentColors: const [Color(0xFF4CAF50), Color(0xFF388E3C)],
           // Prefer engine-supported defaults first; 5x5 is not supported by current engine
@@ -179,6 +183,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Place digits so each clue group adds correctly without repeats.',
           icon: Icons.add_box,
           accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
           supportedSizes: kakuroSizes,
@@ -191,6 +197,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Draw a single loop around the grid that satisfies every clue.',
           icon: Icons.circle_outlined,
           accentColors: const [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
           supportedSizes: ['5x5', '7x7', '10x10'],
@@ -203,6 +211,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Complete the Latin square while making every cage math target work.',
           icon: Icons.calculate,
           accentColors: const [Color(0xFFE91E63), Color(0xFFC2185B)],
           // Updated sizes: add 9x9, remove unsupported 8x8, order largest first for default selection.
@@ -216,6 +226,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Place queens so rows, columns, cages, and diagonals all stay valid.',
           icon: Icons.catching_pokemon,
           accentColors: const [Color(0xFF26C6DA), Color(0xFF00838F)],
           supportedSizes: ['6x6', '8x8', '10x10', '12x12'],
@@ -228,6 +240,8 @@ class PuzzleRegistry {
         return PuzzleMetadata(
           type: type,
           displayName: type.displayName,
+          description:
+              'Balance zeros and ones so every row and column stays unique.',
           icon: Icons.code,
           accentColors: const [Color(0xFF607D8B), Color(0xFF455A64)],
           supportedSizes: ['6x6', '8x8', '10x10', '12x12'],

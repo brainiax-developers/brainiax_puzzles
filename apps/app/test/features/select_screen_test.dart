@@ -1,215 +1,153 @@
+import 'package:app/features/select/select_screen.dart';
+import 'package:app/shared/models/models.dart';
+import 'package:app/shared/navigation/app_routes.dart';
+import 'package:app/shared/services/generation_isolate.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:app/features/select/select_screen.dart';
-import 'package:app/shared/services/puzzle_preload_service.dart';
-import 'package:app/shared/models/models.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/test_puzzle_data.dart';
 
-class _FakePuzzlePreloadService extends PuzzlePreloadService {
-  _FakePuzzlePreloadService(this._cache);
+class _ImmediatePuzzleGenerationWorker implements PuzzleGenerationWorker {
+  _ImmediatePuzzleGenerationWorker(this._puzzle);
 
-  final Map<String, core.GeneratedPuzzle<dynamic>> _cache;
-
-  String _cacheKey(PuzzleType type, String difficulty) =>
-      '${type.key.toLowerCase()}::${difficulty.toLowerCase()}';
+  final core.GeneratedPuzzle<dynamic> _puzzle;
 
   @override
-  Future<void> preloadAll({
-    Duration interItemYield = const Duration(milliseconds: 50),
-  }) async {}
-
-  @override
-  core.GeneratedPuzzle<dynamic>? getCached(
-    PuzzleType puzzleType,
-    String difficulty,
-  ) {
-    return _cache[_cacheKey(puzzleType, difficulty)];
+  Future<core.GeneratedPuzzle<dynamic>> generate(
+    PuzzleGenerationRequest request, {
+    Duration? timeout,
+  }) async {
+    return _puzzle;
   }
-
-  @override
-  bool get hasPreloaded => _cache.isNotEmpty;
 }
 
 void main() {
-  Widget wrapWithProviders(Widget child) {
-    return ProviderScope(child: child);
-  }
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    core.EngineRegistry().clear();
+    core.EngineRegistry().register(TestSudokuEngine());
+  });
 
-  MaterialApp routerApp(GoRouter router) {
-    return MaterialApp.router(
-      routeInformationProvider: router.routeInformationProvider,
-      routeInformationParser: router.routeInformationParser,
-      routerDelegate: router.routerDelegate,
+  tearDown(() {
+    core.EngineRegistry().clear();
+  });
+
+  Future<GoRouter> pumpSelectScreen(
+    WidgetTester tester, {
+    List<Object> overrides = const [],
+  }) async {
+    final GoRouter router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const SelectScreen(),
+        ),
+        GoRoute(
+          path: '/play/:puzzleType/:mode',
+          builder: (context, state) =>
+              const Scaffold(body: Text('Play Screen')),
+        ),
+      ],
     );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: overrides.cast(),
+        child: MaterialApp.router(
+          routeInformationProvider: router.routeInformationProvider,
+          routeInformationParser: router.routeInformationParser,
+          routerDelegate: router.routerDelegate,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return router;
   }
 
-  group('SelectScreen', () {
-    setUp(() {
-      core.EngineRegistry().clear();
-      SharedPreferences.setMockInitialValues({});
-    });
+  testWidgets('shows the library filters without search or word filter', (
+    WidgetTester tester,
+  ) async {
+    await pumpSelectScreen(tester);
 
-    tearDown(() {
-      core.EngineRegistry().clear();
-    });
+    expect(find.text('Puzzle Library'), findsOneWidget);
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Numbers'), findsOneWidget);
+    expect(find.text('Visual'), findsOneWidget);
+    expect(find.text('Favourites'), findsOneWidget);
+    expect(find.text('Word'), findsNothing);
+    expect(find.byIcon(Icons.search), findsNothing);
+  });
 
-    testWidgets('should show loading state initially', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        wrapWithProviders(
-          routerApp(
-            GoRouter(
-              routes: [
-                GoRoute(
-                  path: '/',
-                  builder: (context, state) => const SelectScreen(),
-                ),
-              ],
-            ),
-          ),
+  testWidgets('cards show difficulty chips as labels only', (
+    WidgetTester tester,
+  ) async {
+    final GoRouter router = await pumpSelectScreen(tester);
+
+    expect(find.text('Classic Sudoku'), findsOneWidget);
+    expect(find.text('Easy'), findsWidgets);
+    expect(find.text('Medium'), findsWidgets);
+    expect(find.text('Hard'), findsWidgets);
+    expect(find.text('Expert'), findsWidgets);
+
+    await tester.tap(find.text('Easy').first);
+    await tester.pumpAndSettle();
+
+    expect(router.routeInformationProvider.value.uri.path, '/');
+    expect(find.text('Play Screen'), findsNothing);
+  });
+
+  testWidgets('favourite star toggles without opening the picker', (
+    WidgetTester tester,
+  ) async {
+    await pumpSelectScreen(tester);
+
+    await tester.tap(find.byTooltip('Add favourite').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.star), findsOneWidget);
+    expect(find.text('Choose mode'), findsNothing);
+  });
+
+  testWidgets('tapping a card opens the picker sheet without replacing route', (
+    WidgetTester tester,
+  ) async {
+    final GoRouter router = await pumpSelectScreen(tester);
+
+    await tester.tap(find.text('Classic Sudoku'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose mode'), findsOneWidget);
+    expect(find.text('How to Play'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/');
+  });
+
+  testWidgets('starting random play navigates to the random play route', (
+    WidgetTester tester,
+  ) async {
+    final GoRouter router = await pumpSelectScreen(
+      tester,
+      overrides: [
+        puzzleGenerationWorkerProvider.overrideWithValue(
+          _ImmediatePuzzleGenerationWorker(buildSudokuPuzzle()),
         ),
-      );
+      ],
+    );
 
-      // Should show loading shimmer
-      expect(find.byType(SelectScreen), findsOneWidget);
+    await tester.tap(find.text('Classic Sudoku'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Random Play'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Start Random Puzzle'));
+    await tester.pumpAndSettle();
 
-      // Wait for loading to complete
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('should render registry-backed puzzle list', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        wrapWithProviders(
-          routerApp(
-            GoRouter(
-              routes: [
-                GoRoute(
-                  path: '/',
-                  builder: (context, state) => const SelectScreen(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      // Wait for loading to complete
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SelectScreen), findsOneWidget);
-      expect(find.text('Classic Sudoku'), findsOneWidget);
-    });
-
-    testWidgets('should show puzzles when available', (
-      WidgetTester tester,
-    ) async {
-      // Register some engines
-      core.EngineRegistry().register(
-        core.StubPuzzleEngine(engineId: 'sudoku_classic'),
-      );
-      core.EngineRegistry().register(
-        core.StubPuzzleEngine(engineId: 'nonogram_mono'),
-      );
-
-      await tester.pumpWidget(
-        wrapWithProviders(
-          routerApp(
-            GoRouter(
-              routes: [
-                GoRoute(
-                  path: '/',
-                  builder: (context, state) => const SelectScreen(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      // Wait for loading to complete
-      await tester.pumpAndSettle();
-
-      expect(find.text('Logic'), findsWidgets);
-      expect(find.text('Classic Sudoku'), findsOneWidget);
-      expect(find.text('Monochrome Nonogram'), findsOneWidget);
-    });
-
-    testWidgets('should navigate to play screen when puzzle is selected', (
-      WidgetTester tester,
-    ) async {
-      // Register an engine
-      core.EngineRegistry().register(
-        core.StubPuzzleEngine(engineId: 'sudoku_classic'),
-      );
-
-      final router = GoRouter(
-        routes: [
-          GoRoute(path: '/', builder: (context, state) => const SelectScreen()),
-          GoRoute(
-            path: '/play/:puzzleType/:mode',
-            builder: (context, state) =>
-                const Scaffold(body: Text('Play Screen')),
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(wrapWithProviders(routerApp(router)));
-
-      // Wait for loading to complete
-      await tester.pumpAndSettle();
-
-      final startDailyButton = tester.widget<ElevatedButton>(
-        find.widgetWithText(ElevatedButton, 'Start Daily').first,
-      );
-      startDailyButton.onPressed!();
-      await tester.pumpAndSettle();
-
-      expect(find.text('Play Screen'), findsOneWidget);
-    });
-
-    testWidgets('shows new game action', (WidgetTester tester) async {
-      final engine = TestSudokuEngine();
-      core.EngineRegistry().register(engine);
-      final cached = buildSudokuPuzzle();
-      final preloadService = _FakePuzzlePreloadService({
-        '${PuzzleType.sudokuClassic.key}::easy': cached,
-      });
-
-      final router = GoRouter(
-        routes: [
-          GoRoute(path: '/', builder: (context, state) => const SelectScreen()),
-          GoRoute(
-            path: '/play/:puzzleType/:mode',
-            builder: (context, state) {
-              return const Scaffold(body: Text('Play Screen'));
-            },
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [puzzlePreloadProvider.overrideWithValue(preloadService)],
-          child: MaterialApp.router(
-            routeInformationProvider: router.routeInformationProvider,
-            routeInformationParser: router.routeInformationParser,
-            routerDelegate: router.routerDelegate,
-          ),
-        ),
-      );
-
-      await tester.pump(const Duration(milliseconds: 900));
-      await tester.pump();
-
-      expect(find.text('New Game'), findsWidgets);
-    });
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      AppRoutes.play(PuzzleType.sudokuClassic.key, PuzzleMode.random.key),
+    );
+    expect(find.text('Play Screen'), findsOneWidget);
   });
 }

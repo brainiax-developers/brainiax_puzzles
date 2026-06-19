@@ -3,7 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../services/favourite_puzzle_service.dart';
+import '../services/difficulty_preference_service.dart';
 import '../services/puzzle_local_store.dart';
+import '../services/puzzle_progress_service.dart';
 
 typedef PuzzleDifficultyKey = (PuzzleType puzzleType, String difficulty);
 typedef PuzzleDateKey = (PuzzleType puzzleType, DateTime date);
@@ -13,6 +15,18 @@ final sharedPreferencesProvider = FutureProvider<SharedPreferences>((
 ) async {
   return SharedPreferences.getInstance();
 });
+
+class HomeStatsSnapshot {
+  const HomeStatsSnapshot({
+    required this.totalSolved,
+    required this.todayCompleted,
+    required this.completedThisWeek,
+  });
+
+  final int totalSolved;
+  final int todayCompleted;
+  final int completedThisWeek;
+}
 
 final puzzleLocalStoreProvider = FutureProvider<PuzzleLocalStore>((ref) async {
   final prefs = await ref.watch(sharedPreferencesProvider.future);
@@ -44,6 +58,15 @@ final dailyStreakStatusProvider = FutureProvider<DailyStreakStatus>((
 ) async {
   final store = await ref.watch(puzzleLocalStoreProvider.future);
   return store.dailyStreakStatus();
+});
+
+final homeStatsProvider = FutureProvider<HomeStatsSnapshot>((ref) async {
+  final store = await ref.watch(puzzleLocalStoreProvider.future);
+  return HomeStatsSnapshot(
+    totalSolved: await store.totalSolved(),
+    todayCompleted: await store.completedTodayCount(),
+    completedThisWeek: await store.completedThisWeekCount(),
+  );
 });
 
 final dailyCompletedCountProvider = FutureProvider.family<int, String>((
@@ -117,6 +140,90 @@ final favouritePuzzleControllerProvider = Provider<FavouritePuzzleController>(
   FavouritePuzzleController.new,
 );
 
+final activeRunsProvider = FutureProvider<List<ActivePuzzleRun>>((ref) async {
+  final prefs = await ref.watch(sharedPreferencesProvider.future);
+  final progress = PuzzleProgressService(prefs);
+  final String todayKey = DailyUtcDate.todayKey();
+  final List<ActivePuzzleRun> runs = <ActivePuzzleRun>[];
+
+  for (final puzzleType in PuzzleType.values) {
+    final ActivePuzzleRun? run = await progress.loadActiveRun(puzzleType);
+    if (run == null || run.isSolved) {
+      continue;
+    }
+    if (run.mode == PuzzleMode.daily && run.dailyDateKeyUtc != todayKey) {
+      continue;
+    }
+    runs.add(run);
+  }
+
+  runs.sort((a, b) => b.updatedAtUtc.compareTo(a.updatedAtUtc));
+  return runs;
+});
+
+final latestActiveRunProvider = FutureProvider<ActivePuzzleRun?>((ref) async {
+  final runs = await ref.watch(activeRunsProvider.future);
+  return runs.isEmpty ? null : runs.first;
+});
+
+final activeRunForPuzzleTypeProvider =
+    FutureProvider.family<ActivePuzzleRun?, PuzzleType>((ref, puzzleType) async {
+      final runs = await ref.watch(activeRunsProvider.future);
+      for (final run in runs) {
+        if (run.puzzleType == puzzleType) {
+          return run;
+        }
+      }
+      return null;
+    });
+
+class PuzzleProgressController {
+  PuzzleProgressController(this._ref);
+
+  final Ref _ref;
+
+  void refresh() {
+    _ref.invalidate(activeRunsProvider);
+    _ref.invalidate(latestActiveRunProvider);
+    for (final puzzleType in PuzzleType.values) {
+      _ref.invalidate(activeRunForPuzzleTypeProvider(puzzleType));
+    }
+  }
+}
+
+final puzzleProgressControllerProvider = Provider<PuzzleProgressController>(
+  PuzzleProgressController.new,
+);
+
+final preferredDifficultyProvider = FutureProvider.family<String, PuzzleType>((
+  ref,
+  puzzleType,
+) async {
+  return DifficultyPreferenceService.getPreferredDifficulty(puzzleType);
+});
+
+class DifficultyPreferenceController {
+  DifficultyPreferenceController(this._ref);
+
+  final Ref _ref;
+
+  Future<void> setPreferredDifficulty(
+    PuzzleType puzzleType,
+    String difficulty,
+  ) async {
+    await DifficultyPreferenceService.setPreferredDifficulty(
+      puzzleType,
+      difficulty,
+    );
+    _ref.invalidate(preferredDifficultyProvider(puzzleType));
+  }
+}
+
+final difficultyPreferenceControllerProvider =
+    Provider<DifficultyPreferenceController>(
+      DifficultyPreferenceController.new,
+    );
+
 class PuzzleCompletionController {
   PuzzleCompletionController(this._ref);
 
@@ -163,6 +270,7 @@ class PuzzleCompletionController {
       _ref.invalidate(nextUncompletedDailyPuzzleTypeProvider(utcDayKey));
     }
     _ref.invalidate(dailyStreakStatusProvider);
+    _ref.invalidate(homeStatsProvider);
 
     final Duration? bestTime = await store.bestTime(puzzleType, difficulty);
     final bool isDailyCompleted =
