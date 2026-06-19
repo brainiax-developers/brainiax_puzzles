@@ -151,8 +151,12 @@ class NonogramValidator extends PuzzleValidator<NonogramBoard> {
 
   @override
   bool isSolved(NonogramBoard board) {
-    if (!board.isComplete) {
-      return false;
+    for (final int? value in board.cells) {
+      if (value != null &&
+          value != NonogramLineSolver.filled &&
+          value != NonogramLineSolver.empty) {
+        return false;
+      }
     }
     for (int row = 0; row < board.height; row++) {
       if (!_cluesEqual(

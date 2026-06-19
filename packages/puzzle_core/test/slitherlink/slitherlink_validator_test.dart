@@ -57,6 +57,57 @@ void main() {
       expect(validator.isSolved(solution), isTrue);
     });
 
+    test(
+      'isSolved accepts required loop edges with non-loop edges unmarked',
+      () {
+        final SlitherlinkBoard board = _outerLoopFixture(
+          nonLoopValue: SlitherlinkBoard.edgeUnknown,
+        );
+
+        expect(validator.isSolved(board), isTrue);
+      },
+    );
+
+    test(
+      'isSolved accepts required loop edges with non-loop edges crossed',
+      () {
+        final SlitherlinkBoard board = _outerLoopFixture(
+          nonLoopValue: SlitherlinkBoard.edgeOff,
+        );
+
+        expect(validator.isSolved(board), isTrue);
+      },
+    );
+
+    test('isSolved rejects a missing required loop edge', () {
+      final SlitherlinkBoard board = _outerLoopFixture(
+        nonLoopValue: SlitherlinkBoard.edgeUnknown,
+        removeEdge: (SlitherlinkTopology topology) =>
+            topology.horizontalEdgeIndex(0, 0),
+      );
+
+      expect(validator.isSolved(board), isFalse);
+    });
+
+    test('isSolved rejects an incorrectly drawn non-loop edge', () {
+      final SlitherlinkBoard board = _outerLoopFixture(
+        nonLoopValue: SlitherlinkBoard.edgeUnknown,
+        addEdge: (SlitherlinkTopology topology) =>
+            topology.horizontalEdgeIndex(1, 0),
+      );
+
+      expect(validator.isSolved(board), isFalse);
+    });
+
+    test('isSolved does not require crosses on non-loop edges', () {
+      final SlitherlinkBoard board = _outerLoopFixture(
+        nonLoopValue: SlitherlinkBoard.edgeUnknown,
+      );
+
+      expect(board.isComplete, isFalse);
+      expect(validator.isSolved(board), isTrue);
+    });
+
     test('flags multi-cycle solutions', () {
       final SlitherlinkBoard puzzle = _unknownBoard(
         width: 3,
@@ -148,6 +199,44 @@ void main() {
       expect(summary.issues, contains('invalid_clue:0'));
     });
   });
+}
+
+SlitherlinkBoard _outerLoopFixture({
+  required int nonLoopValue,
+  int Function(SlitherlinkTopology topology)? removeEdge,
+  int Function(SlitherlinkTopology topology)? addEdge,
+}) {
+  final SlitherlinkTopology topology = SlitherlinkTopology.forSize(2, 2);
+  final Set<int> loopEdges = <int>{
+    topology.horizontalEdgeIndex(0, 0),
+    topology.horizontalEdgeIndex(0, 1),
+    topology.horizontalEdgeIndex(2, 0),
+    topology.horizontalEdgeIndex(2, 1),
+    topology.verticalEdgeIndex(0, 0),
+    topology.verticalEdgeIndex(1, 0),
+    topology.verticalEdgeIndex(0, 2),
+    topology.verticalEdgeIndex(1, 2),
+  };
+
+  final int? edgeToRemove = removeEdge?.call(topology);
+  if (edgeToRemove != null) {
+    loopEdges.remove(edgeToRemove);
+  }
+  final int? edgeToAdd = addEdge?.call(topology);
+  if (edgeToAdd != null) {
+    loopEdges.add(edgeToAdd);
+  }
+
+  return SlitherlinkBoard(
+    width: 2,
+    height: 2,
+    clues: const <int?>[2, 2, 2, 2],
+    edges: List<int>.generate(
+      topology.edgeCount,
+      (int edge) =>
+          loopEdges.contains(edge) ? SlitherlinkBoard.edgeOn : nonLoopValue,
+    ),
+  );
 }
 
 SlitherlinkBoard _unknownBoard({

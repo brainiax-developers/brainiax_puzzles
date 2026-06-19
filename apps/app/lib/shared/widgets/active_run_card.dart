@@ -109,11 +109,7 @@ class _Pill extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14),
-          const SizedBox(width: 6),
-          Text(label),
-        ],
+        children: [Icon(icon, size: 14), const SizedBox(width: 6), Text(label)],
       ),
     );
   }
@@ -185,8 +181,23 @@ _ActiveRunProgress? _nonogramProgress(Map<String, dynamic> board) {
   if (cells == null || cells.isEmpty) {
     return null;
   }
-  final int resolved = cells.where((value) => value != null).length;
-  return _ActiveRunProgress(fraction: resolved / cells.length);
+  final List<dynamic>? rowClues = board['rowClues'] as List<dynamic>?;
+  final int totalRequired = rowClues == null
+      ? cells.length
+      : rowClues.fold<int>(0, (int total, dynamic row) {
+          if (row is! List<dynamic>) {
+            return total;
+          }
+          return total +
+              row.fold<int>(0, (int lineTotal, dynamic clue) {
+                return lineTotal + (clue as int);
+              });
+        });
+  if (totalRequired <= 0) {
+    return null;
+  }
+  final int filled = cells.where((value) => value == 1).length;
+  return _ActiveRunProgress(fraction: (filled / totalRequired).clamp(0.0, 1.0));
 }
 
 _ActiveRunProgress? _kakuroProgress(Map<String, dynamic> board) {
@@ -221,11 +232,11 @@ _ActiveRunProgress? _slitherlinkProgress(Map<String, dynamic> board) {
   if (edges == null || edges.isEmpty) {
     return null;
   }
-  final int resolved = edges
+  final int drawn = edges
       .cast<int>()
-      .where((value) => value != core.SlitherlinkBoard.edgeUnknown)
+      .where((value) => value == core.SlitherlinkBoard.edgeOn)
       .length;
-  return _ActiveRunProgress(fraction: resolved / edges.length);
+  return _ActiveRunProgress(fraction: drawn / edges.length);
 }
 
 _ActiveRunProgress? _takuzuProgress(Map<String, dynamic> board) {

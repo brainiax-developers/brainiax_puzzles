@@ -1273,10 +1273,12 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     bool handleCompletion = true,
   }) async {
     final notifier = ref.read(gameStateProvider.notifier);
+    final Object? previousBoard = ref.read(gameStateProvider)?.puzzle.state;
     final bool changed = await notifier.makeMove(move);
     if (!changed) {
       return false;
     }
+    final Object? nextBoard = ref.read(gameStateProvider)?.puzzle.state;
 
     if (move is core.SudokuMove && move.digit > 0) {
       notifier.cleanupSudokuNotesForPlacement(
@@ -1289,9 +1291,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (!mounted) {
       return true;
     }
-    setState(() {
-      _movesCount++;
-    });
+    if (_shouldCountMove(move, previousBoard, nextBoard)) {
+      setState(() {
+        _movesCount++;
+      });
+    }
 
     await _saveActiveRunForCurrentState();
 
@@ -1310,6 +1314,36 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       if (latest != null && latest.isSolved && !_shownSolvedDialog) {
         unawaited(_handleCompletion(latest));
       }
+    }
+
+    return true;
+  }
+
+  bool _shouldCountMove(
+    dynamic move,
+    Object? previousBoard,
+    Object? nextBoard,
+  ) {
+    if (move is core.NonogramMove &&
+        previousBoard is core.NonogramBoard &&
+        nextBoard is core.NonogramBoard) {
+      final int index = previousBoard.indexOf(move.row, move.col);
+      final int? previous = previousBoard.cells[index];
+      final int? next = nextBoard.cells[index];
+      return previous == 1 || next == 1;
+    }
+
+    if (move is core.SlitherlinkMove &&
+        previousBoard is core.SlitherlinkBoard &&
+        nextBoard is core.SlitherlinkBoard) {
+      final topology = previousBoard.topology;
+      final int index = move.horizontal
+          ? topology.horizontalEdgeIndex(move.row, move.col)
+          : topology.verticalEdgeIndex(move.row, move.col);
+      final int previous = previousBoard.edges[index];
+      final int next = nextBoard.edges[index];
+      return previous == core.SlitherlinkBoard.edgeOn ||
+          next == core.SlitherlinkBoard.edgeOn;
     }
 
     return true;

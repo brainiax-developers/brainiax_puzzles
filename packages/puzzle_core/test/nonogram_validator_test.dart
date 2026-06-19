@@ -74,26 +74,110 @@ void main() {
       expect(summary.isValid, isTrue);
     });
 
-    test(
-      'isSolved rejects incomplete boards even when known cells match clues',
-      () {
-        final NonogramBoard board = NonogramBoard(
-          width: 2,
-          height: 2,
-          rowClues: const <List<int>>[
-            <int>[1],
-            <int>[],
-          ],
-          columnClues: const <List<int>>[
-            <int>[1],
-            <int>[],
-          ],
-          cells: const <int?>[NonogramLineSolver.filled, null, null, null],
-        );
+    test('isSolved accepts required fills with blank cells unmarked', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[],
+        ],
+        cells: const <int?>[NonogramLineSolver.filled, null, null, null],
+      );
 
-        expect(validator.isSolved(board), isFalse);
-      },
-    );
+      expect(validator.isSolved(board), isTrue);
+    });
+
+    test('isSolved accepts required fills with blank cells crossed', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        cells: const <int?>[
+          NonogramLineSolver.filled,
+          NonogramLineSolver.empty,
+          NonogramLineSolver.empty,
+          NonogramLineSolver.filled,
+        ],
+      );
+
+      expect(validator.isSolved(board), isTrue);
+    });
+
+    test('isSolved rejects a missing required filled cell', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        cells: const <int?>[NonogramLineSolver.filled, null, null, null],
+      );
+
+      expect(validator.isSolved(board), isFalse);
+    });
+
+    test('isSolved rejects an incorrectly filled blank cell', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        cells: const <int?>[
+          NonogramLineSolver.filled,
+          NonogramLineSolver.filled,
+          null,
+          NonogramLineSolver.filled,
+        ],
+      );
+
+      expect(validator.isSolved(board), isFalse);
+    });
+
+    test('isSolved rejects a solution cell crossed instead of filled', () {
+      final NonogramBoard board = NonogramBoard(
+        width: 2,
+        height: 2,
+        rowClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        columnClues: const <List<int>>[
+          <int>[1],
+          <int>[1],
+        ],
+        cells: const <int?>[
+          NonogramLineSolver.empty,
+          null,
+          null,
+          NonogramLineSolver.filled,
+        ],
+      );
+
+      expect(validator.isSolved(board), isFalse);
+    });
 
     test('accepts a fully completed valid board', () {
       final NonogramBoard puzzle = NonogramBoard.empty(
