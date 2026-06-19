@@ -1,9 +1,9 @@
 import 'package:app/app_router.dart';
+import 'package:app/features/daily/daily_hub_provider.dart';
 import 'package:app/features/daily/daily_screen.dart';
 import 'package:app/features/play/play_screen.dart';
 import 'package:app/shared/models/models.dart';
 import 'package:app/shared/navigation/app_routes.dart';
-import 'package:app/shared/providers/daily_status_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,17 +17,13 @@ void main() {
 
   Future<GoRouter> pumpDailyRouter(
     WidgetTester tester, {
-    required List<PuzzleType> puzzleTypes,
-    required Map<PuzzleType, DailyStatus> statuses,
+    required DailyHubViewData view,
   }) async {
     final GoRouter router = createAppRouter(initialLocation: AppRoutes.daily);
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          dailyPuzzleTypesProvider.overrideWith((ref) => puzzleTypes),
-          dailyStatusProvider.overrideWith((ref) async => statuses),
-        ],
+        overrides: [dailyHubProvider.overrideWith((ref) async => view)],
         child: MaterialApp.router(
           routeInformationProvider: router.routeInformationProvider,
           routeInformationParser: router.routeInformationParser,
@@ -39,65 +35,268 @@ void main() {
     return router;
   }
 
-  testWidgets('does not auto-navigate when all daily puzzles are complete', (
+  testWidgets('loads the Daily Challenges hub and does not auto-navigate', (
     WidgetTester tester,
   ) async {
-    final List<PuzzleType> puzzleTypes = <PuzzleType>[
-      PuzzleType.sudokuClassic,
-      PuzzleType.nonogramMono,
-    ];
-    final Duration reset = const Duration(hours: 5, minutes: 30);
-    final DateTime completedAt = DateTime.utc(2026, 6, 19);
-
     final GoRouter router = await pumpDailyRouter(
       tester,
-      puzzleTypes: puzzleTypes,
-      statuses: <PuzzleType, DailyStatus>{
-        for (final PuzzleType type in puzzleTypes)
-          type: DailyStatus(
-            puzzleType: type,
-            isCompleted: true,
-            completedAt: completedAt,
-            timeUntilReset: reset,
-          ),
-      },
+      view: _buildView(
+        streakCount: 13,
+        statusCard: const DailyHubStatusCard(
+          title: 'Keep your streak alive!',
+          body: 'Complete any daily puzzle before reset.',
+          ctaLabel: 'Keep streak going',
+          isActionEnabled: true,
+        ),
+      ),
     );
 
     expect(find.byType(DailyScreen), findsOneWidget);
-    expect(find.text('All daily puzzles completed.'), findsOneWidget);
+    expect(find.text('Daily Challenges'), findsWidgets);
+    expect(find.text('Today\'s set · Resets in 8h 42m'), findsOneWidget);
+    expect(find.text('13 day streak'), findsOneWidget);
+    await _scrollTo(tester, find.text('Today\'s Puzzles'));
+    expect(find.text('Today\'s Puzzles'), findsOneWidget);
     expect(find.byType(PlayScreen), findsNothing);
     expect(router.routeInformationProvider.value.uri.path, AppRoutes.daily);
   });
 
-  testWidgets('shows CTA for the first incomplete daily puzzle', (
+  testWidgets('renders weekly states and dynamic card copy', (
     WidgetTester tester,
   ) async {
-    final Duration reset = const Duration(hours: 4, minutes: 15);
-
     await pumpDailyRouter(
       tester,
-      puzzleTypes: <PuzzleType>[
-        PuzzleType.sudokuClassic,
-        PuzzleType.nonogramMono,
-      ],
-      statuses: <PuzzleType, DailyStatus>{
-        PuzzleType.sudokuClassic: DailyStatus(
-          puzzleType: PuzzleType.sudokuClassic,
-          isCompleted: false,
-          completedAt: null,
-          timeUntilReset: reset,
+      view: _buildView(
+        statusCard: const DailyHubStatusCard(
+          title: 'Streak secured for today 🔥',
+          body: '2 puzzles left if you want more. Next set in 8h 42m.',
+          ctaLabel: 'Play another',
+          isActionEnabled: true,
         ),
-        PuzzleType.nonogramMono: DailyStatus(
-          puzzleType: PuzzleType.nonogramMono,
-          isCompleted: true,
-          completedAt: DateTime.utc(2026, 6, 19),
-          timeUntilReset: reset,
-        ),
-      },
+      ),
     );
 
-    expect(find.text('Start Classic Sudoku'), findsOneWidget);
-    expect(find.text('Completed for today'), findsOneWidget);
-    expect(find.text('Play'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('daily-weekday-2026-06-16-completed')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('daily-weekday-2026-06-17-missed')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('daily-weekday-2026-06-21-future')),
+      findsOneWidget,
+    );
+    expect(find.text('Streak secured for today 🔥'), findsOneWidget);
+    expect(find.text('Next set in 8h 42m'), findsWidgets);
   });
+
+  testWidgets('shows play, resume, completed, and solved time states', (
+    WidgetTester tester,
+  ) async {
+    await pumpDailyRouter(tester, view: _buildView());
+
+    await _scrollTo(tester, find.text('Today\'s Puzzles'));
+    expect(find.text('3/5 done'), findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, 'Play'), findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, 'Resume'), findsOneWidget);
+    await _scrollTo(
+      tester,
+      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
+    );
+    expect(find.widgetWithText(ElevatedButton, 'Completed'), findsWidgets);
+    expect(find.text('Solved in 4m 5s'), findsOneWidget);
+  });
+
+  testWidgets('filters the Today\'s Puzzles list', (WidgetTester tester) async {
+    await pumpDailyRouter(tester, view: _buildView());
+
+    await _scrollTo(tester, find.text('Today\'s Puzzles'));
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Unplayed'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Completed'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Unplayed'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Classic Sudoku'), findsOneWidget);
+    expect(find.text('Monochrome Nonogram'), findsOneWidget);
+    expect(find.text('Classic Kakuro'), findsNothing);
+    expect(find.text('Slitherlink Loop'), findsNothing);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Completed'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Classic Sudoku'), findsNothing);
+    expect(find.text('Monochrome Nonogram'), findsNothing);
+    expect(find.text('Classic Kakuro'), findsOneWidget);
+    expect(find.text('Slitherlink Loop'), findsOneWidget);
+  });
+
+  testWidgets('completed daily puzzle cards stay on the hub', (
+    WidgetTester tester,
+  ) async {
+    final GoRouter router = await pumpDailyRouter(tester, view: _buildView());
+
+    await _scrollTo(
+      tester,
+      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
+    );
+    await tester.tap(find.byKey(const ValueKey('daily-puzzle-kakuro_classic')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PlayScreen), findsNothing);
+    expect(router.routeInformationProvider.value.uri.path, AppRoutes.daily);
+  });
+
+  testWidgets('all-complete state does not show an enabled start action', (
+    WidgetTester tester,
+  ) async {
+    await pumpDailyRouter(
+      tester,
+      view: _buildView(
+        completedCount: 5,
+        totalCount: 5,
+        entries: const <DailyHubPuzzleEntry>[
+          DailyHubPuzzleEntry(
+            puzzleType: PuzzleType.sudokuClassic,
+            cardState: DailyHubCardState.completed,
+            solvedDuration: Duration(minutes: 4),
+            difficultyLabel: 'Daily',
+          ),
+        ],
+        uncompletedPuzzleTypes: const <PuzzleType>[],
+        statusCard: const DailyHubStatusCard(
+          title: 'Daily set complete!',
+          body: 'Next set unlocks in 8h 42m.',
+          ctaLabel: 'All done today',
+          isActionEnabled: false,
+        ),
+      ),
+    );
+
+    final ElevatedButton button = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, 'All done today'),
+    );
+
+    expect(find.text('Daily set complete!'), findsOneWidget);
+    expect(button.onPressed, isNull);
+  });
+}
+
+DailyHubViewData _buildView({
+  int streakCount = 7,
+  int completedCount = 3,
+  int totalCount = 5,
+  List<DailyHubPuzzleEntry>? entries,
+  List<PuzzleType>? uncompletedPuzzleTypes,
+  DailyHubStatusCard? statusCard,
+}) {
+  final List<DailyHubPuzzleEntry> resolvedEntries =
+      entries ??
+      const <DailyHubPuzzleEntry>[
+        DailyHubPuzzleEntry(
+          puzzleType: PuzzleType.sudokuClassic,
+          cardState: DailyHubCardState.play,
+          solvedDuration: null,
+          difficultyLabel: 'Daily',
+        ),
+        DailyHubPuzzleEntry(
+          puzzleType: PuzzleType.nonogramMono,
+          cardState: DailyHubCardState.resume,
+          solvedDuration: null,
+          difficultyLabel: 'Daily',
+        ),
+        DailyHubPuzzleEntry(
+          puzzleType: PuzzleType.kakuroClassic,
+          cardState: DailyHubCardState.completed,
+          solvedDuration: Duration(minutes: 4, seconds: 5),
+          difficultyLabel: 'easy',
+        ),
+        DailyHubPuzzleEntry(
+          puzzleType: PuzzleType.slitherlinkLoop,
+          cardState: DailyHubCardState.completed,
+          solvedDuration: Duration(minutes: 7, seconds: 12),
+          difficultyLabel: 'Daily',
+        ),
+        DailyHubPuzzleEntry(
+          puzzleType: PuzzleType.mathdokuClassic,
+          cardState: DailyHubCardState.completed,
+          solvedDuration: Duration(minutes: 9),
+          difficultyLabel: 'Daily',
+        ),
+      ];
+
+  return DailyHubViewData(
+    streakCount: streakCount,
+    timeUntilReset: const Duration(hours: 8, minutes: 42),
+    completedCount: completedCount,
+    totalCount: totalCount,
+    week: <DailyHubWeekday>[
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 15),
+        dateKeyUtc: '2026-06-15',
+        label: 'Mon',
+        state: DailyHubWeekdayState.unknown,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 16),
+        dateKeyUtc: '2026-06-16',
+        label: 'Tue',
+        state: DailyHubWeekdayState.completed,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 17),
+        dateKeyUtc: '2026-06-17',
+        label: 'Wed',
+        state: DailyHubWeekdayState.missed,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 18),
+        dateKeyUtc: '2026-06-18',
+        label: 'Thu',
+        state: DailyHubWeekdayState.missed,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 19),
+        dateKeyUtc: '2026-06-19',
+        label: 'Fri',
+        state: DailyHubWeekdayState.todayCompleted,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 20),
+        dateKeyUtc: '2026-06-20',
+        label: 'Sat',
+        state: DailyHubWeekdayState.future,
+      ),
+      DailyHubWeekday(
+        dateUtc: DateTime.utc(2026, 6, 21),
+        dateKeyUtc: '2026-06-21',
+        label: 'Sun',
+        state: DailyHubWeekdayState.future,
+      ),
+    ],
+    entries: resolvedEntries,
+    statusCard:
+        statusCard ??
+        const DailyHubStatusCard(
+          title: 'Streak secured for today 🔥',
+          body: '2 puzzles left if you want more. Next set in 8h 42m.',
+          ctaLabel: 'Play another',
+          isActionEnabled: true,
+        ),
+    uncompletedPuzzleTypes:
+        uncompletedPuzzleTypes ??
+        const <PuzzleType>[PuzzleType.sudokuClassic, PuzzleType.nonogramMono],
+  );
+}
+
+Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
 }

@@ -10,6 +10,11 @@ import '../services/puzzle_progress_service.dart';
 typedef PuzzleDifficultyKey = (PuzzleType puzzleType, String difficulty);
 typedef PuzzleDateKey = (PuzzleType puzzleType, DateTime date);
 
+/// Injectable UTC "now" used by Daily Challenge providers and tests.
+final dailyNowProvider = Provider<DateTime>((ref) {
+  return DateTime.now().toUtc();
+});
+
 final sharedPreferencesProvider = FutureProvider<SharedPreferences>((
   ref,
 ) async {
@@ -31,6 +36,13 @@ class HomeStatsSnapshot {
 final puzzleLocalStoreProvider = FutureProvider<PuzzleLocalStore>((ref) async {
   final prefs = await ref.watch(sharedPreferencesProvider.future);
   return SharedPreferencesPuzzleLocalStore(prefs);
+});
+
+final completionRecordsProvider = FutureProvider<List<PuzzleCompletionRecord>>((
+  ref,
+) async {
+  final store = await ref.watch(puzzleLocalStoreProvider.future);
+  return store.completionRecords();
 });
 
 final puzzleBestTimeProvider =
@@ -57,7 +69,29 @@ final dailyStreakStatusProvider = FutureProvider<DailyStreakStatus>((
   ref,
 ) async {
   final store = await ref.watch(puzzleLocalStoreProvider.future);
-  return store.dailyStreakStatus();
+  final DailyStreakStatus stored = await store.dailyStreakStatus();
+  final String? lastCompletedDateKeyUtc = stored.lastCompletedDateKeyUtc;
+  if (lastCompletedDateKeyUtc == null) {
+    return stored;
+  }
+
+  final DateTime nowUtc = ref.watch(dailyNowProvider);
+  final String todayKey = DailyUtcDate.todayKey(now: nowUtc);
+  final String yesterdayKey = DailyUtcDate.keyFor(
+    DailyUtcDate.today(now: nowUtc).subtract(const Duration(days: 1)),
+  );
+  final bool streakIsActive =
+      lastCompletedDateKeyUtc == todayKey ||
+      lastCompletedDateKeyUtc == yesterdayKey;
+  if (streakIsActive) {
+    return stored;
+  }
+
+  return DailyStreakStatus(
+    currentStreak: 0,
+    bestStreak: stored.bestStreak,
+    lastCompletedDateKeyUtc: lastCompletedDateKeyUtc,
+  );
 });
 
 final homeStatsProvider = FutureProvider<HomeStatsSnapshot>((ref) async {
@@ -167,7 +201,10 @@ final latestActiveRunProvider = FutureProvider<ActivePuzzleRun?>((ref) async {
 });
 
 final activeRunForPuzzleTypeProvider =
-    FutureProvider.family<ActivePuzzleRun?, PuzzleType>((ref, puzzleType) async {
+    FutureProvider.family<ActivePuzzleRun?, PuzzleType>((
+      ref,
+      puzzleType,
+    ) async {
       final runs = await ref.watch(activeRunsProvider.future);
       for (final run in runs) {
         if (run.puzzleType == puzzleType) {
@@ -258,6 +295,7 @@ class PuzzleCompletionController {
     );
 
     _ref.invalidate(puzzleBestTimeProvider((puzzleType, difficulty)));
+    _ref.invalidate(completionRecordsProvider);
     if (mode == PuzzleMode.daily) {
       _ref.invalidate(
         puzzleDailyCompletionProvider((

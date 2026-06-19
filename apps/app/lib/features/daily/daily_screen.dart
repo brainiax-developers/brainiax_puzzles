@@ -1,63 +1,84 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/models/models.dart';
 import '../../shared/navigation/app_routes.dart';
-import '../../shared/providers/daily_status_provider.dart';
+import '../../shared/services/puzzle_registry.dart';
+import 'daily_hub_provider.dart';
 
-class DailyScreen extends ConsumerWidget {
+enum DailyPuzzleFilter { all, unplayed, completed }
+
+class DailyScreen extends ConsumerStatefulWidget {
   const DailyScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<Map<PuzzleType, DailyStatus>> statusAsync = ref.watch(
-      dailyStatusProvider,
-    );
-    final List<PuzzleType> puzzleTypes = ref.watch(dailyPuzzleTypesProvider);
+  ConsumerState<DailyScreen> createState() => _DailyScreenState();
+}
 
-    return statusAsync.when(
-      data: (statuses) =>
-          _DailyContent(puzzleTypes: puzzleTypes, statuses: statuses),
+class _DailyScreenState extends ConsumerState<DailyScreen> {
+  final PuzzleRegistry _registry = PuzzleRegistry();
+  late final Map<PuzzleType, PuzzleMetadata> _metadataByType;
+  DailyPuzzleFilter _filter = DailyPuzzleFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _registry.initialize();
+    _metadataByType = <PuzzleType, PuzzleMetadata>{
+      for (final metadata in _registry.getAllPuzzleMetadata())
+        metadata.type: metadata,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AsyncValue<DailyHubViewData> hubAsync = ref.watch(dailyHubProvider);
+
+    return hubAsync.when(
+      data: (view) => _DailyHubContent(
+        view: view,
+        filter: _filter,
+        metadataByType: _metadataByType,
+        onFilterChanged: (filter) {
+          setState(() {
+            _filter = filter;
+          });
+        },
+      ),
       loading: () => const _DailyLoadingState(),
       error: (error, stackTrace) =>
-          _DailyErrorState(onRetry: () => ref.invalidate(dailyStatusProvider)),
+          _DailyErrorState(onRetry: () => ref.invalidate(dailyHubProvider)),
     );
   }
 }
 
-class _DailyContent extends StatelessWidget {
-  const _DailyContent({required this.puzzleTypes, required this.statuses});
+class _DailyHubContent extends StatelessWidget {
+  const _DailyHubContent({
+    required this.view,
+    required this.filter,
+    required this.metadataByType,
+    required this.onFilterChanged,
+  });
 
-  final List<PuzzleType> puzzleTypes;
-  final Map<PuzzleType, DailyStatus> statuses;
+  final DailyHubViewData view;
+  final DailyPuzzleFilter filter;
+  final Map<PuzzleType, PuzzleMetadata> metadataByType;
+  final ValueChanged<DailyPuzzleFilter> onFilterChanged;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final int completedCount = statuses.values
-        .where((DailyStatus status) => status.isCompleted)
-        .length;
-    final int totalCount = puzzleTypes.length;
-    final PuzzleType? nextPuzzleType = _firstIncompletePuzzleType();
-    final Duration resetDuration = statuses.values.isNotEmpty
-        ? statuses.values.first.timeUntilReset
-        : DailyUtcDate.timeUntilReset(now: DateTime.now().toUtc());
-    final bool allCompleted = totalCount > 0 && completedCount == totalCount;
+    final List<DailyHubPuzzleEntry> visibleEntries = _filteredEntries();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Daily Challenges',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Complete each daily puzzle before the UTC reset.',
-          style: theme.textTheme.bodyMedium,
+        _DailyHeader(
+          countdownText: _formatResetCountdown(view.timeUntilReset),
+          streakCount: view.streakCount,
         ),
         const SizedBox(height: 16),
         Card(
@@ -66,106 +87,436 @@ class _DailyContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _InfoRow(
-                  label: 'Completed',
-                  value: '$completedCount of $totalCount',
+                Text(
+                  'This Week',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                const SizedBox(height: 8),
-                _InfoRow(
-                  label: 'UTC reset',
-                  value: _formatDuration(resetDuration),
-                ),
-                const SizedBox(height: 16),
-                if (allCompleted)
-                  const _CompletedBanner()
-                else if (nextPuzzleType != null)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.push(
-                        AppRoutes.play(
-                          nextPuzzleType.key,
-                          PuzzleMode.daily.key,
-                        ),
-                      ),
-                      icon: const Icon(Icons.play_arrow),
-                      label: Text('Start ${nextPuzzleType.displayName}'),
-                    ),
-                  )
-                else
-                  const Text('No daily puzzles are currently available.'),
+                const SizedBox(height: 12),
+                _WeeklyCalendarStrip(week: view.week),
               ],
             ),
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          'Today\'s puzzles',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        _DailyStatusCard(
+          card: view.statusCard,
+          countdownText: _formatResetCountdown(view.timeUntilReset),
+          onPressed: view.statusCard.isActionEnabled
+              ? () => _openRandomUncompletedPuzzle(context, view)
+              : null,
         ),
-        const SizedBox(height: 8),
-        if (puzzleTypes.isEmpty)
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Today\'s Puzzles',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '${view.completedCount}/${view.totalCount} done',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: DailyPuzzleFilter.values
+              .map((value) {
+                return ChoiceChip(
+                  label: Text(_filterLabel(value)),
+                  selected: filter == value,
+                  onSelected: (_) => onFilterChanged(value),
+                );
+              })
+              .toList(growable: false),
+        ),
+        const SizedBox(height: 12),
+        if (visibleEntries.isEmpty)
           const Card(
             child: Padding(
               padding: EdgeInsets.all(16),
-              child: Text('No daily puzzle types are configured.'),
+              child: Text('No puzzles match this filter right now.'),
             ),
           )
         else
-          ...puzzleTypes.map((PuzzleType type) {
-            final DailyStatus? status = statuses[type];
-            final bool isCompleted = status?.isCompleted ?? false;
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: Icon(
-                  isCompleted
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
-                  color: isCompleted ? Colors.green : null,
-                ),
-                title: Text(type.displayName),
-                subtitle: Text(
-                  isCompleted
-                      ? 'Completed for today'
-                      : 'Available until ${_formatDuration(resetDuration)}',
-                ),
-                trailing: isCompleted
-                    ? const Text('Done')
-                    : TextButton(
-                        onPressed: () => context.push(
-                          AppRoutes.play(type.key, PuzzleMode.daily.key),
+          ...visibleEntries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _DailyPuzzleCard(
+                entry: entry,
+                metadata: metadataByType[entry.puzzleType],
+                onPressed: entry.cardState == DailyHubCardState.completed
+                    ? null
+                    : () => context.push(
+                        AppRoutes.play(
+                          entry.puzzleType.key,
+                          PuzzleMode.daily.key,
                         ),
-                        child: const Text('Play'),
                       ),
               ),
             );
           }),
+        const SizedBox(height: 8),
+        Text(
+          'Today\'s set stays playable offline once opened.',
+          style: theme.textTheme.bodySmall,
+        ),
       ],
     );
   }
 
-  PuzzleType? _firstIncompletePuzzleType() {
-    for (final PuzzleType type in puzzleTypes) {
-      final DailyStatus? status = statuses[type];
-      if (status == null || !status.isCompleted) {
-        return type;
-      }
+  List<DailyHubPuzzleEntry> _filteredEntries() {
+    switch (filter) {
+      case DailyPuzzleFilter.all:
+        return view.entries;
+      case DailyPuzzleFilter.unplayed:
+        return view.entries.where((entry) => !entry.isCompleted).toList();
+      case DailyPuzzleFilter.completed:
+        return view.entries.where((entry) => entry.isCompleted).toList();
     }
-    return null;
   }
 
-  String _formatDuration(Duration duration) {
-    final int hours = duration.inHours;
-    final int minutes = duration.inMinutes % 60;
-
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
+  void _openRandomUncompletedPuzzle(
+    BuildContext context,
+    DailyHubViewData view,
+  ) {
+    if (view.uncompletedPuzzleTypes.isEmpty) {
+      return;
     }
-    return '${minutes}m';
+    final PuzzleType puzzleType =
+        view.uncompletedPuzzleTypes[Random().nextInt(
+          view.uncompletedPuzzleTypes.length,
+        )];
+    context.push(AppRoutes.play(puzzleType.key, PuzzleMode.daily.key));
+  }
+}
+
+class _DailyHeader extends StatelessWidget {
+  const _DailyHeader({required this.countdownText, required this.streakCount});
+
+  final String countdownText;
+  final int streakCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final String streakLabel = '$streakCount day streak';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Daily Challenges',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Today\'s set · Resets in $countdownText',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.local_fire_department_outlined, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                streakLabel,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WeeklyCalendarStrip extends StatelessWidget {
+  const _WeeklyCalendarStrip({required this.week});
+
+  final List<DailyHubWeekday> week;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: week
+          .map((day) {
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _WeeklyCalendarDay(day: day),
+              ),
+            );
+          })
+          .toList(growable: false),
+    );
+  }
+}
+
+class _WeeklyCalendarDay extends StatelessWidget {
+  const _WeeklyCalendarDay({required this.day});
+
+  final DailyHubWeekday day;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final _CalendarVisual visual = _calendarVisual(colorScheme, day.state);
+
+    return Container(
+      key: ValueKey('daily-weekday-${day.dateKeyUtc}-${day.state.name}'),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      decoration: BoxDecoration(
+        color: visual.backgroundColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: visual.borderColor,
+          width:
+              day.state == DailyHubWeekdayState.todayIncomplete ||
+                  day.state == DailyHubWeekdayState.todayCompleted
+              ? 1.5
+              : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            day.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: visual.foregroundColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Icon(visual.icon, size: 18, color: visual.foregroundColor),
+        ],
+      ),
+    );
+  }
+}
+
+class _DailyStatusCard extends StatelessWidget {
+  const _DailyStatusCard({
+    required this.card,
+    required this.countdownText,
+    required this.onPressed,
+  });
+
+  final DailyHubStatusCard card;
+  final String countdownText;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              card.title,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(card.body),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.schedule_outlined, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Next set in $countdownText',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onPressed,
+                child: Text(card.ctaLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DailyPuzzleCard extends StatelessWidget {
+  const _DailyPuzzleCard({
+    required this.entry,
+    required this.metadata,
+    required this.onPressed,
+  });
+
+  final DailyHubPuzzleEntry entry;
+  final PuzzleMetadata? metadata;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final Color accentColor =
+        metadata?.primaryAccentColor ?? colorScheme.primary;
+    final IconData icon = metadata?.icon ?? Icons.extension_outlined;
+    final String subtitle = switch (entry.cardState) {
+      DailyHubCardState.play => 'Ready for today\'s challenge',
+      DailyHubCardState.resume => 'In progress',
+      DailyHubCardState.completed =>
+        entry.solvedDuration == null
+            ? 'Completed'
+            : 'Solved in ${_formatSolveDuration(entry.solvedDuration!)}',
+    };
+    final String actionLabel = switch (entry.cardState) {
+      DailyHubCardState.play => 'Play',
+      DailyHubCardState.resume => 'Resume',
+      DailyHubCardState.completed => 'Completed',
+    };
+
+    return Card(
+      child: InkWell(
+        key: ValueKey('daily-puzzle-${entry.puzzleType.key}'),
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: accentColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.puzzleType.displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _InfoPill(
+                          text: entry.difficultyLabel,
+                          icon: Icons.tune,
+                        ),
+                        if (entry.cardState == DailyHubCardState.resume)
+                          const _InfoPill(
+                            text: 'Saved run',
+                            icon: Icons.play_circle_outline,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(onPressed: onPressed, child: Text(actionLabel)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({required this.text, required this.icon});
+
+  final String text;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14),
+          const SizedBox(width: 6),
+          Text(text, style: theme.textTheme.labelMedium),
+        ],
+      ),
+    );
   }
 }
 
@@ -215,54 +566,99 @@ class _DailyErrorState extends StatelessWidget {
   }
 }
 
-class _CompletedBanner extends StatelessWidget {
-  const _CompletedBanner();
+class _CalendarVisual {
+  const _CalendarVisual({
+    required this.icon,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.foregroundColor,
+  });
 
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
+  final IconData icon;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color foregroundColor;
+}
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        'All daily puzzles completed.',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onPrimaryContainer,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+_CalendarVisual _calendarVisual(
+  ColorScheme colorScheme,
+  DailyHubWeekdayState state,
+) {
+  switch (state) {
+    case DailyHubWeekdayState.completed:
+      return _CalendarVisual(
+        icon: Icons.check,
+        backgroundColor: Colors.green.withValues(alpha: 0.12),
+        borderColor: Colors.green.withValues(alpha: 0.28),
+        foregroundColor: Colors.green.shade700,
+      );
+    case DailyHubWeekdayState.missed:
+      return _CalendarVisual(
+        icon: Icons.close,
+        backgroundColor: colorScheme.errorContainer,
+        borderColor: colorScheme.error.withValues(alpha: 0.3),
+        foregroundColor: colorScheme.onErrorContainer,
+      );
+    case DailyHubWeekdayState.todayIncomplete:
+      return _CalendarVisual(
+        icon: Icons.radio_button_unchecked,
+        backgroundColor: colorScheme.surface,
+        borderColor: colorScheme.primary,
+        foregroundColor: colorScheme.primary,
+      );
+    case DailyHubWeekdayState.todayCompleted:
+      return _CalendarVisual(
+        icon: Icons.check,
+        backgroundColor: Colors.green.withValues(alpha: 0.16),
+        borderColor: Colors.green.shade600,
+        foregroundColor: Colors.green.shade700,
+      );
+    case DailyHubWeekdayState.future:
+      return _CalendarVisual(
+        icon: Icons.remove,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        borderColor: colorScheme.outlineVariant,
+        foregroundColor: colorScheme.onSurfaceVariant,
+      );
+    case DailyHubWeekdayState.unknown:
+      return _CalendarVisual(
+        icon: Icons.help_outline,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        borderColor: colorScheme.outlineVariant,
+        foregroundColor: colorScheme.onSurfaceVariant,
+      );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Text(value, style: theme.textTheme.bodyMedium),
-      ],
-    );
+String _filterLabel(DailyPuzzleFilter filter) {
+  switch (filter) {
+    case DailyPuzzleFilter.all:
+      return 'All';
+    case DailyPuzzleFilter.unplayed:
+      return 'Unplayed';
+    case DailyPuzzleFilter.completed:
+      return 'Completed';
   }
+}
+
+String _formatResetCountdown(Duration duration) {
+  final int hours = duration.inHours;
+  final int minutes = duration.inMinutes.remainder(60);
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  return '${minutes}m';
+}
+
+String _formatSolveDuration(Duration duration) {
+  final int hours = duration.inHours;
+  final int minutes = duration.inMinutes.remainder(60);
+  final int seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds}s';
+  }
+  return '${seconds}s';
 }
