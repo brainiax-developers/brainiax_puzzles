@@ -10,26 +10,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _SolvingStubPuzzleEngine extends core.StubPuzzleEngine {
   _SolvingStubPuzzleEngine()
-      : super(
-          engineId: 'stub_play_engine',
-          engineName: 'Stub Play Engine',
-        );
+    : super(engineId: 'stub_play_engine', engineName: 'Stub Play Engine');
 
   @override
   core.MoveResult<core.StubPuzzleState> validateMove({
     required core.StubPuzzleState currentState,
     required core.StubPuzzleMove move,
   }) {
-    final core.MoveResult<core.StubPuzzleState> result =
-        super.validateMove(currentState: currentState, move: move);
+    final core.MoveResult<core.StubPuzzleState> result = super.validateMove(
+      currentState: currentState,
+      move: move,
+    );
 
     if (!result.isValid || result.newState == null) {
       return result;
     }
 
     if (move.type == 'solve') {
-      final Map<String, dynamic> solvedData =
-          Map<String, dynamic>.from(result.newState!.data);
+      final Map<String, dynamic> solvedData = Map<String, dynamic>.from(
+        result.newState!.data,
+      );
       solvedData['solved'] = true;
       return core.MoveResult.success(
         core.StubPuzzleState(id: result.newState!.id, data: solvedData),
@@ -65,7 +65,12 @@ PuzzlePlaySession _createSession({
   final core.GeneratedPuzzle<dynamic> puzzle = activeEngine.generate(
     seedStr: 'test-seed',
     seed64: 0xabc123,
-    size: const core.SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5),
+    size: const core.SizeOpt(
+      id: '5x5',
+      description: '5x5',
+      width: 5,
+      height: 5,
+    ),
     difficulty: const core.DifficultyScore(value: 0.5, level: 'medium'),
   );
 
@@ -90,10 +95,7 @@ void main() {
       fakeAsync((FakeAsync async) {
         final PuzzlePlaySession session = _createSession();
         final ProviderContainer container = ProviderContainer();
-        final AutoDisposeNotifierProviderFamily<
-            PuzzlePlayViewModel,
-            PuzzlePlayState,
-            PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
+        final provider = puzzlePlayViewModelProvider;
         container.read(provider(session));
 
         expect(container.read(provider(session)).elapsed, Duration.zero);
@@ -112,15 +114,12 @@ void main() {
     test('single move triggers solved event and stops timer', () {
       fakeAsync((FakeAsync async) {
         final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
-        final PuzzlePlaySession session =
-            _createSession(onSolved: events.add);
+        final PuzzlePlaySession session = _createSession(onSolved: events.add);
         final ProviderContainer container = ProviderContainer();
-        final AutoDisposeNotifierProviderFamily<
-            PuzzlePlayViewModel,
-            PuzzlePlayState,
-            PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
-        final PuzzlePlayViewModel viewModel =
-            container.read(provider(session).notifier);
+        final provider = puzzlePlayViewModelProvider;
+        final PuzzlePlayViewModel viewModel = container.read(
+          provider(session).notifier,
+        );
 
         async.elapse(const Duration(seconds: 1));
         final Duration beforeMove = container.read(provider(session)).elapsed;
@@ -146,7 +145,10 @@ void main() {
 
         final Duration solvedElapsed = solvedState.elapsed;
         async.elapse(const Duration(seconds: 5));
-        expect(container.read(provider(session)).elapsed, equals(solvedElapsed));
+        expect(
+          container.read(provider(session)).elapsed,
+          equals(solvedElapsed),
+        );
 
         container.dispose();
       });
@@ -155,15 +157,12 @@ void main() {
     test('undo reverts move and restart resets state', () {
       fakeAsync((FakeAsync async) {
         final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
-        final PuzzlePlaySession session =
-            _createSession(onSolved: events.add);
+        final PuzzlePlaySession session = _createSession(onSolved: events.add);
         final ProviderContainer container = ProviderContainer();
-        final AutoDisposeNotifierProviderFamily<
-            PuzzlePlayViewModel,
-            PuzzlePlayState,
-            PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
-        final PuzzlePlayViewModel viewModel =
-            container.read(provider(session).notifier);
+        final provider = puzzlePlayViewModelProvider;
+        final PuzzlePlayViewModel viewModel = container.read(
+          provider(session).notifier,
+        );
 
         viewModel.applyMove(
           const core.StubPuzzleMove(
@@ -214,16 +213,17 @@ void main() {
       fakeAsync((FakeAsync async) {
         final PuzzlePlaySession session = _createSession();
         final ProviderContainer container = ProviderContainer();
-        final AutoDisposeNotifierProviderFamily<
-            PuzzlePlayViewModel,
-            PuzzlePlayState,
-            PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
-        final PuzzlePlayViewModel viewModel =
-            container.read(provider(session).notifier);
+        final provider = puzzlePlayViewModelProvider;
+        final PuzzlePlayViewModel viewModel = container.read(
+          provider(session).notifier,
+        );
 
         expect(
           () => viewModel.applyMove(
-            const core.StubPuzzleMove(type: 'invalid', data: <String, dynamic>{}),
+            const core.StubPuzzleMove(
+              type: 'invalid',
+              data: <String, dynamic>{},
+            ),
           ),
           throwsStateError,
         );
@@ -234,15 +234,20 @@ void main() {
 
     test('reflects engine hint capabilities in state', () {
       fakeAsync((FakeAsync async) {
-        final PuzzlePlaySession hintlessSession =
-            _createSession(engine: _HintlessStubPuzzleEngine());
+        final PuzzlePlaySession hintlessSession = _createSession(
+          engine: _HintlessStubPuzzleEngine(),
+        );
         final PuzzlePlaySession hintingSession = _createSession();
 
         final provider = puzzlePlayViewModelProvider;
         final container = ProviderContainer();
 
-        final PuzzlePlayState hintlessState = container.read(provider(hintlessSession));
-        final PuzzlePlayState hintingState = container.read(provider(hintingSession));
+        final PuzzlePlayState hintlessState = container.read(
+          provider(hintlessSession),
+        );
+        final PuzzlePlayState hintingState = container.read(
+          provider(hintingSession),
+        );
 
         expect(hintlessState.supportsHints, isFalse);
         expect(hintingState.supportsHints, isTrue);
@@ -256,8 +261,9 @@ void main() {
         final PuzzlePlaySession session = _createSession();
         final provider = puzzlePlayViewModelProvider;
         final container = ProviderContainer();
-        final PuzzlePlayViewModel viewModel =
-            container.read(provider(session).notifier);
+        final PuzzlePlayViewModel viewModel = container.read(
+          provider(session).notifier,
+        );
 
         expect(container.read(provider(session)).hintHighlight, isNull);
 
@@ -283,24 +289,30 @@ void main() {
         final provider = puzzlePlayViewModelProvider;
 
         final ProviderContainer containerA = ProviderContainer();
-        final PuzzlePlayViewModel viewModelA =
-            containerA.read(provider(sessionA).notifier);
+        final PuzzlePlayViewModel viewModelA = containerA.read(
+          provider(sessionA).notifier,
+        );
         viewModelA.requestHint();
-        final core.PuzzleHint? hintA1 =
-            containerA.read(provider(sessionA)).hintHighlight;
+        final core.PuzzleHint? hintA1 = containerA
+            .read(provider(sessionA))
+            .hintHighlight;
         viewModelA.requestHint();
-        final core.PuzzleHint? hintA2 =
-            containerA.read(provider(sessionA)).hintHighlight;
+        final core.PuzzleHint? hintA2 = containerA
+            .read(provider(sessionA))
+            .hintHighlight;
 
         final ProviderContainer containerB = ProviderContainer();
-        final PuzzlePlayViewModel viewModelB =
-            containerB.read(provider(sessionB).notifier);
+        final PuzzlePlayViewModel viewModelB = containerB.read(
+          provider(sessionB).notifier,
+        );
         viewModelB.requestHint();
-        final core.PuzzleHint? hintB1 =
-            containerB.read(provider(sessionB)).hintHighlight;
+        final core.PuzzleHint? hintB1 = containerB
+            .read(provider(sessionB))
+            .hintHighlight;
         viewModelB.requestHint();
-        final core.PuzzleHint? hintB2 =
-            containerB.read(provider(sessionB)).hintHighlight;
+        final core.PuzzleHint? hintB2 = containerB
+            .read(provider(sessionB))
+            .hintHighlight;
 
         expect(hintA1, equals(hintB1));
         expect(hintA2, equals(hintB2));
@@ -315,14 +327,18 @@ void main() {
         final PuzzlePlaySession session = _createSession();
         final provider = puzzlePlayViewModelProvider;
         final container = ProviderContainer();
-        final PuzzlePlayViewModel viewModel =
-            container.read(provider(session).notifier);
+        final PuzzlePlayViewModel viewModel = container.read(
+          provider(session).notifier,
+        );
 
         viewModel.requestHint();
         expect(container.read(provider(session)).hintHighlight, isNotNull);
 
         viewModel.applyMove(
-          const core.StubPuzzleMove(type: 'progress', data: <String, dynamic>{}),
+          const core.StubPuzzleMove(
+            type: 'progress',
+            data: <String, dynamic>{},
+          ),
         );
 
         expect(container.read(provider(session)).hintHighlight, isNull);
@@ -336,10 +352,8 @@ void main() {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
       final ProviderContainer container = ProviderContainer(
-        overrides: <Override>[
-          sharedPreferencesProvider.overrideWithValue(
-            AsyncValue.data(prefs),
-          ),
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(AsyncValue.data(prefs)),
         ],
       );
       final PuzzlePlaySession session = _createSession(
@@ -348,14 +362,12 @@ void main() {
         mode: PuzzleMode.daily,
         difficulty: 'daily',
       );
-      final AutoDisposeNotifierProviderFamily<
-          PuzzlePlayViewModel,
-          PuzzlePlayState,
-          PuzzlePlaySession> provider = puzzlePlayViewModelProvider;
+      final provider = puzzlePlayViewModelProvider;
 
       container.read(provider(session));
-      final PuzzlePlayViewModel viewModel =
-          container.read(provider(session).notifier);
+      final PuzzlePlayViewModel viewModel = container.read(
+        provider(session).notifier,
+      );
 
       viewModel.applyMove(
         const core.StubPuzzleMove(type: 'solve', data: <String, dynamic>{}),
@@ -369,24 +381,20 @@ void main() {
       expect(status, isNotNull);
       expect(status!.bestTime, event.elapsed);
       expect(status.isDailyCompleted, isTrue);
-      expect(status.puzzleStreak, greaterThanOrEqualTo(1));
-      expect(status.globalStreak, greaterThanOrEqualTo(1));
+      expect(status.dailyStreak, greaterThanOrEqualTo(1));
 
       final store = await container.read(puzzleLocalStoreProvider.future);
-      final DateTime today = DateTime.now();
-      final DateTime normalized =
-          DateTime(today.year, today.month, today.day);
+      final String todayKey = DailyUtcDate.todayKey();
 
+      expect(await store.bestTime(session.puzzleType, 'daily'), event.elapsed);
       expect(
-        await store.bestTime(session.puzzleType, 'daily'),
-        event.elapsed,
-      );
-      expect(
-        await store.isCompletedOn(session.puzzleType, normalized),
+        await store.isDailyCompleted(session.puzzleType, todayKey),
         isTrue,
       );
-      expect(await store.puzzleStreak(session.puzzleType), status.puzzleStreak);
-      expect(await store.globalStreak(), status.globalStreak);
+      expect(
+        (await store.dailyStreakStatus()).currentStreak,
+        status.dailyStreak,
+      );
 
       container.dispose();
     });

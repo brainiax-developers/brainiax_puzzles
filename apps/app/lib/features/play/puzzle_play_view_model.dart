@@ -16,8 +16,8 @@ const Duration _hintHighlightDuration = Duration(seconds: 3);
 /// Provider for the puzzle play view model.
 final puzzlePlayViewModelProvider = NotifierProvider.autoDispose
     .family<PuzzlePlayViewModel, PuzzlePlayState, PuzzlePlaySession>(
-  (PuzzlePlaySession session) => PuzzlePlayViewModel()..init(session),
-);
+      (PuzzlePlaySession session) => PuzzlePlayViewModel()..init(session),
+    );
 
 /// View model responsible for managing puzzle play state including timer,
 /// move history, undo, restart, and solve detection.
@@ -51,7 +51,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     _cancelHintTimer();
     _hintRequestCount = 0;
 
-  final Object? initialBoard = _session.puzzle.state;
+    final Object? initialBoard = _session.puzzle.state;
     final bool initiallySolved = _isSolved(initialBoard);
     _solvedEmitted = initiallySolved;
 
@@ -67,7 +67,8 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       hintHighlight: null,
       conflictingCells: null,
       isShowingConflicts: false,
-    );    if (!initiallySolved) {
+    );
+    if (!initiallySolved) {
       _startTimer();
     }
 
@@ -86,14 +87,14 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
 
     final Object? currentBoard = state.board;
     final bool isKillerQueens = _session.engine.id == 'killer_queens';
-    
+
     // For Killer Queens, we allow the move regardless of validity
     // and check for conflicts after a delay
     if (isKillerQueens) {
       _applyKillerQueensMove(move, currentBoard);
       return;
     }
-    
+
     // For other puzzle types, validate normally
     final core.MoveResult<dynamic> result = _session.engine.validateMove(
       currentState: currentBoard,
@@ -140,28 +141,28 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       unawaited(_dispatchSolved());
     }
   }
-  
+
   /// Apply a move for Killer Queens puzzle, allowing invalid placements
   /// and detecting conflicts after 2 seconds
   void _applyKillerQueensMove(dynamic move, Object? currentBoard) {
     // Cancel any pending conflict check
     _conflictCheckTimer?.cancel();
-    
+
     // Apply the move directly to the board without validation
     final core.KillerQueensBoard board = currentBoard as core.KillerQueensBoard;
     final core.KillerQueensMove kqMove = move as core.KillerQueensMove;
-    
+
     final int index = board.indexFor(kqMove.row, kqMove.col);
     final List<int> updatedCells = List<int>.from(board.cells);
     updatedCells[index] = kqMove.value;
-    
+
     final core.KillerQueensBoard newBoard = core.KillerQueensBoard(
       size: board.size,
       cells: updatedCells,
       fixed: board.fixed,
       cages: board.cages,
     );
-    
+
     final _HistoryEntry entry = _HistoryEntry(
       move: move,
       previousState: currentBoard,
@@ -203,21 +204,21 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       _checkAndShowConflicts(newBoard);
     });
   }
-  
+
   /// Check for conflicts in the Killer Queens board and update state
   void _checkAndShowConflicts(core.KillerQueensBoard board) {
     final Set<int> conflicts = _findKillerQueensConflicts(board);
-    
+
     if (conflicts.isNotEmpty) {
       // Trigger haptic feedback
       unawaited(_triggerHapticFeedback());
-      
+
       // Update state to show conflicts
       state = state.copyWith(
         conflictingCells: conflicts,
         isShowingConflicts: true,
       );
-      
+
       // Clear conflicts after animation (brief duration for vibration effect)
       Timer(const Duration(milliseconds: 600), () {
         if (state.isShowingConflicts) {
@@ -226,12 +227,12 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
       });
     }
   }
-  
+
   /// Find all cells that have conflicting queens
   Set<int> _findKillerQueensConflicts(core.KillerQueensBoard board) {
     final Set<int> conflicts = <int>{};
     final int size = board.size;
-    
+
     // Find all queen positions
     final List<int> queenIndices = <int>[];
     for (int i = 0; i < board.cells.length; i++) {
@@ -239,54 +240,54 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
         queenIndices.add(i);
       }
     }
-    
+
     // Check for conflicts between queens
     for (int i = 0; i < queenIndices.length; i++) {
       final int idx1 = queenIndices[i];
       final int row1 = idx1 ~/ size;
       final int col1 = idx1 % size;
       final int cage1 = board.cageByCell[idx1];
-      
+
       for (int j = i + 1; j < queenIndices.length; j++) {
         final int idx2 = queenIndices[j];
         final int row2 = idx2 ~/ size;
         final int col2 = idx2 % size;
         final int cage2 = board.cageByCell[idx2];
-        
+
         bool hasConflict = false;
-        
+
         // Check same row
         if (row1 == row2) {
           hasConflict = true;
         }
-        
+
         // Check same column
         if (col1 == col2) {
           hasConflict = true;
         }
-        
+
         // Check same cage
         if (cage1 == cage2) {
           hasConflict = true;
         }
-        
+
         // Check diagonally adjacent (including diagonals)
         final int rowDiff = (row1 - row2).abs();
         final int colDiff = (col1 - col2).abs();
         if (rowDiff <= 1 && colDiff <= 1 && (rowDiff > 0 || colDiff > 0)) {
           hasConflict = true;
         }
-        
+
         if (hasConflict) {
           conflicts.add(idx1);
           conflicts.add(idx2);
         }
       }
     }
-    
+
     return conflicts;
   }
-  
+
   /// Trigger haptic feedback for conflict detection
   Future<void> _triggerHapticFeedback() async {
     try {
@@ -303,18 +304,19 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     }
 
     _history.removeLast();
-    final Object? board =
-        _history.isEmpty ? _session.puzzle.state : _history.last.resultingState;
+    final Object? board = _history.isEmpty
+        ? _session.puzzle.state
+        : _history.last.resultingState;
 
     final bool solved = _isSolved(board);
     final bool hadHintHighlight = state.hintHighlight != null;
     if (hadHintHighlight) {
       _cancelHintTimer();
     }
-    
+
     // Cancel any pending conflict checks
     _conflictCheckTimer?.cancel();
-    
+
     if (solved) {
       _stopTimer();
     } else {
@@ -400,9 +402,7 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     }
 
     _cancelHintTimer();
-    state = state.copyWith(
-      hintHighlight: hint,
-    );
+    state = state.copyWith(hintHighlight: hint);
     _hintClearTimer = Timer(_hintHighlightDuration, _handleHintTimeout);
   }
 
@@ -503,15 +503,23 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
     _solvedEmitted = true;
     _stopTimer();
 
-    final PuzzleCompletionController controller =
-        ref.read(puzzleCompletionControllerProvider);
-    final PuzzleCompletionStatus completionStatus =
-        await controller.recordCompletion(
-      puzzleType: _session.puzzleType,
-      difficulty: _session.difficulty,
-      completionTime: state.elapsed,
-      mode: _session.mode,
+    final PuzzleCompletionController controller = ref.read(
+      puzzleCompletionControllerProvider,
     );
+    final PuzzleCompletionStatus completionStatus = await controller
+        .recordCompletion(
+          puzzleType: _session.puzzleType,
+          difficulty: _session.difficulty,
+          completionTime: state.elapsed,
+          mode: _session.mode,
+          size: _session.puzzle.meta.size.id,
+          seed: _session.puzzle.meta.seedStr,
+          moveCount: state.moveCount,
+          hintsUsed: 0,
+          dailyDateKeyUtc: _session.mode == PuzzleMode.daily
+              ? DailyUtcDate.todayKey()
+              : null,
+        );
 
     final void Function(PuzzleSolvedEvent event)? callback = _session.onSolved;
     if (callback != null) {
@@ -537,7 +545,8 @@ class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   }
 
   core.PuzzleValidator<dynamic>? _deriveValidator(
-      core.PuzzleEngine<dynamic, dynamic> engine) {
+    core.PuzzleEngine<dynamic, dynamic> engine,
+  ) {
     if (engine is core.PipelinePuzzleEngine<dynamic, dynamic>) {
       return engine.validator;
     }
@@ -634,8 +643,12 @@ class PuzzlePlayState {
       hintHighlight: clearHintHighlight
           ? null
           : hintHighlight ?? this.hintHighlight,
-      conflictingCells: clearConflicts ? null : conflictingCells ?? this.conflictingCells,
-      isShowingConflicts: clearConflicts ? false : isShowingConflicts ?? this.isShowingConflicts,
+      conflictingCells: clearConflicts
+          ? null
+          : conflictingCells ?? this.conflictingCells,
+      isShowingConflicts: clearConflicts
+          ? false
+          : isShowingConflicts ?? this.isShowingConflicts,
     );
   }
 
@@ -653,21 +666,24 @@ class PuzzlePlayState {
           supportsHints == other.supportsHints &&
           hintHighlight == other.hintHighlight &&
           isShowingConflicts == other.isShowingConflicts &&
-          const SetEquality<int>().equals(conflictingCells, other.conflictingCells) &&
+          const SetEquality<int>().equals(
+            conflictingCells,
+            other.conflictingCells,
+          ) &&
           _historyEquality.equals(moveHistory, other.moveHistory);
 
   @override
   int get hashCode => Object.hash(
-        puzzle,
-        board,
-        elapsed,
-        isSolved,
-        isTimerRunning,
-        moveCount,
-        supportsHints,
-        hintHighlight,
-        _historyEquality.hash(moveHistory),
-      );
+    puzzle,
+    board,
+    elapsed,
+    isSolved,
+    isTimerRunning,
+    moveCount,
+    supportsHints,
+    hintHighlight,
+    _historyEquality.hash(moveHistory),
+  );
 }
 
 @immutable
@@ -749,14 +765,14 @@ class PuzzlePlaySession {
 
   @override
   int get hashCode => Object.hash(
-        puzzle,
-        identityHashCode(engine),
-        puzzleType,
-        mode,
-        difficulty,
-        validator,
-        onSolved,
-      );
+    puzzle,
+    identityHashCode(engine),
+    puzzleType,
+    mode,
+    difficulty,
+    validator,
+    onSolved,
+  );
 }
 
 class _HistoryEntry {
@@ -772,9 +788,6 @@ class _HistoryEntry {
   final Object? resultingState;
   final DateTime timestamp;
 
-  PuzzleMoveRecord toRecord(int index) => PuzzleMoveRecord(
-        index: index,
-        move: move,
-        timestamp: timestamp,
-      );
+  PuzzleMoveRecord toRecord(int index) =>
+      PuzzleMoveRecord(index: index, move: move, timestamp: timestamp);
 }

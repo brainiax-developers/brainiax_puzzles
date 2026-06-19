@@ -208,6 +208,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
                       try {
                         final prefs = await SharedPreferences.getInstance();
                         final progress = PuzzleProgressService(prefs);
+                        final run = await progress.loadActiveRun(
+                          widget.metadata.type,
+                        );
                         final puzzle = progress.load(widget.metadata.type);
                         if (puzzle != null && mounted) {
                           if (kDebugMode) {
@@ -217,8 +220,9 @@ class _PuzzleCardState extends State<PuzzleCard> {
                             );
                           }
                           if (!context.mounted) return;
+                          final mode = run?.mode ?? PuzzleMode.random;
                           context.push(
-                            '/play/${widget.metadata.type.key}/random',
+                            '/play/${widget.metadata.type.key}/${mode.key}',
                             extra: puzzle,
                           );
                         }

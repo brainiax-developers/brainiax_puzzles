@@ -55,10 +55,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   int _movesCount = 0;
   bool _hasRecordedCompletion = false;
   PuzzleCompletionStatus? _completionStatus;
+  bool _dailyBlocked = false;
+  String? _dailyBlockedMessage;
   // Guard to ensure we only register Riverpod listeners once
   bool _listenersRegistered = false;
   // Guard to ensure we only restore persisted session stats once per puzzle.
   bool _statsLoaded = false;
+  bool _timerStarted = false;
 
   // Remember the last logged puzzle so we don't spam logs on every rebuild
   core.GeneratedPuzzle? _lastLoggedPuzzle;
@@ -73,7 +76,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
-    _startTimer();
 
     // If no puzzle instance was passed and there's no active game state,
     // auto-start a new random game for Random mode so the canvas is populated.
@@ -83,6 +85,51 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         final engineAvailable =
             ref.read(engineProvider(widget.puzzleType.key)) != null;
         final String engineId = widget.puzzleType.key;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        final progress = PuzzleProgressService(prefs);
+
+        if (widget.mode == PuzzleMode.daily) {
+          final store = await ref.read(puzzleLocalStoreProvider.future);
+          final String todayKey = DailyUtcDate.todayKey();
+          final bool completedToday = await store.isDailyCompleted(
+            widget.puzzleType,
+            todayKey,
+          );
+          if (completedToday) {
+            if (!mounted) return;
+            setState(() {
+              _dailyBlocked = true;
+              _dailyBlockedMessage =
+                  '${widget.puzzleType.displayName} is complete for today.';
+              _isPlaying = false;
+              _isPaused = true;
+              _statsLoaded = true;
+            });
+            return;
+          }
+
+          final activeRun = await progress.loadActiveRun(widget.puzzleType);
+          final activePuzzle = progress.load(widget.puzzleType);
+          if (activeRun != null &&
+              activePuzzle != null &&
+              activeRun.mode == PuzzleMode.daily &&
+              activeRun.dailyDateKeyUtc == todayKey &&
+              !activeRun.isSolved &&
+              engineAvailable) {
+            await ref
+                .read(gameStateProvider.notifier)
+                .startWithGeneratedPuzzle(
+                  engineId: engineId,
+                  seed: activeRun.seed,
+                  difficulty: activeRun.difficulty,
+                  size: activeRun.size,
+                  puzzle: activePuzzle,
+                );
+            _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+            await _loadSessionStatsIfNeeded();
+            return;
+          }
+        }
 
         // If a generated puzzle instance was passed via navigation extras, use it.
         // Replace any existing game state if the seed differs, so Random Play
@@ -111,12 +158,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 'replacingExisting=$replacing',
               );
             }
-            // Persist in-progress puzzle
-            try {
-              final prefs = await SharedPreferences.getInstance();
-              final progress = PuzzleProgressService(prefs);
-              await progress.save(widget.puzzleType, generated);
-            } catch (_) {}
             // Log once after we've set up the game state
             _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
             // Restore any persisted session stats for this puzzle instance
@@ -155,6 +196,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                     puzzle: generated,
                   );
               _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
+              await _saveActiveRunForCurrentState();
               unawaited(_loadSessionStatsIfNeeded());
               return;
             }
@@ -184,14 +226,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 size: size,
               );
           // Save initial in-progress state
-          try {
-            final current = ref.read(gameStateProvider)?.puzzle;
-            if (current != null) {
-              final prefs = await SharedPreferences.getInstance();
-              final progress = PuzzleProgressService(prefs);
-              await progress.save(widget.puzzleType, current);
-            }
-          } catch (_) {}
+          await _saveActiveRunForCurrentState();
         }
       } catch (e) {
         // Ignore startup errors - they'll be surfaced elsewhere if needed
@@ -242,33 +277,43 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     final GameState? state = ref.read(gameStateProvider);
     if (state == null) return;
 
-    final String seed = state.puzzle.meta.seedStr;
-    final String typeKey = widget.puzzleType.key;
-    final String prefix = '$typeKey:$seed';
-
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final int? elapsedSeconds = prefs.getInt('elapsed_seconds:$prefix');
-      final int? movesCount = prefs.getInt('moves_count:$prefix');
-      final String hintsKey = 'hints_used:$typeKey:$seed';
-      final int? hintsUsed = prefs.getInt(hintsKey);
+      final progress = PuzzleProgressService(prefs);
+      final run = await progress.loadActiveRun(widget.puzzleType);
+      final bool matchesCurrent =
+          run != null &&
+          run.seed == state.puzzle.meta.seedStr &&
+          run.puzzleType == widget.puzzleType;
 
       if (!mounted) return;
       setState(() {
-        if (elapsedSeconds != null && elapsedSeconds >= 0) {
-          _elapsedTime = Duration(seconds: elapsedSeconds);
-        }
-        if (movesCount != null && movesCount >= 0) {
-          _movesCount = movesCount;
-        }
-        if (hintsUsed != null && hintsUsed >= 0) {
-          _hintsUsed = hintsUsed;
+        if (matchesCurrent) {
+          _elapsedTime = Duration(milliseconds: run.elapsedMs);
+          _movesCount = run.moveCount;
+          _hintsUsed = run.hintsUsed;
         }
         _statsLoaded = true;
       });
+      if (!matchesCurrent) {
+        await _saveActiveRunForCurrentState();
+      }
+      _startTimerIfReady();
     } catch (_) {
       // Ignore persistence errors; gameplay can continue without restored stats.
+      if (!mounted) return;
+      setState(() {
+        _statsLoaded = true;
+      });
+      _startTimerIfReady();
     }
+  }
+
+  void _startTimerIfReady() {
+    if (_timerStarted || _dailyBlocked || !_statsLoaded) return;
+    if (!_matchesRouteState(ref.read(gameStateProvider))) return;
+    _timerStarted = true;
+    _startTimer();
   }
 
   // Provide default size strings for different puzzle types used when
@@ -377,11 +422,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     });
   }
 
-  void _updateTimer() {
-    // Legacy callback kept for compatibility; timer updates are now driven
-    // by a periodic Timer in _startTimer().
-  }
-
   // Pause/resume handled implicitly by navigation/state; explicit toggle removed.
 
   @override
@@ -459,17 +499,18 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             _showSnackBar('No hint available');
             return;
           }
+          final resolvedHint = hint;
 
           final core.SudokuMove move = core.SudokuMove(
-            row: hint.row,
-            col: hint.col,
-            digit: hint.digit,
+            row: resolvedHint.row,
+            col: resolvedHint.col,
+            digit: resolvedHint.digit,
           );
           await ref.read(gameStateProvider.notifier).makeMove(move);
           if (!mounted) return;
           setState(() {
             _sudokuHintFilled.add(
-              hint!.row * core.SudokuBoard.side + hint!.col,
+              resolvedHint.row * core.SudokuBoard.side + resolvedHint.col,
             );
             _movesCount++;
           });
@@ -644,13 +685,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     setState(() {
       _hintsUsed++;
     });
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key =
-          'hints_used:${widget.puzzleType.key}:${ref.read(gameStateProvider)?.puzzle.meta.seedStr}';
-      final current = prefs.getInt(key) ?? 0;
-      await prefs.setInt(key, current + 1);
-    } catch (_) {}
+    await _persistSessionStats();
   }
 
   ({int row, int col, int digit})? _computeSudokuHint(core.SudokuBoard board) {
@@ -834,12 +869,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         _hasRecordedCompletion = false;
         _completionStatus = null;
         _selectedSudokuCell = null;
-        _statsLoaded = false;
+        _statsLoaded = true;
         _hintPositions = [];
         _hintAnimationValue = 0.0;
         _sudokuHintFilled.clear();
         _shownSolvedDialog = false;
       });
+      _timerStarted = false;
+      unawaited(_saveActiveRunForCurrentState());
       _startTimer();
     });
   }
@@ -870,7 +907,15 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       if (puzzle != null) {
         final prefs = await SharedPreferences.getInstance();
         final progress = PuzzleProgressService(prefs);
-        await progress.save(widget.puzzleType, puzzle);
+        await progress.saveRunForPuzzle(
+          puzzleType: widget.puzzleType,
+          mode: widget.mode,
+          puzzle: puzzle,
+          elapsed: Duration.zero,
+          moveCount: 0,
+          hintsUsed: 0,
+          dailyDateKeyUtc: _dailyDateKeyForCurrentMode(),
+        );
       }
 
       if (!mounted) return;
@@ -884,12 +929,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         _hasRecordedCompletion = false;
         _completionStatus = null;
         _selectedSudokuCell = null;
-        _statsLoaded = false;
+        _statsLoaded = true;
         _hintPositions = [];
         _hintAnimationValue = 0.0;
         _sudokuHintFilled.clear();
         _shownSolvedDialog = false;
       });
+      _timerStarted = false;
       _startTimer();
     } catch (error, stackTrace) {
       if (kDebugMode) {
@@ -1016,6 +1062,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         difficulty: gameState.difficulty,
         completionTime: elapsed,
         mode: widget.mode,
+        size: gameState.size,
+        seed: gameState.seed,
+        moveCount: _movesCount,
+        hintsUsed: _hintsUsed,
+        dailyDateKeyUtc: _dailyDateKeyForCurrentMode(),
       );
 
       if (!mounted) return;
@@ -1045,6 +1096,13 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final progress = PuzzleProgressService(prefs);
+      await progress.updateStats(
+        widget.puzzleType,
+        elapsed: _elapsedTime,
+        moveCount: _movesCount,
+        hintsUsed: _hintsUsed,
+        isSolved: true,
+      );
       await progress.clear(widget.puzzleType);
     } catch (_) {}
     if (!_hasRecordedCompletion) {
@@ -1125,15 +1183,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           // Persist move count immediately (fire-and-forget) so Android back preserves it
           _persistMoveCountOnly();
 
-          // Persist in-progress puzzle state after each successful move
-          try {
-            final current = ref.read(gameStateProvider)?.puzzle;
-            if (current != null) {
-              final prefs = await SharedPreferences.getInstance();
-              final progress = PuzzleProgressService(prefs);
-              await progress.save(widget.puzzleType, current);
-            }
-          } catch (_) {}
+          await _saveActiveRunForCurrentState();
 
           // Detect filled-but-incorrect board for Sudoku and show feedback
           final gameState = ref.read(gameStateProvider);
@@ -1510,18 +1560,18 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     try {
       final GameState? state = ref.read(gameStateProvider);
       if (state == null) return;
-      final String seed = state.puzzle.meta.seedStr;
-      final String typeKey = widget.puzzleType.key;
-      final String prefix = '$typeKey:$seed';
-
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('elapsed_seconds:$prefix', _elapsedTime.inSeconds);
-      await prefs.setInt('moves_count:$prefix', _movesCount);
-
-      // Keep the existing hints_used:* key in sync with the local counter
-      // so the badge reflects the total hints used across sessions.
-      final String hintsKey = 'hints_used:$typeKey:$seed';
-      await prefs.setInt(hintsKey, _hintsUsed);
+      final progress = PuzzleProgressService(prefs);
+      await progress.saveRunForPuzzle(
+        puzzleType: widget.puzzleType,
+        mode: widget.mode,
+        puzzle: state.puzzle,
+        elapsed: _elapsedTime,
+        moveCount: _movesCount,
+        hintsUsed: _hintsUsed,
+        isSolved: state.isSolved,
+        dailyDateKeyUtc: _dailyDateKeyForCurrentMode(),
+      );
     } catch (_) {
       // Ignore persistence errors; stats are a UX enhancement.
     }
@@ -1531,13 +1581,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // Fire-and-forget timer persistence for periodic saves
     () async {
       try {
-        final GameState? state = ref.read(gameStateProvider);
-        if (state == null) return;
-        final String seed = state.puzzle.meta.seedStr;
-        final String typeKey = widget.puzzleType.key;
-        final String prefix = '$typeKey:$seed';
         final SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('elapsed_seconds:$prefix', _elapsedTime.inSeconds);
+        final progress = PuzzleProgressService(prefs);
+        await progress.updateStats(
+          widget.puzzleType,
+          elapsed: _elapsedTime,
+          moveCount: _movesCount,
+          hintsUsed: _hintsUsed,
+        );
       } catch (_) {}
     }();
   }
@@ -1546,15 +1597,39 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // Fire-and-forget move count persistence for immediate saves
     () async {
       try {
-        final GameState? state = ref.read(gameStateProvider);
-        if (state == null) return;
-        final String seed = state.puzzle.meta.seedStr;
-        final String typeKey = widget.puzzleType.key;
-        final String prefix = '$typeKey:$seed';
         final SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('moves_count:$prefix', _movesCount);
+        final progress = PuzzleProgressService(prefs);
+        await progress.updateStats(
+          widget.puzzleType,
+          elapsed: _elapsedTime,
+          moveCount: _movesCount,
+          hintsUsed: _hintsUsed,
+        );
       } catch (_) {}
     }();
+  }
+
+  Future<void> _saveActiveRunForCurrentState() async {
+    final GameState? state = ref.read(gameStateProvider);
+    if (state == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      await progress.saveRunForPuzzle(
+        puzzleType: widget.puzzleType,
+        mode: widget.mode,
+        puzzle: state.puzzle,
+        elapsed: _elapsedTime,
+        moveCount: _movesCount,
+        hintsUsed: _hintsUsed,
+        isSolved: state.isSolved,
+        dailyDateKeyUtc: _dailyDateKeyForCurrentMode(),
+      );
+    } catch (_) {}
+  }
+
+  String? _dailyDateKeyForCurrentMode() {
+    return widget.mode == PuzzleMode.daily ? DailyUtcDate.todayKey() : null;
   }
 
   @override
@@ -1837,6 +1912,35 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   }
 
   Widget _buildPuzzleContent(ThemeData theme, ColorScheme colorScheme) {
+    if (_dailyBlocked) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_outline,
+                color: colorScheme.primary,
+                size: 36,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _dailyBlockedMessage ?? 'Daily puzzle complete for today.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => context.go('/daily'),
+                child: const Text('Back to Daily'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     // Get game state from provider
     final gameState = ref.watch(gameStateProvider);
     final bool routeStateMatch = _matchesRouteState(gameState);
@@ -2348,13 +2452,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     final String bestLabel = bestTime > Duration.zero
         ? 'Best ${_formatTime(bestTime)}'
         : 'Best --:--';
-    final String dailyLabel = status.isDailyCompleted ? 'Daily ✓' : 'Daily ✗';
     return [
       bestLabel,
-      'Streak ${status.puzzleStreak}',
-      'Global ${status.globalStreak}',
-      dailyLabel,
-    ].join(' • ');
+      'Daily streak ${status.dailyStreak}',
+      if (status.isDailyCompleted) 'Daily complete',
+    ].join(' - ');
   }
 
   Color _getStatusColor(ColorScheme colorScheme) {

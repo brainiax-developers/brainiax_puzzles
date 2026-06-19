@@ -6,8 +6,8 @@ class PuzzleCompletionStatus {
   const PuzzleCompletionStatus({
     required this.bestTime,
     required this.isDailyCompleted,
-    required this.puzzleStreak,
-    required this.globalStreak,
+    required this.dailyStreak,
+    required this.bestDailyStreak,
   });
 
   /// Best recorded time for the puzzle type/difficulty.
@@ -16,9 +16,15 @@ class PuzzleCompletionStatus {
   /// Whether the daily puzzle for the date was completed.
   final bool isDailyCompleted;
 
-  /// Current streak for the puzzle type.
-  final int puzzleStreak;
+  /// Current Daily Challenge streak.
+  final int dailyStreak;
 
-  /// Current global streak across all puzzles.
-  final int globalStreak;
+  /// Best Daily Challenge streak.
+  final int bestDailyStreak;
+
+  @Deprecated('Use dailyStreak. Puzzle-specific streaks are not used in V1.')
+  int get puzzleStreak => dailyStreak;
+
+  @Deprecated('Use dailyStreak. Global streaks are not used in V1.')
+  int get globalStreak => dailyStreak;
 }

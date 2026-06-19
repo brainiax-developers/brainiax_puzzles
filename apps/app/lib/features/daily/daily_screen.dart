@@ -14,6 +14,7 @@ class DailyScreen extends ConsumerStatefulWidget {
 
 class _DailyScreenState extends ConsumerState<DailyScreen> {
   bool _navigated = false;
+  bool _allCompleted = false;
 
   @override
   void initState() {
@@ -33,9 +34,11 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
       appBar: AppBar(title: const Text('Daily Challenge')),
       body: Center(
         child: statusAsync.when(
-          data: (_) => _buildLoadingContent(),
+          data: (_) => _allCompleted
+              ? _buildAllCompletedContent()
+              : _buildLoadingContent(),
           loading: () => _buildLoadingContent(),
-          error: (_, __) => _buildErrorContent(),
+          error: (error, stackTrace) => _buildErrorContent(),
         ),
       ),
     );
@@ -44,10 +47,10 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
   Widget _buildLoadingContent() {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: const [
-        CircularProgressIndicator(),
-        SizedBox(height: 12),
-        Text("Preparing today's daily puzzle..."),
+      children: [
+        const CircularProgressIndicator(),
+        const SizedBox(height: 12),
+        const Text("Preparing today's daily puzzle..."),
       ],
     );
   }
@@ -66,12 +69,36 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
     );
   }
 
+  Widget _buildAllCompletedContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.check_circle_outline, size: 40),
+        const SizedBox(height: 12),
+        const Text("You've completed today's Daily Challenges."),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: () => context.go('/'),
+          child: const Text('Back Home'),
+        ),
+      ],
+    );
+  }
+
   void _navigateToDaily({Map<PuzzleType, DailyStatus>? statuses}) {
     if (_navigated) return;
     final puzzleTypes = ref.read(dailyPuzzleTypesProvider);
     if (puzzleTypes.isEmpty) return;
 
-    final PuzzleType targetType = _selectTargetType(puzzleTypes, statuses);
+    final PuzzleType? targetType = _selectTargetType(puzzleTypes, statuses);
+    if (targetType == null) {
+      if (mounted) {
+        setState(() {
+          _allCompleted = true;
+        });
+      }
+      return;
+    }
     _navigated = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -79,7 +106,7 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
     });
   }
 
-  PuzzleType _selectTargetType(
+  PuzzleType? _selectTargetType(
     List<PuzzleType> puzzleTypes,
     Map<PuzzleType, DailyStatus>? statuses,
   ) {
@@ -90,6 +117,7 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
           return type;
         }
       }
+      return null;
     }
     return puzzleTypes.first;
   }
