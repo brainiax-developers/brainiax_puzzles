@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/models/models.dart';
+import '../../shared/navigation/app_routes.dart';
 import '../../shared/services/puzzle_registry.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
@@ -53,7 +54,7 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
   }
 
   void _navigateToPuzzle(PuzzleType puzzleType, PuzzleMode mode) {
-    context.push('/play/${puzzleType.key}/${mode.key}');
+    context.push(AppRoutes.play(puzzleType.key, mode.key));
   }
 
   void _onDifficultySelected(PuzzleType puzzleType, String difficulty) {
@@ -94,7 +95,8 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
 
           final parts = sizeStr.split('x');
           final width = int.tryParse(parts.first) ?? 9;
-          final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? width;
+          final height =
+              int.tryParse(parts.length > 1 ? parts.last : '') ?? width;
           final generated = await service.nextPuzzle(
             difficulty: difficulty,
             width: width,
@@ -112,7 +114,10 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
               'difficulty=$difficulty source=new',
             );
           }
-          context.push('/play/${puzzleType.key}/random', extra: generated);
+          context.push(
+            AppRoutes.play(puzzleType.key, PuzzleMode.random.key),
+            extra: generated,
+          );
         } catch (_) {
           if (dialogOpen && mounted) {
             Navigator.of(context, rootNavigator: true).pop();
@@ -141,7 +146,10 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
         difficulty: difficulty,
         onPuzzleGenerated: (puzzleInstance) {
           Navigator.of(context).pop();
-          context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
+          context.push(
+            AppRoutes.play(puzzleType.key, PuzzleMode.random.key),
+            extra: puzzleInstance,
+          );
         },
         onCancel: () {
           Navigator.of(context).pop();
@@ -152,18 +160,7 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Select Puzzle'),
-        backgroundColor: colorScheme.surface,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-      ),
-      body: _buildBody(),
-    );
+    return _buildBody();
   }
 
   Widget _buildBody() {

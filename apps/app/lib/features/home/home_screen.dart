@@ -1,138 +1,100 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../shared/navigation/app_routes.dart';
 import '../../shared/widgets/widgets.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _tapCount = 0;
-  DateTime? _lastTapTime;
-
-  void _onTitleTap() {
-    final now = DateTime.now();
-    if (_lastTapTime != null && now.difference(_lastTapTime!).inSeconds < 2) {
-      _tapCount++;
-    } else {
-      _tapCount = 1;
-    }
-    _lastTapTime = now;
-
-    if (_tapCount >= 5) {
-      _tapCount = 0;
-      context.push('/bench');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: GestureDetector(
-          onTap: _onTitleTap,
-          child: const Text('Puzzle Home'),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Daily Challenge Surface
-          const DailySurface(),
-          const SizedBox(height: 24),
+    final ThemeData theme = Theme.of(context);
 
-          // Menu Items
-          _buildMenuSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuSection() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ListView(
+      padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Menu',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
+          'Welcome back',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 8),
-        _buildMenuTile(
-          icon: Icons.extension,
+        Text(
+          'Use this screen as the launch point for daily challenges, the full puzzle library, and your profile.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 24),
+        const DailySurface(),
+        const SizedBox(height: 24),
+        Text(
+          'Quick Access',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _HomeMenuTile(
+          icon: Icons.calendar_today_outlined,
+          title: 'Daily Challenges',
+          subtitle: 'See today\'s puzzles and progress',
+          onTap: () => context.go(AppRoutes.daily),
+        ),
+        _HomeMenuTile(
+          icon: Icons.extension_outlined,
           title: 'Puzzles',
-          subtitle: 'Browse all puzzle types',
-          onTap: () => context.push('/puzzles'),
+          subtitle: 'Browse all available puzzle types',
+          onTap: () => context.go(AppRoutes.puzzles),
         ),
-        _buildMenuTile(
-          icon: Icons.person,
-          title: 'Profile/Stats',
-          subtitle: 'Coming soon',
-          onTap: null,
-          isDisabled: true,
+        _HomeMenuTile(
+          icon: Icons.person_outline,
+          title: 'Profile',
+          subtitle: 'Open your profile and stats shell',
+          onTap: () => context.go(AppRoutes.profile),
         ),
-        _buildMenuTile(
-          icon: Icons.settings,
+        _HomeMenuTile(
+          icon: Icons.settings_outlined,
           title: 'Settings',
-          subtitle: 'App preferences',
-          onTap: () => context.push('/settings'),
+          subtitle: 'Adjust app preferences',
+          onTap: () => context.push(AppRoutes.settings),
         ),
       ],
     );
   }
+}
 
-  Widget _buildMenuTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    VoidCallback? onTap,
-    bool isDisabled = false,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+class _HomeMenuTile extends StatelessWidget {
+  const _HomeMenuTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: Icon(
-          icon,
-          color: isDisabled
-              ? colorScheme.onSurface.withOpacity(0.4)
-              : colorScheme.primary,
-        ),
+        leading: Icon(icon, color: colorScheme.primary),
         title: Text(
           title,
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
-            color: isDisabled
-                ? colorScheme.onSurface.withOpacity(0.6)
-                : null,
           ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: isDisabled
-                ? colorScheme.onSurface.withOpacity(0.5)
-                : colorScheme.onSurface.withOpacity(0.7),
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: colorScheme.onSurface.withOpacity(
-            isDisabled ? 0.2 : 0.5,
-          ),
-        ),
-        onTap: isDisabled ? null : onTap,
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
       ),
     );
   }

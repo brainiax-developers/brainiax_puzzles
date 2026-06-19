@@ -232,6 +232,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         // Ignore startup errors - they'll be surfaced elsewhere if needed
       }
 
+      if (!mounted) return;
+
       // Log once after any generation attempt so we can diagnose which engine/puzzle was used
       _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
       // Restore any persisted timer/move/hint stats for this puzzle instance.
