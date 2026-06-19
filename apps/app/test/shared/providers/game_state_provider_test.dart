@@ -97,6 +97,56 @@ void main() {
     expect(container.read(gameStateProvider)!.notes[40], contains(5));
   });
 
+  test('restored notes and silent note clears do not add history', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final puzzle = buildSudokuPuzzle();
+    final notifier = container.read(gameStateProvider.notifier);
+
+    await notifier.startWithGeneratedPuzzle(
+      engineId: 'sudoku_classic',
+      seed: puzzle.meta.seedStr,
+      difficulty: puzzle.meta.difficulty.level,
+      size: puzzle.meta.size.id,
+      puzzle: puzzle,
+      notes: const <int, Set<int>>{
+        0: <int>{1, 2},
+      },
+    );
+
+    expect(
+      container.read(gameStateProvider)!.notes[0],
+      containsAll(<int>{1, 2}),
+    );
+    notifier.clearNotesForCell(0, recordHistory: false);
+
+    expect(container.read(gameStateProvider)!.notes.containsKey(0), isFalse);
+    expect(notifier.actionHistory, isEmpty);
+  });
+
+  test('restored notes remain the undo baseline after a new move', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final puzzle = buildSudokuPuzzle();
+    final notifier = container.read(gameStateProvider.notifier);
+
+    await notifier.startWithGeneratedPuzzle(
+      engineId: 'sudoku_classic',
+      seed: puzzle.meta.seedStr,
+      difficulty: puzzle.meta.difficulty.level,
+      size: puzzle.meta.size.id,
+      puzzle: puzzle,
+      notes: const <int, Set<int>>{
+        40: <int>{5},
+      },
+    );
+
+    await notifier.makeMove(const core.SudokuMove(row: 0, col: 0, digit: 5));
+    notifier.undo();
+
+    expect(container.read(gameStateProvider)!.notes[40], contains(5));
+  });
+
   test(
     'Killer Queens queen placement auto-crosses as one history action',
     () async {

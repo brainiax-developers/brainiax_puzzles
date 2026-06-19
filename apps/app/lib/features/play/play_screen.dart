@@ -128,6 +128,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   difficulty: activeRun.difficulty,
                   size: activeRun.size,
                   puzzle: activePuzzle,
+                  notes: activeRun.notes,
                 );
             _logPuzzleInfoIfNeeded(ref.read(gameStateProvider));
             await _loadSessionStatsIfNeeded();
@@ -303,6 +304,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       });
       if (!matchesCurrent) {
         await _saveActiveRunForCurrentState();
+      } else if (run.notes.isNotEmpty && state.notes.isEmpty) {
+        ref.read(gameStateProvider.notifier).restoreNotes(run.notes);
       }
       _startTimerIfReady();
     } catch (_) {
@@ -1267,6 +1270,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     final notifier = ref.read(gameStateProvider.notifier);
     notifier.recordNoteAction(index, digit, isAdding);
+    unawaited(_saveActiveRunForCurrentState());
   }
 
   Future<bool> _applyMoveAndPersist(
@@ -1286,6 +1290,22 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         row: move.row,
         col: move.col,
         digit: move.digit,
+      );
+    }
+    if (move is core.KakuroMove &&
+        move.digit > 0 &&
+        nextBoard is core.KakuroBoard) {
+      notifier.clearNotesForCell(
+        move.row * nextBoard.width + move.col,
+        recordHistory: false,
+      );
+    }
+    if (move is core.MathdokuMove &&
+        move.value > 0 &&
+        nextBoard is core.MathdokuBoard) {
+      notifier.clearNotesForCell(
+        move.row * nextBoard.size + move.col,
+        recordHistory: false,
       );
     }
 
@@ -1491,6 +1511,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     if (_isNoteMode) {
       final notifier = ref.read(gameStateProvider.notifier);
       notifier.clearNotesForCell(row * core.SudokuBoard.side + col);
+      unawaited(_saveActiveRunForCurrentState());
       return;
     }
 
@@ -1529,7 +1550,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       return;
     }
 
-    // Validate the move: no repeats in sum groups, sum not exceeded
+    // Validate only immediate contradictions. Sum/combination mismatches are
+    // allowed as partial states and surfaced through visual feedback.
     // Check across entry
     final acrossIdx = board.acrossEntryForCell[row * board.width + col];
     if (acrossIdx != -1) {
@@ -1544,24 +1566,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           _onError('Digit $digit already used in this across sum');
           return;
         }
-      }
-      // Check sum
-      int currentSum = 0;
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        final val = board.valueAt(cellRow, cellCol);
-        if (val != 0) {
-          currentSum += val;
-        }
-      }
-      final oldVal = board.valueAt(row, col);
-      if (oldVal != 0) {
-        currentSum -= oldVal; // subtract old value if overwriting
-      }
-      if (currentSum + digit > entry.sum) {
-        _onError('Sum would exceed ${entry.sum}');
-        return;
       }
     }
 
@@ -1579,24 +1583,6 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           _onError('Digit $digit already used in this down sum');
           return;
         }
-      }
-      // Check sum
-      int currentSum = 0;
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        final val = board.valueAt(cellRow, cellCol);
-        if (val != 0) {
-          currentSum += val;
-        }
-      }
-      final oldVal = board.valueAt(row, col);
-      if (oldVal != 0) {
-        currentSum -= oldVal; // subtract old value if overwriting
-      }
-      if (currentSum + digit > entry.sum) {
-        _onError('Sum would exceed ${entry.sum}');
-        return;
       }
     }
 
@@ -1625,8 +1611,32 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       _onError('Select a playable cell');
       return;
     }
+    final int index = row * board.width + col;
+    final bool hasValue = board.valueAt(row, col) != 0;
+    final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
+    if (!hasValue && !hasNotes) {
+      return;
+    }
+    if (!hasValue) {
+      final notifier = ref.read(gameStateProvider.notifier);
+      notifier.clearNotesForCell(index);
+      unawaited(_saveActiveRunForCurrentState());
+      return;
+    }
     final core.KakuroMove move = core.KakuroMove(row: row, col: col, digit: 0);
-    _onMove(move);
+    _applyMoveAndPersist(move)
+        .then((bool changed) {
+          if (!changed || !mounted) return;
+          final notifier = ref.read(gameStateProvider.notifier);
+          notifier.clearNotesForCell(index, recordHistory: false);
+          unawaited(_saveActiveRunForCurrentState());
+        })
+        .catchError((Object error) {
+          final String message = error.toString().startsWith('Exception: ')
+              ? error.toString().substring('Exception: '.length)
+              : error.toString();
+          _onError(message);
+        });
   }
 
   void _toggleKakuroNote(
@@ -1644,6 +1654,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     final notifier = ref.read(gameStateProvider.notifier);
     notifier.recordNoteAction(index, digit, isAdding);
+    unawaited(_saveActiveRunForCurrentState());
   }
 
   // Mathdoku: place digits in selected cell. If Note mode is on, toggle notes.
@@ -1691,6 +1702,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           gameState.puzzle.state as core.MathdokuBoard;
       final notifier = ref.read(gameStateProvider.notifier);
       notifier.clearNotesForCell(row * board.size + col);
+      unawaited(_saveActiveRunForCurrentState());
       return;
     }
 
@@ -1721,6 +1733,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
 
     final notifier = ref.read(gameStateProvider.notifier);
     notifier.recordNoteAction(index, digit, isAdding);
+    unawaited(_saveActiveRunForCurrentState());
   }
 
   String _formatTime(Duration duration) {
@@ -1757,6 +1770,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         hintsUsed: _hintsUsed,
         isSolved: state.isSolved,
         dailyDateKeyUtc: _dailyDateKeyForCurrentMode(),
+        notes: state.notes,
       );
     } catch (_) {
       // Ignore persistence errors; stats are a UX enhancement.

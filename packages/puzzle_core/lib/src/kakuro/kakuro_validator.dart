@@ -27,23 +27,24 @@ class KakuroValidator extends PuzzleValidator<KakuroBoard> {
         continue;
       }
       final Set<int> seen = <int>{};
-      int seenMask = 0;
       int partialSum = 0;
+      bool isComplete = true;
       bool invalidDuplicate = false;
       for (final int index in entry.cells) {
         final int value = board.values[index];
         if (value == 0) {
+          isComplete = false;
           continue;
         }
         if (value < 1 || value > 9) {
           issues.add('invalid_digit:${entry.id}:$index');
+          isComplete = false;
           continue;
         }
         if (!seen.add(value)) {
           invalidDuplicate = true;
           break;
         }
-        seenMask |= 1 << value;
         partialSum += value;
       }
       if (invalidDuplicate) {
@@ -57,22 +58,8 @@ class KakuroValidator extends PuzzleValidator<KakuroBoard> {
       if (seen.isEmpty) {
         continue;
       }
-      final Set<int>? combos = KakuroDictionary.getCombinations(
-        entry.cells.length,
-        entry.sum,
-      );
-      if (combos == null) {
-        continue;
-      }
-      bool compatible = false;
-      for (final int comboMask in combos) {
-        if ((comboMask & seenMask) == seenMask) {
-          compatible = true;
-          break;
-        }
-      }
-      if (!compatible) {
-        issues.add('incompatible_digits:${entry.id}');
+      if (isComplete && partialSum != entry.sum) {
+        issues.add('entry_sum:${entry.id}');
       }
     }
 

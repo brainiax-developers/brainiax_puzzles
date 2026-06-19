@@ -40,6 +40,7 @@ class PuzzleProgressService {
     required int hintsUsed,
     bool isSolved = false,
     String? dailyDateKeyUtc,
+    Map<int, Set<int>> notes = const <int, Set<int>>{},
   }) async {
     final DateTime nowUtc = DateTime.now().toUtc();
     final existing = await loadActiveRun(puzzleType);
@@ -59,6 +60,7 @@ class PuzzleProgressService {
       dailyDateKeyUtc: mode == app.PuzzleMode.daily
           ? (dailyDateKeyUtc ?? app.DailyUtcDate.todayKey())
           : null,
+      notes: notes,
     );
     await saveActiveRun(run);
   }

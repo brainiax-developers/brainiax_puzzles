@@ -302,10 +302,6 @@ void main() {
         board: _fixtureBoard(values: const <int>[9, 8, 0, 0]),
         expectedIssuePrefix: 'sum_exceeded',
       ),
-      'incompatible_partial_digits': (
-        board: _fixtureBoard(values: const <int>[5, 0, 0, 0]),
-        expectedIssuePrefix: 'incompatible_digits',
-      ),
     };
 
     test('invalid fixtures are rejected by validator', () {
@@ -353,12 +349,16 @@ void main() {
       expect(sumExceededMove.isValid, isFalse);
       expect(sumExceededMove.errorMessage, contains('sum_exceeded'));
 
-      final incompatibleMove = engine.validateMove(
+      final partialCombinationMismatch = engine.validateMove(
         currentState: start,
         move: const KakuroMove(row: 0, col: 0, digit: 5),
       );
-      expect(incompatibleMove.isValid, isFalse);
-      expect(incompatibleMove.errorMessage, contains('incompatible_digits'));
+      expect(
+        partialCombinationMismatch.isValid,
+        isTrue,
+        reason:
+            'partial combination mismatches are visual feedback, not blockers',
+      );
     });
 
     test('incomplete but still possible board is valid and not solved', () {

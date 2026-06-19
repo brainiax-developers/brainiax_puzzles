@@ -275,6 +275,10 @@ void main() {
         elapsed: const Duration(seconds: 9),
         moveCount: 4,
         hintsUsed: 1,
+        notes: const <int, Set<int>>{
+          0: <int>{1, 3},
+          8: <int>{9},
+        },
       );
 
       SharedPreferences.setMockInitialValues(snapshotPrefs(prefs));
@@ -291,6 +295,8 @@ void main() {
       expect(run.elapsedMs, 9000);
       expect(run.moveCount, 4);
       expect(run.hintsUsed, 1);
+      expect(run.notes[0], containsAll(<int>{1, 3}));
+      expect(run.notes[8], contains(9));
       expect(restoredPuzzle?.meta.seedStr, puzzle.meta.seedStr);
 
       await reloadedService.updateStats(

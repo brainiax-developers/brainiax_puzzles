@@ -18,6 +18,7 @@ class GameStateNotifier extends Notifier<GameState?> {
   final List<GameAction> _actionHistory = [];
   int _currentActionIndex = -1;
   GeneratedPuzzle? _initialPuzzle;
+  Map<int, Set<int>> _initialNotes = const <int, Set<int>>{};
 
   @override
   GameState? build() => null;
@@ -84,6 +85,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _actionHistory.clear();
     _currentActionIndex = -1;
     _initialPuzzle = puzzle;
+    _initialNotes = const <int, Set<int>>{};
 
     state = gameState;
   }
@@ -98,6 +100,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     required String difficulty,
     required String size,
     required GeneratedPuzzle puzzle,
+    Map<int, Set<int>> notes = const <int, Set<int>>{},
   }) async {
     if (kDebugMode) {
       // ignore: avoid_print
@@ -110,6 +113,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _actionHistory.clear();
     _currentActionIndex = -1;
     _initialPuzzle = puzzle;
+    _initialNotes = _copyNotes(notes);
 
     final gameState = GameState(
       engineId: engineId,
@@ -119,6 +123,7 @@ class GameStateNotifier extends Notifier<GameState?> {
       puzzle: puzzle,
       isSolved: false,
       startTime: DateTime.now(),
+      notes: _copyNotes(notes),
     );
 
     state = gameState;
@@ -553,37 +558,58 @@ class GameStateNotifier extends Notifier<GameState?> {
   }
 
   /// Clear all notes for a cell.
-  void clearNotesForCell(int cellIndex) {
+  void clearNotesForCell(int cellIndex, {bool recordHistory = true}) {
     if (state == null) return;
 
     final currentNotes = state!.notes[cellIndex];
     if (currentNotes == null || currentNotes.isEmpty) return;
 
-    // Create note actions for removing each note
-    for (final digit in currentNotes) {
-      final noteAction = NoteAction(
-        timestamp: DateTime.now(),
-        actionIndex: _currentActionIndex + 1,
-        cellIndex: cellIndex,
-        digit: digit,
-        isAdding: false,
-      );
-
-      // Add to history (remove any actions after current index)
-      if (_currentActionIndex < _actionHistory.length - 1) {
-        _actionHistory.removeRange(
-          _currentActionIndex + 1,
-          _actionHistory.length,
+    if (recordHistory) {
+      // Create note actions for removing each note
+      for (final digit in currentNotes) {
+        final noteAction = NoteAction(
+          timestamp: DateTime.now(),
+          actionIndex: _currentActionIndex + 1,
+          cellIndex: cellIndex,
+          digit: digit,
+          isAdding: false,
         );
+
+        // Add to history (remove any actions after current index)
+        if (_currentActionIndex < _actionHistory.length - 1) {
+          _actionHistory.removeRange(
+            _currentActionIndex + 1,
+            _actionHistory.length,
+          );
+        }
+        _actionHistory.add(noteAction);
+        _currentActionIndex = _actionHistory.length - 1;
       }
-      _actionHistory.add(noteAction);
-      _currentActionIndex = _actionHistory.length - 1;
     }
 
     // Update game state
     final newNotes = Map<int, Set<int>>.from(state!.notes);
     newNotes.remove(cellIndex);
     state = state!.copyWith(notes: newNotes);
+  }
+
+  void restoreNotes(Map<int, Set<int>> notes) {
+    if (state == null) return;
+    final Map<int, Set<int>> copied = _copyNotes(notes);
+    if (_actionHistory.isEmpty) {
+      _initialNotes = copied;
+    }
+    state = state!.copyWith(notes: copied);
+  }
+
+  Map<int, Set<int>> _copyNotes(Map<int, Set<int>> notes) {
+    final Map<int, Set<int>> copied = <int, Set<int>>{};
+    notes.forEach((int index, Set<int> digits) {
+      if (digits.isNotEmpty) {
+        copied[index] = Set<int>.from(digits);
+      }
+    });
+    return copied;
   }
 
   /// Clean up Sudoku pencil marks after a real digit is placed.
@@ -624,7 +650,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     final basePuzzle = _initialPuzzle ?? state!.puzzle;
 
     var currentPuzzle = basePuzzle;
-    var currentNotes = <int, Set<int>>{};
+    var currentNotes = _copyNotes(_initialNotes);
     var isSolved = engine.isSolved(currentPuzzle.state);
 
     // Apply actions up to current index
@@ -741,6 +767,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     // Clear history and restore initial puzzle
     _actionHistory.clear();
     _currentActionIndex = -1;
+    _initialNotes = const <int, Set<int>>{};
 
     final bool isSolved = engine.isSolved(_initialPuzzle!.state);
 
@@ -780,6 +807,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _actionHistory.addAll(actionHistory);
     _currentActionIndex = currentActionIndex;
     _initialPuzzle = gameState.puzzle;
+    _initialNotes = _copyNotes(gameState.notes);
 
     state = gameState;
   }
@@ -856,6 +884,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     _actionHistory.clear();
     _currentActionIndex = -1;
     _initialPuzzle = null;
+    _initialNotes = const <int, Set<int>>{};
     state = null;
   }
 }

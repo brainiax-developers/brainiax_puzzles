@@ -17,6 +17,7 @@ class ActivePuzzleRun {
     required this.hintsUsed,
     required this.isSolved,
     required this.dailyDateKeyUtc,
+    this.notes = const <int, Set<int>>{},
   });
 
   final PuzzleType puzzleType;
@@ -32,6 +33,7 @@ class ActivePuzzleRun {
   final int hintsUsed;
   final bool isSolved;
   final String? dailyDateKeyUtc;
+  final Map<int, Set<int>> notes;
 
   ActivePuzzleRun copyWith({
     PuzzleMode? mode,
@@ -46,6 +48,7 @@ class ActivePuzzleRun {
     int? hintsUsed,
     bool? isSolved,
     String? dailyDateKeyUtc,
+    Map<int, Set<int>>? notes,
   }) {
     return ActivePuzzleRun(
       puzzleType: puzzleType,
@@ -61,6 +64,7 @@ class ActivePuzzleRun {
       hintsUsed: hintsUsed ?? this.hintsUsed,
       isSolved: isSolved ?? this.isSolved,
       dailyDateKeyUtc: dailyDateKeyUtc ?? this.dailyDateKeyUtc,
+      notes: notes ?? this.notes,
     );
   }
 
@@ -78,6 +82,9 @@ class ActivePuzzleRun {
     'hintsUsed': hintsUsed,
     'isSolved': isSolved,
     'dailyDateKeyUtc': dailyDateKeyUtc,
+    'notes': notes.map(
+      (int key, Set<int> value) => MapEntry(key.toString(), value.toList()),
+    ),
   };
 
   factory ActivePuzzleRun.fromJson(Map<String, dynamic> json) {
@@ -104,6 +111,29 @@ class ActivePuzzleRun {
       hintsUsed: json['hintsUsed'] as int? ?? 0,
       isSolved: json['isSolved'] as bool? ?? false,
       dailyDateKeyUtc: json['dailyDateKeyUtc'] as String?,
+      notes: _notesFromJson(json['notes']),
     );
+  }
+
+  static Map<int, Set<int>> _notesFromJson(Object? raw) {
+    if (raw is! Map) {
+      return const <int, Set<int>>{};
+    }
+    final Map<int, Set<int>> parsed = <int, Set<int>>{};
+    raw.forEach((dynamic key, dynamic value) {
+      final int? cellIndex = int.tryParse(key.toString());
+      if (cellIndex == null || value is! List) {
+        return;
+      }
+      final Set<int> notes = value
+          .whereType<num>()
+          .map((num digit) => digit.toInt())
+          .where((int digit) => digit > 0)
+          .toSet();
+      if (notes.isNotEmpty) {
+        parsed[cellIndex] = notes;
+      }
+    });
+    return parsed;
   }
 }
