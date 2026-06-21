@@ -1,22 +1,36 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:puzzle_core/puzzle_core.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('KakuroSupportedProfiles', () {
-    test('marks only 7x7 easy as shipping-safe', () {
+    test('marks fixed portrait profiles as shipping-safe', () {
       expect(
         KakuroSupportedProfiles.isShippingSafe(
-          sizeId: '7x7',
+          sizeId: '7x9',
           difficulty: 'easy',
         ),
         isTrue,
       );
       expect(
         KakuroSupportedProfiles.isShippingSafe(
-          sizeId: '9x9',
+          sizeId: '7x10',
           difficulty: 'medium',
         ),
-        isFalse,
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isShippingSafe(
+          sizeId: '8x11',
+          difficulty: 'hard',
+        ),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isShippingSafe(
+          sizeId: '9x12',
+          difficulty: 'expert',
+        ),
+        isTrue,
       );
       expect(
         KakuroSupportedProfiles.isShippingSafe(
@@ -59,17 +73,22 @@ void main() {
       );
     });
 
-    test('non-production app surface exposes easy/medium/hard only', () {
+    test('app surface exposes fixed portrait profile sizes by difficulty', () {
       final List<String> difficulties =
           KakuroSupportedProfiles.appDifficultiesForSurface(
             KakuroAppProfileSurface.nonProduction,
           );
-      expect(difficulties, containsAll(<String>['easy', 'medium', 'hard']));
-      expect(difficulties, isNot(contains('expert')));
+      expect(difficulties, <String>['easy', 'medium', 'hard', 'expert']);
+      expect(
+        KakuroSupportedProfiles.appSizesForSurface(
+          KakuroAppProfileSurface.nonProduction,
+        ),
+        <String>['7x9', '7x10', '8x11', '9x12'],
+      );
 
       expect(
         KakuroSupportedProfiles.isAppProfileAllowed(
-          sizeId: '9x9',
+          sizeId: '7x10',
           difficulty: 'medium',
           surface: KakuroAppProfileSurface.nonProduction,
         ),
@@ -85,13 +104,25 @@ void main() {
       );
     });
 
-    test('supports rectangular side-length combinations for generation', () {
+    test('supports exact rectangular profiles for generation', () {
       expect(
-        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 9, height: 7),
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 7, height: 9),
         isTrue,
       );
       expect(
-        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 11, height: 9),
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 7, height: 10),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 8, height: 11),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 9, height: 12),
+        isTrue,
+      );
+      expect(
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 9, height: 9),
         isTrue,
       );
       expect(
@@ -99,7 +130,7 @@ void main() {
         isTrue,
       );
       expect(
-        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 8, height: 8),
+        KakuroSupportedProfiles.isGeneratorSizeSupported(width: 9, height: 7),
         isFalse,
       );
     });

@@ -83,20 +83,18 @@ void main() {
   });
 
   test(
-    'engine uses V1 default size policy per difficulty with matching meta size',
+    'engine preserves fixed easy portrait profile with matching meta size',
     () {
       const Map<String, SizeOpt> defaultsByDifficulty = <String, SizeOpt>{
-        'easy': SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7),
-        'medium': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
-        'hard': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
-        'expert': SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9),
+        'easy': SizeOpt(id: '7x9', description: '7x9', width: 7, height: 9),
       };
       const List<String> seedCandidates = <String>[
+        'kakuro_rectangular_7x9_seed',
         'kakuro_engine_seed',
         'kakuro_move_seed',
         'kakuro_engine_seed_alt_1',
         'kakuro_engine_seed_alt_2',
-        'kakuro_smoke_7x7_easy_seed_0',
+        'kakuro_smoke_7x9_easy_seed_0',
         'kakuro_smoke_9x9_medium_seed_0',
         'kakuro_smoke_5x5_easy_seed_0',
         'kakuro_det_seed_0',

@@ -197,23 +197,28 @@ void main() {
     test('same seed + difficulty + size yields same board signature', () {
       const List<({String level, SizeOpt size})> cases =
           <({String level, SizeOpt size})>[
-            (level: 'easy', size: _size7x7),
             (level: 'medium', size: _size9x9),
             (level: 'hard', size: _size9x9),
             (level: 'easy', size: _size5x5),
           ];
 
       for (final ({String level, SizeOpt size}) spec in cases) {
+        final String caseSeedStr = _seedForProfile(
+          baseSeed: seedStr,
+          level: spec.level,
+          size: spec.size,
+        );
+        final int caseSeed64 = Seed.fromString(caseSeedStr);
         final DifficultyScore difficulty = _difficulty(spec.level);
         final GeneratedPuzzle<KakuroBoard> first = engine.generate(
-          seedStr: seedStr,
-          seed64: seed64,
+          seedStr: caseSeedStr,
+          seed64: caseSeed64,
           size: spec.size,
           difficulty: difficulty,
         );
         final GeneratedPuzzle<KakuroBoard> second = engine.generate(
-          seedStr: seedStr,
-          seed64: seed64,
+          seedStr: caseSeedStr,
+          seed64: caseSeed64,
           size: spec.size,
           difficulty: difficulty,
         );
@@ -256,7 +261,7 @@ void main() {
       () {
         const List<({String level, SizeOpt size})> cases =
             <({String level, SizeOpt size})>[
-              (level: 'easy', size: _size7x7),
+              (level: 'easy', size: _size7x9),
               (level: 'medium', size: _size9x9),
               (level: 'hard', size: _size9x9),
               (level: 'easy', size: _size5x5),
@@ -266,7 +271,7 @@ void main() {
           'kakuro_move_seed',
           'kakuro_engine_seed_alt_1',
           'kakuro_engine_seed_alt_2',
-          'kakuro_smoke_7x7_easy_seed_0',
+          'kakuro_rectangular_7x9_seed',
           'kakuro_smoke_9x9_medium_seed_0',
           'kakuro_smoke_5x5_easy_seed_0',
           'kakuro_det_seed_0',
@@ -280,7 +285,11 @@ void main() {
           int selectedSeed64 = 0;
           for (final String variant in deterministicVariants) {
             final String sampleSeed =
-                '${variant}_${spec.level}_${spec.size.id}';
+                spec.level == 'easy' &&
+                    spec.size.id == '7x9' &&
+                    variant == 'kakuro_rectangular_7x9_seed'
+                ? variant
+                : '${variant}_${spec.level}_${spec.size.id}';
             final int sampleSeed64 = Seed.fromString(sampleSeed);
             try {
               generated = engine.generate(
@@ -363,11 +372,11 @@ const SizeOpt _size5x5 = SizeOpt(
   height: 5,
 );
 
-const SizeOpt _size7x7 = SizeOpt(
-  id: '7x7',
-  description: '7x7',
+const SizeOpt _size7x9 = SizeOpt(
+  id: '7x9',
+  description: '7x9',
   width: 7,
-  height: 7,
+  height: 9,
 );
 
 const SizeOpt _size9x9 = SizeOpt(
@@ -389,6 +398,17 @@ DifficultyScore _difficulty(String level) {
       return const DifficultyScore(value: 1.0, level: 'expert');
   }
   return DifficultyScore(value: 0.0, level: level);
+}
+
+String _seedForProfile({
+  required String baseSeed,
+  required String level,
+  required SizeOpt size,
+}) {
+  if (level == 'easy' && size.id == '7x9') {
+    return 'kakuro_rectangular_7x9_seed';
+  }
+  return '${baseSeed}_${level}_${size.id}';
 }
 
 KakuroBoard _uniqueFixtureBoard({

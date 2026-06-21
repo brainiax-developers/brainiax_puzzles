@@ -21,8 +21,8 @@ void main() {
           <({String difficulty, SizeOpt size, String seedStr})>[
             (
               difficulty: 'easy',
-              size: SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7),
-              seedStr: 'kakuro_smoke_7x7_easy_seed_0',
+              size: SizeOpt(id: '7x9', description: '7x9', width: 7, height: 9),
+              seedStr: 'kakuro_rectangular_7x9_seed',
             ),
             (
               difficulty: 'medium',
@@ -36,12 +36,7 @@ void main() {
             ),
             (
               difficulty: 'easy',
-              size: SizeOpt(
-                id: '5x5',
-                description: '5x5',
-                width: 5,
-                height: 5,
-              ),
+              size: SizeOpt(id: '5x5', description: '5x5', width: 5, height: 5),
               seedStr: 'kakuro_smoke_5x5_easy_seed_0',
             ),
           ];
@@ -73,8 +68,7 @@ void main() {
         expect(
           solved.solutionStatus,
           SolverStatus.unique,
-          reason:
-              '$seedStr expected unique; got ${solved.solutionStatus.name}',
+          reason: '$seedStr expected unique; got ${solved.solutionStatus.name}',
         );
         expect(solved.hasSolution, isTrue, reason: seedStr);
         expect(solved.isUnique, isTrue, reason: seedStr);

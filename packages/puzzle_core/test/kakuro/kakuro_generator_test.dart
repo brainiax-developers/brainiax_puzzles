@@ -4,6 +4,7 @@ import 'package:puzzle_core/src/generators/kakuro/models.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_board.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
 import 'package:puzzle_core/src/kakuro/kakuro_solver.dart';
+import 'package:puzzle_core/src/kakuro/kakuro_supported_profiles.dart';
 import 'package:puzzle_core/src/solver/solver.dart';
 import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:test/test.dart';
@@ -467,21 +468,53 @@ void main() {
         isA<ArgumentError>().having(
           (ArgumentError error) => error.toString(),
           'error',
-          contains('Supported side lengths: 5, 7, 9, 11, 13'),
+          contains(
+            'Supported sizes: 11x11, 11x9, 13x11, 5x5, 7x10, 7x9, 8x11, 9x12, 9x9',
+          ),
         ),
       ),
     );
   });
 
-  test('generator accepts 9x7 and never throws unsupported-size errors', () {
+  test('layout candidate preserves fixed 7x9 portrait request exactly', () {
+    final int seed64 = Seed.fromString('kakuro_rectangular_7x9_seed');
+    final KakuroLayout layout = KakuroGenerator.buildLayoutCandidateForTest(
+      seed64: seed64,
+      width: 7,
+      height: 9,
+      difficulty: 'easy',
+      attemptIndex: 0,
+    );
+
+    expect(layout.width, equals(7));
+    expect(layout.height, equals(9));
+    for (final KakuroLayoutEntry entry in layout.entries) {
+      expect(entry.length, inInclusiveRange(2, 9));
+    }
+  });
+
+  test('difficulty defaults map deterministically to fixed portrait sizes', () {
+    expect(KakuroSupportedProfiles.generatorSizeForDifficulty('easy'), '7x9');
+    expect(
+      KakuroSupportedProfiles.generatorSizeForDifficulty('medium'),
+      '7x10',
+    );
+    expect(KakuroSupportedProfiles.generatorSizeForDifficulty('hard'), '8x11');
+    expect(
+      KakuroSupportedProfiles.generatorSizeForDifficulty('expert'),
+      '9x12',
+    );
+  });
+
+  test('generator accepts 7x9 and never throws unsupported-size errors', () {
     const KakuroGenerator generator = KakuroGenerator();
-    final int seed64 = Seed.fromString('kakuro_rectangular_9x7_seed');
+    final int seed64 = Seed.fromString('kakuro_rectangular_7x9_seed');
     final GeneratorContext context = GeneratorContext(
       rng: SeededRng(seed64),
-      seedStr: 'kakuro_rectangular_9x7_seed',
+      seedStr: 'kakuro_rectangular_7x9_seed',
       seed64: seed64,
-      size: const SizeOpt(id: '9x7', description: '9x7', width: 9, height: 7),
-      difficulty: const DifficultyRequest(level: 'medium'),
+      size: const SizeOpt(id: '7x9', description: '7x9', width: 7, height: 9),
+      difficulty: const DifficultyRequest(level: 'easy'),
     );
 
     PuzzleGenerationResult<KakuroBoard>? result;
@@ -493,8 +526,8 @@ void main() {
     }
 
     if (result != null) {
-      expect(result.board.width, equals(9));
-      expect(result.board.height, equals(7));
+      expect(result.board.width, equals(7));
+      expect(result.board.height, equals(9));
       return;
     }
     expect(failure, isA<GenerationFailure>());

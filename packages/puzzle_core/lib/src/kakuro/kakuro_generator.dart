@@ -165,9 +165,11 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     KakuroBoard? puzzle;
     String? terminalFailureReason;
 
-    // Respect the requested phone-supported size.
-    final int targetWidth = _chooseWidth(context, requestedLevel);
-    final int targetHeight = _chooseHeight(context, requestedLevel);
+    // Respect the requested phone-supported size, or use the fixed profile for
+    // the requested difficulty when no size is provided.
+    final _KakuroGridSize targetSize = _chooseGridSize(context, requestedLevel);
+    final int targetWidth = targetSize.width;
+    final int targetHeight = targetSize.height;
     final String targetSizeId = '${targetWidth}x$targetHeight';
     final int profileHardTimeBudgetMs = _timeBudgetMillis(requestedLevel);
     final int requestedHardTimeOverrideMs =
@@ -2117,55 +2119,45 @@ String _normalizeDifficulty(String raw) {
   }
 }
 
-int _chooseWidth(GeneratorContext context, String level) {
-  return _resolveGridSide(
-    requested: context.size.width,
-    level: level,
-    axis: 'width',
-  );
-}
-
-int _chooseHeight(GeneratorContext context, String level) {
-  return _resolveGridSide(
-    requested: context.size.height,
-    level: level,
-    axis: 'height',
-  );
-}
-
-int _resolveGridSide({
-  required int requested,
-  required String level,
-  required String axis,
-}) {
-  if (requested <= 0) {
-    return _defaultSizeForLevel(level);
+_KakuroGridSize _chooseGridSize(GeneratorContext context, String level) {
+  final int requestedWidth = context.size.width;
+  final int requestedHeight = context.size.height;
+  if (requestedWidth <= 0 || requestedHeight <= 0) {
+    return _KakuroGridSize.fromSizeId(
+      KakuroSupportedProfiles.generatorSizeForDifficulty(level),
+    );
   }
-  if (KakuroSupportedProfiles.supportedSideLengths.contains(requested)) {
-    return requested;
+  if (KakuroSupportedProfiles.isGeneratorSizeSupported(
+    width: requestedWidth,
+    height: requestedHeight,
+  )) {
+    return _KakuroGridSize(width: requestedWidth, height: requestedHeight);
   }
-  final List<int> supported =
-      KakuroSupportedProfiles.supportedSideLengths.toList(growable: false)
+  final List<String> supported =
+      KakuroSupportedProfiles.supportedGeneratorSizeIds.toList(growable: false)
         ..sort();
   throw ArgumentError(
-    'Unsupported Kakuro $axis $requested for level "$level". '
-    'Supported side lengths: ${supported.join(', ')}.',
+    'Unsupported Kakuro size ${requestedWidth}x$requestedHeight for level "$level". '
+    'Supported sizes: ${supported.join(', ')}.',
   );
 }
 
-int _defaultSizeForLevel(String level) {
-  switch (level) {
-    case 'easy':
-      return 7;
-    case 'medium':
-      return 9;
-    case 'hard':
-      return 9;
-    case 'expert':
-      return 9;
-    default:
-      return 9;
+class _KakuroGridSize {
+  const _KakuroGridSize({required this.width, required this.height});
+
+  factory _KakuroGridSize.fromSizeId(String sizeId) {
+    final List<String> parts = sizeId.split('x');
+    if (parts.length != 2) {
+      throw ArgumentError('Invalid Kakuro size profile: $sizeId');
+    }
+    return _KakuroGridSize(
+      width: int.parse(parts[0]),
+      height: int.parse(parts[1]),
+    );
   }
+
+  final int width;
+  final int height;
 }
 
 int _timeBudgetMillis(String level) {

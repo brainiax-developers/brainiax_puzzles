@@ -115,10 +115,10 @@ SizeOpt _defaultSizeFor(String puzzleTypeKey) {
       height: 10,
     ),
     'kakuro_classic': SizeOpt(
-      id: '7x7',
-      description: '7x7',
+      id: '7x9',
+      description: '7x9',
       width: 7,
-      height: 7,
+      height: 9,
     ),
     'slitherlink_loop': SizeOpt(
       id: '7x7',

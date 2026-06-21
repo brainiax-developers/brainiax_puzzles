@@ -415,7 +415,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       case PuzzleType.nonogramMono:
         return '10x10';
       case PuzzleType.kakuroClassic:
-        return '8x8';
+        return '7x9';
       case PuzzleType.slitherlinkLoop:
         return '7x7';
       case PuzzleType.mathdokuClassic:

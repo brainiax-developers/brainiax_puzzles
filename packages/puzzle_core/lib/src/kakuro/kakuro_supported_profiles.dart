@@ -18,7 +18,10 @@ class KakuroSupportedProfiles {
   const KakuroSupportedProfiles._();
 
   static const List<KakuroProfile> shippingProfiles = <KakuroProfile>[
-    KakuroProfile(sizeId: '7x7', difficulty: 'easy'),
+    KakuroProfile(sizeId: '7x9', difficulty: 'easy'),
+    KakuroProfile(sizeId: '7x10', difficulty: 'medium'),
+    KakuroProfile(sizeId: '8x11', difficulty: 'hard'),
+    KakuroProfile(sizeId: '9x12', difficulty: 'expert'),
   ];
 
   // Bench calibration profiles that are not shown in production app UX.
@@ -37,17 +40,14 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '11x11', difficulty: 'expert'),
   ];
 
-  // Non-production app UX should expose Easy/Medium/Hard without surfacing
-  // Expert by default.
+  // App UX exposes the fixed mobile portrait profiles.
   static const List<KakuroProfile> nonProductionAppProfiles = <KakuroProfile>[
-    KakuroProfile(sizeId: '7x7', difficulty: 'easy'),
-    KakuroProfile(sizeId: '9x9', difficulty: 'medium'),
-    KakuroProfile(sizeId: '9x9', difficulty: 'hard'),
+    ...shippingProfiles,
   ];
 
   static const Set<String> _difficultyFallbackAllowedProfiles = <String>{
-    // Temporary fallback is only allowed for early 7x7 easy bring-up.
-    '7x7:easy',
+    // Temporary fallback is only allowed for early easy-profile bring-up.
+    '7x9:easy',
   };
 
   static const Set<String> supportedDifficulties = <String>{
@@ -57,7 +57,17 @@ class KakuroSupportedProfiles {
     'expert',
   };
 
-  static const Set<int> supportedSideLengths = <int>{5, 7, 9, 11, 13};
+  static const Set<String> supportedGeneratorSizeIds = <String>{
+    '5x5',
+    '7x9',
+    '7x10',
+    '8x11',
+    '9x9',
+    '9x12',
+    '11x9',
+    '11x11',
+    '13x11',
+  };
 
   static List<KakuroProfile> get benchmarkEligibleProfiles => <KakuroProfile>[
     ...shippingProfiles,
@@ -102,8 +112,8 @@ class KakuroSupportedProfiles {
   }
 
   static List<KakuroProfile> appProfilesForSurface(
-      KakuroAppProfileSurface surface,
-      ) {
+    KakuroAppProfileSurface surface,
+  ) {
     // App UI should expose the same Kakuro testable profiles across flavors.
     // Shipping/benchmark/experimental tiers still exist for benchmark reporting
     // and future Remote Config/product gating, but local app testing should not
@@ -138,6 +148,16 @@ class KakuroSupportedProfiles {
     return visibleProfiles.first.sizeId;
   }
 
+  static String generatorSizeForDifficulty(String difficulty) {
+    final String normalized = normalizeDifficulty(difficulty);
+    for (final KakuroProfile profile in shippingProfiles) {
+      if (profile.difficulty == normalized) {
+        return profile.sizeId;
+      }
+    }
+    return shippingProfiles.first.sizeId;
+  }
+
   static List<String> appDifficultiesForSurface(
     KakuroAppProfileSurface surface,
   ) {
@@ -162,10 +182,7 @@ class KakuroSupportedProfiles {
     required int width,
     required int height,
   }) {
-    return width > 0 &&
-        height > 0 &&
-        supportedSideLengths.contains(width) &&
-        supportedSideLengths.contains(height);
+    return supportedGeneratorSizeIds.contains('${width}x$height');
   }
 
   static bool isAdhocBenchmarkSupported({
