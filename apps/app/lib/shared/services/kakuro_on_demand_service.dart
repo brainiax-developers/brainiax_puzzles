@@ -9,9 +9,14 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 /// Uses bounded retries with deterministic sub-seeds derived from a base seed.
 /// No built-in fallback puzzles are used.
 class KakuroOnDemandService {
-  KakuroOnDemandService();
+  KakuroOnDemandService({
+    Future<core.KakuroPuzzle> Function(core.GenerateKakuroRequest request)?
+    runGenerator,
+  }) : _runGeneratorOverride = runGenerator;
 
   final Random _random = Random();
+  final Future<core.KakuroPuzzle> Function(core.GenerateKakuroRequest request)?
+  _runGeneratorOverride;
 
   Future<core.GeneratedPuzzle<dynamic>> nextPuzzle({
     required String difficulty,
@@ -34,12 +39,14 @@ class KakuroOnDemandService {
     final int baseSeed = seed ?? _random.nextInt(0x7fffffff);
     Object? lastError;
     StackTrace? lastStackTrace;
+    int attemptsStarted = 0;
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       final Duration remaining = timeBudget - wall.elapsed;
       if (remaining <= Duration.zero) {
         break;
       }
+      attemptsStarted = attempt;
       final int attemptSeed = _deriveAttemptSeed(baseSeed, attempt);
       if (kDebugMode) {
         debugPrint(
@@ -91,7 +98,7 @@ class KakuroOnDemandService {
       message:
           'Kakuro generation exhausted attempts=$maxAttempts within '
           'budgetMs=${timeBudget.inMilliseconds}',
-      attempts: maxAttempts,
+      attempts: attemptsStarted,
       elapsed: wall.elapsed,
       baseSeed: baseSeed,
       lastError: lastError,
@@ -108,6 +115,10 @@ class KakuroOnDemandService {
   Future<core.KakuroPuzzle> _runGenerator(
     core.GenerateKakuroRequest request,
   ) async {
+    final override = _runGeneratorOverride;
+    if (override != null) {
+      return override(request);
+    }
     return core.generateKakuroInIsolate(request);
   }
 

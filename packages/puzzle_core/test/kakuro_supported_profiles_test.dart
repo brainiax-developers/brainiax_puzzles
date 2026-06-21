@@ -134,5 +134,17 @@ void main() {
         isFalse,
       );
     });
+
+    test('does not allow generated difficulty fallback', () {
+      for (final profile in KakuroSupportedProfiles.shippingProfiles) {
+        expect(
+          KakuroSupportedProfiles.allowsDifficultyFallback(
+            sizeId: profile.sizeId,
+            difficulty: profile.difficulty,
+          ),
+          isFalse,
+        );
+      }
+    });
   });
 }

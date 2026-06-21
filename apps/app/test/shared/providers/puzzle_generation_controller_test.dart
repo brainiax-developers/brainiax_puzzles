@@ -202,6 +202,54 @@ void main() {
     },
   );
 
+  test('Kakuro mismatch retries fail instead of falling back', () async {
+    core.EngineRegistry().register(
+      core.StubPuzzleEngine(engineId: PuzzleType.kakuroClassic.key),
+    );
+    final worker = _QueuedPuzzleGenerationWorker();
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      final seed = attempt == 1
+          ? 'kakuro-mismatch'
+          : 'kakuro-mismatch#attempt$attempt';
+      worker.queue(
+        Future<core.GeneratedPuzzle<dynamic>>.value(
+          _stubPuzzle(
+            engineId: PuzzleType.kakuroClassic.key,
+            seedStr: seed,
+            seed64: core.Seed.fromString(seed),
+            difficulty: 'hard',
+          ),
+        ),
+      );
+    }
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [puzzleGenerationWorkerProvider.overrideWithValue(worker)],
+    );
+    final controller = container.read(
+      puzzleGenerationControllerProvider.notifier,
+    );
+
+    await expectLater(
+      controller.generate(
+        puzzleType: PuzzleType.kakuroClassic,
+        difficulty: 'easy',
+        seed: 'kakuro-mismatch',
+      ),
+      throwsA(
+        isA<core.GenerationFailure>().having(
+          (failure) => failure.context['generatedDifficulty'],
+          'generatedDifficulty',
+          'hard',
+        ),
+      ),
+    );
+
+    expect(worker.requests, hasLength(3));
+    expect(controller.state.hasError, isTrue);
+    expect(controller.state.error, isA<core.GenerationFailure>());
+  });
+
   test('worker timeout errors surface cleanly', () async {
     final timeout = PuzzleGenerationTimeoutException(
       'test timeout',

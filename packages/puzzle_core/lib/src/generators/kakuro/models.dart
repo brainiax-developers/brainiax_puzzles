@@ -2,7 +2,7 @@ import '../../difficulty/telemetry.dart';
 import '../../util/seeded_rng.dart';
 import '../../kakuro/kakuro_board.dart';
 
-enum KakuroGenerationStrategy { solutionFirst, bottomUp }
+enum KakuroGenerationStrategy { solutionFirst }
 
 class GenerationFailure implements Exception {
   GenerationFailure({

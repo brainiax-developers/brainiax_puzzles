@@ -162,6 +162,9 @@ class PuzzleGenerationController
               await Future<void>.delayed(const Duration(milliseconds: 10));
               continue;
             }
+            if (puzzleType == app.PuzzleType.kakuroClassic) {
+              break;
+            }
           }
           final core.GeneratedPuzzle<dynamic> normalized =
               normalizeGeneratedPuzzleDifficulty(
@@ -189,23 +192,44 @@ class PuzzleGenerationController
         }
       }
       if (lastDifficultyMismatch != null) {
-        final normalized = normalizeGeneratedPuzzleDifficulty(
-          puzzle: lastDifficultyMismatch,
-          requestedDifficulty: difficultyScore,
-        );
-        if (token == _generationToken) {
-          state = AsyncValue.data(normalized);
-        }
-        if (kDebugMode) {
-          debugPrint(
-            '[Generation][DifficultyFallback] type=${puzzleType.key} '
-            'requested=${difficultyScore.level} '
-            'generated=${lastDifficultyMismatch.meta.difficulty.level} '
-            'seed=${lastDifficultyMismatch.meta.seedStr} '
-            'elapsedMs=${stopwatch.elapsedMilliseconds}',
+        if (puzzleType == app.PuzzleType.kakuroClassic) {
+          lastError = core.GenerationFailure(
+            message:
+                'Kakuro generation did not produce the requested difficulty '
+                'within the bounded retry budget.',
+            attempts: _maxGenerationAttempts,
+            elapsed: stopwatch.elapsed,
+            baseSeed: core.Seed.fromString(baseSeed),
+            lastError: lastError,
+            lastStackTrace: lastStack,
+            context: <String, Object?>{
+              'difficulty': difficultyScore.level,
+              'generatedDifficulty':
+                  lastDifficultyMismatch.meta.difficulty.level,
+              'size': resolvedSize.id,
+              'engineId': puzzleType.key,
+            },
           );
+          lastStack ??= StackTrace.current;
+        } else {
+          final normalized = normalizeGeneratedPuzzleDifficulty(
+            puzzle: lastDifficultyMismatch,
+            requestedDifficulty: difficultyScore,
+          );
+          if (token == _generationToken) {
+            state = AsyncValue.data(normalized);
+          }
+          if (kDebugMode) {
+            debugPrint(
+              '[Generation][DifficultyFallback] type=${puzzleType.key} '
+              'requested=${difficultyScore.level} '
+              'generated=${lastDifficultyMismatch.meta.difficulty.level} '
+              'seed=${lastDifficultyMismatch.meta.seedStr} '
+              'elapsedMs=${stopwatch.elapsedMilliseconds}',
+            );
+          }
+          return normalized;
         }
-        return normalized;
       }
       // If we get here, all attempts failed.
       if (token == _generationToken) {

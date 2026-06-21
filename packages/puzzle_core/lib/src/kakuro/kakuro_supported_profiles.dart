@@ -45,10 +45,7 @@ class KakuroSupportedProfiles {
     ...shippingProfiles,
   ];
 
-  static const Set<String> _difficultyFallbackAllowedProfiles = <String>{
-    // Temporary fallback is only allowed for early easy-profile bring-up.
-    '7x9:easy',
-  };
+  static const Set<String> _difficultyFallbackAllowedProfiles = <String>{};
 
   static const Set<String> supportedDifficulties = <String>{
     'easy',

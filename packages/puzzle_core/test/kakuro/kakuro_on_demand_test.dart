@@ -66,6 +66,15 @@ void main() {
     expect(combos.first, equals((1 << 1) | (1 << 2)));
   });
 
+  test('public strategy list exposes only implemented generators', () {
+    expect(
+      core.KakuroGenerationStrategy.values,
+      <core.KakuroGenerationStrategy>[
+        core.KakuroGenerationStrategy.solutionFirst,
+      ],
+    );
+  });
+
   test('on-demand generator produces solvable puzzles', () {
     final generator = core.KakuroPuzzleGenerator();
     core.KakuroPuzzle? puzzle;
@@ -109,7 +118,18 @@ void main() {
   test('kakuro telemetry and metadata contain no solution-bearing keys', () {
     final generator = core.KakuroPuzzleGenerator();
     core.KakuroPuzzle? puzzle;
-    final List<int> seeds = <int>[12345, 67890, 2222, 9999, 424242];
+    final List<int> seeds = <int>[
+      12345,
+      67890,
+      2222,
+      9999,
+      424242,
+      556677,
+      314159,
+      271828,
+      10101,
+      20202,
+    ];
     for (final int seed in seeds) {
       try {
         puzzle = generator.generateSync(

@@ -59,10 +59,12 @@ Future<void> startRandomPuzzleFlow({
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async {
-          cancelled = true;
-          return true;
+      builder: (_) => PopScope<void>(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            cancelled = true;
+          }
         },
         child: const _KakuroLoadingDialog(),
       ),
@@ -116,7 +118,7 @@ Future<void> startRandomPuzzleFlow({
         extra: generated,
       );
       return;
-    } catch (_) {
+    } catch (error) {
       if (dialogOpen && context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         dialogOpen = false;
@@ -124,6 +126,14 @@ Future<void> startRandomPuzzleFlow({
       if (!context.mounted || cancelled) {
         return;
       }
+      _showKakuroGenerationFailure(
+        context: context,
+        ref: ref,
+        puzzleType: puzzleType,
+        difficulty: difficulty,
+        error: error,
+      );
+      return;
     }
   }
 
@@ -143,6 +153,34 @@ Future<void> startRandomPuzzleFlow({
       onCancel: () {
         Navigator.of(dialogContext).pop();
       },
+    ),
+  );
+}
+
+void _showKakuroGenerationFailure({
+  required BuildContext context,
+  required WidgetRef ref,
+  required PuzzleType puzzleType,
+  required String difficulty,
+  required Object error,
+}) {
+  final String message = error is core.GenerationFailure
+      ? 'Kakuro generation timed out. Try again.'
+      : 'Unable to generate Kakuro. Try again.';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      action: SnackBarAction(
+        label: 'Retry',
+        onPressed: () {
+          startRandomPuzzleFlow(
+            context: context,
+            ref: ref,
+            puzzleType: puzzleType,
+            difficulty: difficulty,
+          );
+        },
+      ),
     ),
   );
 }
