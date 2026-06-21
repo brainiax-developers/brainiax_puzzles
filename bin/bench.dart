@@ -15,7 +15,7 @@ void main(List<String> arguments) async {
     ..addOption(
       'engines',
       abbr: 'e',
-      help: 'Comma-separated list of engine IDs to benchmark',
+      help: 'Comma-separated list of engine IDs to benchmark (e.g., kakuro_classic, kakuro_profiles, killer_queens)',
       defaultsTo: 'stub,stub_sudoku',
     )
     ..addOption(
@@ -199,7 +199,15 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final stderr = await stderrFuture;
 
   if (exitCode != 0) {
-    throw Exception('Benchmark runner failed: $stderr');
+    if (stdout.trim().isNotEmpty) {
+      try {
+        final json = jsonDecode(stdout);
+        return EngineBenchmarkResult.fromJson(json);
+      } catch (_) {
+        // Fall back to throwing if stdout isn't valid JSON
+      }
+    }
+    throw Exception('Benchmark runner failed: ${stderr.isNotEmpty ? stderr : 'exit code $exitCode'}');
   }
 
   try {
@@ -225,12 +233,13 @@ Future<void> _saveResults(
       'totalEngines': results.length,
       'successfulEngines': results.values.where((r) => r.success).length,
       'failedEngines': results.values.where((r) => !r.success).length,
-      'averageP95Ms':
-          results.values
-              .where((r) => r.success)
-              .map((r) => r.p95Ms)
-              .fold(0.0, (a, b) => a + b) /
-          results.values.where((r) => r.success).length,
+      'averageP95Ms': results.values.where((r) => r.success).isEmpty
+          ? 0.0
+          : results.values
+                  .where((r) => r.success)
+                  .map((r) => r.p95Ms)
+                  .fold(0.0, (a, b) => a + b) /
+              results.values.where((r) => r.success).length,
     },
   };
 

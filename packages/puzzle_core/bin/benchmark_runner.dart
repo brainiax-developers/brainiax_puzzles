@@ -27,16 +27,23 @@ void main(List<String> arguments) async {
             iterationCapMs: invocation.iterationCapMs,
             scenarioName: invocation.slitherlinkScenarioName,
           )
-        : await _benchmarkEngine(
-            engineId: invocation.engineId,
-            count: invocation.count,
-            difficulty: invocation.difficulty,
-            size: invocation.size,
-            iterationCapMs: invocation.iterationCapMs,
-            kakuroBenchmarkProfileName: invocation.kakuroProfileName,
-            enforceExperimentalKakuroGate:
-                invocation.enforceExperimentalKakuroGate,
-          );
+        : invocation.engineId == 'kakuro_profiles'
+            ? await _benchmarkKakuroProfiles(
+                count: invocation.count,
+                iterationCapMs: invocation.iterationCapMs,
+                enforceExperimentalKakuroGate:
+                    invocation.enforceExperimentalKakuroGate,
+              )
+            : await _benchmarkEngine(
+                engineId: invocation.engineId,
+                count: invocation.count,
+                difficulty: invocation.difficulty,
+                size: invocation.size,
+                iterationCapMs: invocation.iterationCapMs,
+                kakuroBenchmarkProfileName: invocation.kakuroProfileName,
+                enforceExperimentalKakuroGate:
+                    invocation.enforceExperimentalKakuroGate,
+              );
 
     // Output result as JSON
     print(jsonEncode(result.toJson()));
@@ -227,6 +234,17 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       iterationCapMs: iterationCapMs,
       slitherlinkScenarioName: slitherlinkScenarioName,
       runSlitherlinkCorpus: true,
+    );
+  }
+
+  if (engineId == 'kakuro_profiles') {
+    return _BenchmarkInvocation(
+      engineId: engineId,
+      count: count ?? 100,
+      difficulty: 'all',
+      size: 'all',
+      iterationCapMs: iterationCapMs,
+      enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
     );
   }
 
@@ -619,6 +637,12 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'runGraphEdgeCount',
       'minRunGraphDegree',
       'articulationPointCount',
+      'avgRunComboCount',
+      'avgRunComboCountMilli',
+      'singleComboRunRatio',
+      'singleComboRunRatioMilli',
+      'ambiguityScore',
+      'ambiguityScoreMilli',
       'averageRunCombinationCountMilli',
       'singleCombinationRunRatioMilli',
       'stageTimingMs',
@@ -1393,6 +1417,95 @@ Future<EngineBenchmarkResult> _benchmarkSlitherlinkCorpus({
   );
 }
 
+Future<EngineBenchmarkResult> _benchmarkKakuroProfiles({
+  required int count,
+  required int iterationCapMs,
+  required bool enforceExperimentalKakuroGate,
+}) async {
+  final Map<String, Object?> profileResults = <String, Object?>{};
+  final List<int> aggregateGenerationTimes = <int>[];
+  final List<String> failures = <String>[];
+  int totalIterations = 0;
+  final Stopwatch totalStopwatch = Stopwatch()..start();
+
+  for (final KakuroProfile profile in KakuroSupportedProfiles.benchmarkEligibleProfiles) {
+    final String profileName = 'kakuro_${profile.sizeId}_${profile.difficulty}';
+    if (!_kakuroBenchmarkProfiles.containsKey(profileName)) {
+      final KakuroProfileTier tier = KakuroSupportedProfiles.tierFor(
+        sizeId: profile.sizeId,
+        difficulty: profile.difficulty,
+      ) ?? KakuroProfileTier.experimental;
+
+      _kakuroBenchmarkProfiles[profileName] = _KakuroBenchmarkProfile(
+        name: profileName,
+        sizeId: profile.sizeId,
+        difficulty: profile.difficulty,
+        tier: tier == KakuroProfileTier.shipping
+            ? _KakuroBenchmarkProfileTier.shipping
+            : _KakuroBenchmarkProfileTier.experimental,
+        seedCorpus: _buildKakuroSeedCorpus(profileName, count),
+        gateThresholds: tier == KakuroProfileTier.shipping
+            ? _shippingGateThresholds
+            : _experimentalGateThresholds,
+      );
+    }
+
+    final EngineBenchmarkResult result = await _benchmarkEngine(
+      engineId: 'kakuro_classic',
+      count: count,
+      difficulty: profile.difficulty,
+      size: profile.sizeId,
+      iterationCapMs: iterationCapMs,
+      kakuroBenchmarkProfileName: profileName,
+      enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
+    );
+    profileResults[profileName] = result.toJson();
+    totalIterations += result.iterations;
+    if (!result.success) {
+      failures.add('$profileName: ${result.error ?? 'failed'}');
+    }
+
+    final Map<String, Object?> extras = result.extras;
+    final Object? durations = extras['iterationDurationsMs'];
+    if (durations is List) {
+      for (final Object? duration in durations) {
+        if (duration is num) {
+          aggregateGenerationTimes.add((duration * 1000).round());
+        }
+      }
+    }
+  }
+
+  totalStopwatch.stop();
+  aggregateGenerationTimes.sort();
+  final int p50 = _percentile(aggregateGenerationTimes, 0.50);
+  final int p95 = _percentile(aggregateGenerationTimes, 0.95);
+  final int p99 = _percentile(aggregateGenerationTimes, 0.99);
+
+  return EngineBenchmarkResult(
+    engineId: 'kakuro_profiles',
+    success: failures.isEmpty,
+    error: failures.isEmpty
+        ? null
+        : 'Kakuro profiles benchmark had failures:\n  ${failures.join('\n  ')}',
+    p50Ms: p50 / 1000.0,
+    p95Ms: p95 / 1000.0,
+    p99Ms: p99 / 1000.0,
+    totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
+    iterations: totalIterations,
+    extras: <String, Object?>{
+      'benchmarkMode': 'kakuro_all_profiles',
+      'benchmarkNote': 'Runs all benchmark-eligible Kakuro profiles with device-dependent gates.',
+      'generationMs': <String, double>{
+        'p50': p50 / 1000.0,
+        'p95': p95 / 1000.0,
+        'p99': p99 / 1000.0,
+      },
+      'profileResults': profileResults,
+    },
+  );
+}
+
 EngineBenchmarkResult _benchmarkMathdoku9x9({
   required PuzzleEngine engine,
   required String engineId,
@@ -2055,9 +2168,9 @@ const _KakuroBenchmarkGateThresholds _experimentalGateThresholds =
 
 final Map<String, _KakuroBenchmarkProfile>
 _kakuroBenchmarkProfiles = <String, _KakuroBenchmarkProfile>{
-  'kakuro_7x7_easy_shipping': _KakuroBenchmarkProfile(
-    name: 'kakuro_7x7_easy_shipping',
-    sizeId: '7x7',
+  'kakuro_7x9_easy_shipping': _KakuroBenchmarkProfile(
+    name: 'kakuro_7x9_easy_shipping',
+    sizeId: '7x9',
     difficulty: 'easy',
     tier: _KakuroBenchmarkProfileTier.shipping,
     seedCorpus: const <String>[

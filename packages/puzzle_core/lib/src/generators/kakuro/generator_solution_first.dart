@@ -36,6 +36,13 @@ class KakuroConstructionMetrics {
 
   Map<String, Object?> toTelemetry() {
     return <String, Object?>{
+      // Compatibility aliases for the construction-fill ambiguity surface.
+      // Values are integer milli-units to keep generation telemetry
+      // deterministic-safe.
+      'avgRunComboCount': averageRunCombinationCountMilli,
+      'avgRunComboCountMilli': averageRunCombinationCountMilli,
+      'singleComboRunRatio': singleCombinationRunRatioMilli,
+      'singleComboRunRatioMilli': singleCombinationRunRatioMilli,
       'averageRunCombinationCountMilli': averageRunCombinationCountMilli,
       'singleCombinationRunRatioMilli': singleCombinationRunRatioMilli,
       'maxRunAmbiguityMilli': maxRunAmbiguityMilli,
@@ -79,6 +86,8 @@ class KakuroSolution {
   Map<String, Object?> constructionTelemetry() {
     return <String, Object?>{
       ...constructionMetrics.toTelemetry(),
+      'ambiguityScore': constructionScoreMilli,
+      'ambiguityScoreMilli': constructionScoreMilli,
       'constructionScoreMilli': constructionScoreMilli,
       'constructionFirstScoreMilli': constructionFirstScoreMilli,
       'constructionScoreGainMilli': constructionScoreGainMilli,
@@ -115,11 +124,9 @@ class _KakuroConstructionSearchConfig {
     int orderingDepth;
     switch (difficulty) {
       case 'easy':
-        // Keep easy mode close to historical first-fill behavior for
-        // reliability under strict generation budgets.
-        nodeBudget = 260;
-        completedBudget = 1;
-        orderingDepth = 0;
+        nodeBudget = valueCellCount <= 36 ? 520 : 720;
+        completedBudget = valueCellCount <= 36 ? 4 : 5;
+        orderingDepth = 18;
         break;
       case 'medium':
         nodeBudget = valueCellCount <= 36 ? 880 : 1180;
@@ -310,11 +317,8 @@ class _KakuroConstructionScorer {
 }
 
 class _KakuroCellChoice {
-  const _KakuroCellChoice({
-    required this.cell,
-    required this.candidateMask,
-    this.invalid = false,
-  });
+  const _KakuroCellChoice({required this.cell, required this.candidateMask})
+    : invalid = false;
 
   const _KakuroCellChoice.invalid()
     : cell = -1,
@@ -589,7 +593,11 @@ int _constructionProfileScoreMilli(
   final int weighted = metrics.runLengthWeightedAmbiguityMilli;
   switch (difficulty) {
     case 'easy':
-      return single * 6 + crossing * 4 - avg * 2 - weighted * 2 - maxAmbiguity;
+      return single * 8 +
+          crossing * 5 -
+          avg * 3 -
+          weighted * 2 -
+          maxAmbiguity * 2;
     case 'medium':
       return single * 4 + crossing * 4 - avg * 2 - weighted - maxAmbiguity;
     case 'hard':
@@ -599,13 +607,16 @@ int _constructionProfileScoreMilli(
         3900,
         1600,
       );
-      return crossing * 5 +
-          single * 3 +
-          avgBalance * 3 +
-          weightedBalance * 2 -
-          (avg * 2) -
-          (weighted * 2) -
-          (maxAmbiguity * 2);
+      final int highAmbiguityPenalty =
+          _constructionExcessPenalty(avg, 5600) +
+          _constructionExcessPenalty(weighted, 6200) +
+          _constructionExcessPenalty(maxAmbiguity, 8500);
+      return crossing * 6 +
+          single * 2 +
+          avgBalance * 5 +
+          weightedBalance * 3 -
+          highAmbiguityPenalty -
+          (maxAmbiguity ~/ 3);
     case 'expert':
       final int avgBalance = _constructionBalanceScore(avg, 4300, 1800);
       final int weightedBalance = _constructionBalanceScore(
@@ -613,13 +624,16 @@ int _constructionProfileScoreMilli(
         4700,
         2000,
       );
-      return crossing * 6 +
-          single * 2 +
-          avgBalance * 3 +
-          weightedBalance * 2 -
-          (avg * 2) -
-          weighted -
-          maxAmbiguity;
+      final int highAmbiguityPenalty =
+          _constructionExcessPenalty(avg, 6500) +
+          _constructionExcessPenalty(weighted, 7200) +
+          _constructionExcessPenalty(maxAmbiguity, 9500);
+      return crossing * 7 +
+          single +
+          avgBalance * 6 +
+          weightedBalance * 4 -
+          highAmbiguityPenalty -
+          (maxAmbiguity ~/ 4);
     default:
       return single * 4 + crossing * 4 - avg * 2 - weighted - maxAmbiguity;
   }
@@ -635,6 +649,13 @@ int _constructionBalanceScore(
     return 0;
   }
   return ((toleranceMilli - delta) * 1000) ~/ toleranceMilli;
+}
+
+int _constructionExcessPenalty(int valueMilli, int ceilingMilli) {
+  if (valueMilli <= ceilingMilli) {
+    return 0;
+  }
+  return valueMilli - ceilingMilli;
 }
 
 Map<int, int> _buildEntrySums(
@@ -770,7 +791,9 @@ KakuroSolution? buildSolutionFirst(
   int? maxSearchNodes,
   int? maxCompletedFills,
 }) {
-  if (difficulty == 'easy') {
+  if (difficulty == 'easy' && template.valueCellCount <= 16) {
+    // Tiny easy layouts are retained as legacy repair/diagnostic fixtures.
+    // Shipping easy layouts still use the ambiguity-aware search below.
     return _buildLegacyFirstSolution(template, rng, difficulty);
   }
 

@@ -1,4 +1,5 @@
 import 'package:app/shared/widgets/kakuro_renderer.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
@@ -33,6 +34,37 @@ void main() {
       KakuroRunInspector.forEntry(wrong, wrong.entries[0]),
       KakuroRunState.completeIncorrect,
     );
+  });
+
+  testWidgets('renders notes for playable cells', (WidgetTester tester) async {
+    final board = _clueBoard(values: const <int>[0, 0]);
+    final notes = <int, Set<int>>{
+      1: {2, 3, 4},
+    };
+    
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KakuroRendererWidget(
+            puzzle: core.GeneratedPuzzle<core.KakuroBoard>(
+              state: board,
+              meta: const core.PuzzleMetadata(
+                engineVersion: '1.0',
+                rngId: 'test',
+                seed64: 0,
+                seedStr: 'test',
+                difficulty: core.DifficultyScore(value: 0, level: 'easy'),
+                size: core.SizeOpt(id: '3x1', description: '3x1', width: 3, height: 1),
+              ),
+            ),
+            notes: notes,
+          ),
+        ),
+      ),
+    );
+    
+    expect(find.byType(KakuroRendererWidget), findsOneWidget);
+    expect(find.byType(CustomPaint), findsWidgets);
   });
 }
 

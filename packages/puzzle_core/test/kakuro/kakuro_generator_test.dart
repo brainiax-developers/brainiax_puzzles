@@ -103,6 +103,12 @@ void main() {
       constructionTelemetry['runLengthWeightedAmbiguityMilli'],
       isA<int>(),
     );
+    expect(constructionTelemetry['avgRunComboCount'], isA<int>());
+    expect(constructionTelemetry['singleComboRunRatio'], isA<int>());
+    expect(constructionTelemetry['ambiguityScore'], isA<int>());
+    expect(telemetry['avgRunComboCount'], isA<int>());
+    expect(telemetry['singleComboRunRatio'], isA<int>());
+    expect(telemetry['ambiguityScore'], isA<int>());
     expect(telemetry['givensCount'], equals(0));
     expect(telemetry['givenRatioMilli'], equals(0));
 
@@ -787,6 +793,100 @@ void main() {
     expect(partialAvg, greaterThan(completeAvg));
     expect(partialSingle, lessThan(completeSingle));
   });
+
+  test('buildSolutionFirst is deterministic and emits ambiguity aliases', () {
+    final KakuroLayout template = KakuroLayout.fromRows(const <String>[
+      '#####',
+      '#...#',
+      '#...#',
+      '#...#',
+      '#####',
+    ]);
+
+    final KakuroSolution first = buildSolutionFirst(
+      template,
+      SeededRng(1),
+      difficulty: 'hard',
+      maxSearchNodes: 20000,
+      maxCompletedFills: 20,
+    )!;
+    final KakuroSolution repeated = buildSolutionFirst(
+      template,
+      SeededRng(1),
+      difficulty: 'hard',
+      maxSearchNodes: 20000,
+      maxCompletedFills: 20,
+    )!;
+
+    expect(first.values, equals(repeated.values));
+    expect(first.entrySums, equals(repeated.entrySums));
+    expect(
+      first.constructionTelemetry(),
+      equals(repeated.constructionTelemetry()),
+    );
+    _expectValidCompletedSolution(template, first);
+
+    final Map<String, Object?> telemetry = first.constructionTelemetry();
+    expect(
+      telemetry['avgRunComboCount'],
+      equals(telemetry['averageRunCombinationCountMilli']),
+    );
+    expect(
+      telemetry['singleComboRunRatio'],
+      equals(telemetry['singleCombinationRunRatioMilli']),
+    );
+    expect(telemetry['ambiguityScore'], equals(first.constructionScoreMilli));
+  });
+
+  test('ambiguity-aware search improves controlled-layout selection', () {
+    final KakuroLayout template = KakuroLayout.fromRows(const <String>[
+      '#####',
+      '#...#',
+      '#...#',
+      '#...#',
+      '#####',
+    ]);
+
+    final KakuroSolution firstValid = buildSolutionFirst(
+      template,
+      SeededRng(1),
+      difficulty: 'hard',
+      maxSearchNodes: 20000,
+      maxCompletedFills: 1,
+    )!;
+    final KakuroSolution scored = buildSolutionFirst(
+      template,
+      SeededRng(1),
+      difficulty: 'hard',
+      maxSearchNodes: 20000,
+      maxCompletedFills: 20,
+    )!;
+
+    _expectValidCompletedSolution(template, firstValid);
+    _expectValidCompletedSolution(template, scored);
+
+    expect(
+      scored.constructionFirstScoreMilli,
+      equals(firstValid.constructionScoreMilli),
+    );
+    expect(scored.constructionScoreGainMilli, greaterThan(0));
+    expect(
+      scored.constructionScoreMilli,
+      greaterThan(firstValid.constructionScoreMilli),
+    );
+    expect(
+      scored.constructionMetrics.singleCombinationRunRatioMilli,
+      greaterThanOrEqualTo(
+        firstValid.constructionMetrics.singleCombinationRunRatioMilli,
+      ),
+    );
+    expect(
+      scored.constructionMetrics.intersectionCandidateReductionMilli,
+      greaterThan(
+        firstValid.constructionMetrics.intersectionCandidateReductionMilli,
+      ),
+    );
+  });
 }
 
 class _RejectAllLayoutPreScorer extends KakuroLayoutPreScorer {
@@ -807,5 +907,26 @@ class _RejectAllLayoutPreScorer extends KakuroLayoutPreScorer {
       scoreMilli: base.scoreMilli,
       metrics: base.metrics,
     );
+  }
+}
+
+void _expectValidCompletedSolution(
+  KakuroLayout template,
+  KakuroSolution solution,
+) {
+  expect(solution.values, hasLength(template.width * template.height));
+  for (final int cell in template.valueCells) {
+    expect(solution.values[cell], inInclusiveRange(1, 9));
+  }
+  for (final KakuroLayoutEntry entry in template.entries) {
+    final Set<int> seen = <int>{};
+    int sum = 0;
+    for (final int cell in entry.cells) {
+      final int digit = solution.values[cell];
+      expect(digit, inInclusiveRange(1, 9));
+      expect(seen.add(digit), isTrue);
+      sum += digit;
+    }
+    expect(solution.entrySums[entry.id], equals(sum));
   }
 }

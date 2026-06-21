@@ -104,12 +104,15 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       template,
     );
     final KakuroConstructionMetrics metrics = scorer.score(entryMasks);
+    final int constructionScoreMilli = _constructionProfileScoreMilli(
+      metrics,
+      difficulty,
+    );
     return <String, Object?>{
       ...metrics.toTelemetry(),
-      'constructionScoreMilli': _constructionProfileScoreMilli(
-        metrics,
-        difficulty,
-      ),
+      'ambiguityScore': constructionScoreMilli,
+      'ambiguityScoreMilli': constructionScoreMilli,
+      'constructionScoreMilli': constructionScoreMilli,
     };
   }
 
@@ -1173,6 +1176,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'candidateBuildMs': fillWatch.elapsedMilliseconds,
         'solverMs': uniquenessSolveWatch.elapsedMilliseconds,
         'constructionTelemetry': constructionTelemetry,
+        'avgRunComboCount': constructionTelemetry['avgRunComboCount'],
+        'avgRunComboCountMilli': constructionTelemetry['avgRunComboCountMilli'],
+        'singleComboRunRatio': constructionTelemetry['singleComboRunRatio'],
+        'singleComboRunRatioMilli':
+            constructionTelemetry['singleComboRunRatioMilli'],
+        'ambiguityScore': constructionTelemetry['ambiguityScore'],
+        'ambiguityScoreMilli': constructionTelemetry['ambiguityScoreMilli'],
         'solverTelemetry': sanitizedSolverTelemetry,
         'measuredDifficultyBucket': bucket,
         'difficultyBucket': bucket,
@@ -1494,6 +1504,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'fallback': true,
             'fallbackMode': 'strict',
             'constructionTelemetry': constructionTelemetry,
+            'avgRunComboCount': constructionTelemetry['avgRunComboCount'],
+            'avgRunComboCountMilli':
+                constructionTelemetry['avgRunComboCountMilli'],
+            'singleComboRunRatio': constructionTelemetry['singleComboRunRatio'],
+            'singleComboRunRatioMilli':
+                constructionTelemetry['singleComboRunRatioMilli'],
+            'ambiguityScore': constructionTelemetry['ambiguityScore'],
+            'ambiguityScoreMilli': constructionTelemetry['ambiguityScoreMilli'],
             'stageTimingMs': <String, int>{
               'layout': layoutWatch.elapsedMilliseconds,
               'layoutScore': layoutScoreMs,
