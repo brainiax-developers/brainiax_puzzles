@@ -27,7 +27,7 @@ class KakuroLayoutMutationOptions {
 class KakuroLayoutFamily {
   const KakuroLayoutFamily({
     required this.id,
-    required this.supportedSizes,
+    required this.supportedSizeIds,
     required this.supportedDifficulties,
     this.basePattern,
     this.proceduralBuilder,
@@ -35,7 +35,7 @@ class KakuroLayoutFamily {
   }) : assert(basePattern != null || proceduralBuilder != null);
 
   final String id;
-  final Set<int> supportedSizes;
+  final Set<String> supportedSizeIds;
   final Set<String> supportedDifficulties;
   final List<String>? basePattern;
   final KakuroLayoutFamilyBuilder? proceduralBuilder;
@@ -46,8 +46,7 @@ class KakuroLayoutFamily {
     required int height,
     required String difficulty,
   }) {
-    return width == height &&
-        supportedSizes.contains(width) &&
+    return supportedSizeIds.contains('${width}x$height') &&
         supportedDifficulties.contains(difficulty);
   }
 
@@ -71,8 +70,8 @@ class KakuroLayoutFamily {
 
 const List<KakuroLayoutFamily> _kakuroLayoutFamilies = <KakuroLayoutFamily>[
   KakuroLayoutFamily(
-    id: 'medium-balanced',
-    supportedSizes: <int>{9},
+    id: 'medium_balanced_v1',
+    supportedSizeIds: <String>{'9x9'},
     supportedDifficulties: <String>{'medium', 'hard'},
     proceduralBuilder: _buildMediumBalancedBaseRows,
     mutationOptions: KakuroLayoutMutationOptions(
@@ -84,8 +83,8 @@ const List<KakuroLayoutFamily> _kakuroLayoutFamilies = <KakuroLayoutFamily>[
     ),
   ),
   KakuroLayoutFamily(
-    id: 'hard-crossing-heavy',
-    supportedSizes: <int>{9},
+    id: 'hard_crossing_heavy_v1',
+    supportedSizeIds: <String>{'9x9'},
     supportedDifficulties: <String>{'hard', 'expert'},
     proceduralBuilder: _buildHardCrossingHeavyBaseRows,
     mutationOptions: KakuroLayoutMutationOptions(
@@ -97,8 +96,8 @@ const List<KakuroLayoutFamily> _kakuroLayoutFamilies = <KakuroLayoutFamily>[
     ),
   ),
   KakuroLayoutFamily(
-    id: 'expert-long-run-controlled',
-    supportedSizes: <int>{9},
+    id: 'expert_long_run_controlled_v1',
+    supportedSizeIds: <String>{'9x9'},
     supportedDifficulties: <String>{'expert', 'hard'},
     proceduralBuilder: _buildExpertLongRunControlledBaseRows,
     mutationOptions: KakuroLayoutMutationOptions(
@@ -110,8 +109,8 @@ const List<KakuroLayoutFamily> _kakuroLayoutFamilies = <KakuroLayoutFamily>[
     ),
   ),
   KakuroLayoutFamily(
-    id: 'easy-9x9-calibration',
-    supportedSizes: <int>{9},
+    id: 'easy_9x9_calibration_v1',
+    supportedSizeIds: <String>{'9x9'},
     supportedDifficulties: <String>{'easy'},
     proceduralBuilder: _buildEasyCalibrationBaseRows,
     mutationOptions: KakuroLayoutMutationOptions(
@@ -120,6 +119,58 @@ const List<KakuroLayoutFamily> _kakuroLayoutFamilies = <KakuroLayoutFamily>[
       maxMutationAttempts: 16,
       minInteriorBlockCount: 8,
       maxInteriorBlockCount: 30,
+    ),
+  ),
+  KakuroLayoutFamily(
+    id: 'portrait_7x9_easy_v1',
+    supportedSizeIds: <String>{'7x9'},
+    supportedDifficulties: <String>{'easy'},
+    proceduralBuilder: _buildPortraitProfileBaseRows,
+    mutationOptions: KakuroLayoutMutationOptions(
+      minSymmetricToggles: 0,
+      maxSymmetricToggles: 0,
+      maxMutationAttempts: 0,
+      minInteriorBlockCount: 6,
+      maxInteriorBlockCount: 18,
+    ),
+  ),
+  KakuroLayoutFamily(
+    id: 'portrait_7x10_medium_v1',
+    supportedSizeIds: <String>{'7x10'},
+    supportedDifficulties: <String>{'medium'},
+    proceduralBuilder: _buildPortraitProfileBaseRows,
+    mutationOptions: KakuroLayoutMutationOptions(
+      minSymmetricToggles: 0,
+      maxSymmetricToggles: 0,
+      maxMutationAttempts: 0,
+      minInteriorBlockCount: 8,
+      maxInteriorBlockCount: 22,
+    ),
+  ),
+  KakuroLayoutFamily(
+    id: 'portrait_8x11_hard_v1',
+    supportedSizeIds: <String>{'8x11'},
+    supportedDifficulties: <String>{'hard'},
+    proceduralBuilder: _buildPortraitProfileBaseRows,
+    mutationOptions: KakuroLayoutMutationOptions(
+      minSymmetricToggles: 0,
+      maxSymmetricToggles: 0,
+      maxMutationAttempts: 0,
+      minInteriorBlockCount: 12,
+      maxInteriorBlockCount: 28,
+    ),
+  ),
+  KakuroLayoutFamily(
+    id: 'portrait_9x12_expert_v1',
+    supportedSizeIds: <String>{'9x12'},
+    supportedDifficulties: <String>{'expert'},
+    proceduralBuilder: _buildPortraitProfileBaseRows,
+    mutationOptions: KakuroLayoutMutationOptions(
+      minSymmetricToggles: 0,
+      maxSymmetricToggles: 0,
+      maxMutationAttempts: 0,
+      minInteriorBlockCount: 16,
+      maxInteriorBlockCount: 36,
     ),
   ),
 ];
@@ -159,7 +210,7 @@ KakuroLayout _buildLayoutCandidateForAttempt({
 
   // Keep deterministic access to baseline newspaper topology while still
   // exploring family variants for the same 9x9 request.
-  if (attemptIndex % 5 == 4) {
+  if (width == 9 && height == 9 && attemptIndex % 5 == 4) {
     return KakuroLayout.buildNewspaper(
       rng:
           newspaperRng ??
@@ -312,12 +363,25 @@ bool _shouldUseLayoutFamilies({
   required int height,
   required String difficulty,
 }) {
-  if (width != 9 || height != 9) {
-    return false;
+  final String sizeId = '${width}x$height';
+  if (sizeId == '7x9') {
+    return difficulty == 'easy';
   }
-  return difficulty == 'medium' ||
-      difficulty == 'hard' ||
-      difficulty == 'expert';
+  if (sizeId == '7x10') {
+    return difficulty == 'medium';
+  }
+  if (sizeId == '8x11') {
+    return difficulty == 'hard';
+  }
+  if (sizeId == '9x12') {
+    return difficulty == 'expert';
+  }
+  if (width == 9 && height == 9) {
+    return difficulty == 'medium' ||
+        difficulty == 'hard' ||
+        difficulty == 'expert';
+  }
+  return false;
 }
 
 int _deriveLayoutFamilySeed(
@@ -348,7 +412,7 @@ List<String> _buildMediumBalancedBaseRows({
       width: width,
       height: height,
       difficulty: 'medium',
-      layoutFamilyId: 'medium-balanced',
+      layoutFamilyId: 'medium_balanced_v1',
     ).layout,
   );
 
@@ -367,7 +431,7 @@ List<String> _buildHardCrossingHeavyBaseRows({
       width: width,
       height: height,
       difficulty: 'hard',
-      layoutFamilyId: 'hard-crossing-heavy',
+      layoutFamilyId: 'hard_crossing_heavy_v1',
     ).layout,
   );
 
@@ -386,7 +450,7 @@ List<String> _buildExpertLongRunControlledBaseRows({
       width: width,
       height: height,
       difficulty: 'medium',
-      layoutFamilyId: 'expert-long-run-controlled',
+      layoutFamilyId: 'expert_long_run_controlled_v1',
     ).layout,
   );
 
@@ -405,11 +469,366 @@ List<String> _buildEasyCalibrationBaseRows({
       width: width,
       height: height,
       difficulty: 'easy',
-      layoutFamilyId: 'easy-9x9-calibration',
+      layoutFamilyId: 'easy_9x9_calibration_v1',
     ).layout,
   );
 
   return _gridToRows(grid);
+}
+
+List<String> _buildPortraitProfileBaseRows({
+  required SeededRng rng,
+  required int width,
+  required int height,
+  required String difficulty,
+}) {
+  final _KakuroLayoutThresholdProfile? profile = _thresholdProfileFor(
+    width: width,
+    height: height,
+    difficulty: difficulty,
+  );
+  final int totalCells = width * height;
+  final int minWhiteCells = profile == null
+      ? _ceilDiv(totalCells * 300, 1000)
+      : _ceilDiv(totalCells * profile.minWhiteDensityMilli, 1000);
+  final int maxWhiteCells = profile == null
+      ? (totalCells * 560) ~/ 1000
+      : (totalCells * profile.maxWhiteDensityMilli) ~/ 1000;
+  final int densityDivisor = difficulty == 'easy' ? 5 : 3;
+  final int targetWhiteCells = profile == null
+      ? (totalCells * 420) ~/ 1000
+      : minWhiteCells + ((maxWhiteCells - minWhiteCells) ~/ densityDivisor);
+
+  KakuroLayout? bestLayout;
+  KakuroLayoutPreScoreResult? bestScore;
+  for (int variant = 0; variant < 32; variant++) {
+    final SeededRng variantRng = SeededRng(
+      rng.nextInt64() ^
+          Seed.fromString(
+            'kakuro_portrait_layout:$width:$height:$difficulty:$variant',
+          ),
+    );
+    final List<int>? rowMasks = _buildPortraitMaskSequence(
+      rng: variantRng,
+      interiorWidth: width - 2,
+      interiorHeight: height - 2,
+      minWhiteCells: minWhiteCells,
+      maxWhiteCells: maxWhiteCells,
+      targetWhiteCells: targetWhiteCells,
+    );
+    if (rowMasks == null) {
+      continue;
+    }
+
+    final List<List<int>> grid = _portraitMasksToGrid(
+      rowMasks: rowMasks,
+      width: width,
+      height: height,
+    );
+    if (!_isStructurallyValidGrid(grid)) {
+      continue;
+    }
+    final KakuroLayout layout = KakuroLayout.fromRows(_gridToRows(grid));
+    final KakuroLayoutPreScoreResult score = const KakuroLayoutPreScorer()
+        .score(layout: layout, difficulty: difficulty);
+    if (_isBetterPortraitPreScore(score, bestScore)) {
+      bestLayout = layout;
+      bestScore = score;
+    }
+  }
+
+  if (bestLayout != null) {
+    return bestLayout.layout;
+  }
+
+  final List<List<int>> fallback = _buildPortraitScaffoldGrid(width, height);
+  return _gridToRows(fallback);
+}
+
+bool _isBetterPortraitPreScore(
+  KakuroLayoutPreScoreResult candidate,
+  KakuroLayoutPreScoreResult? incumbent,
+) {
+  if (incumbent == null) {
+    return true;
+  }
+  if (candidate.accepted != incumbent.accepted) {
+    return candidate.accepted;
+  }
+  if (candidate.scoreMilli != incumbent.scoreMilli) {
+    return candidate.scoreMilli > incumbent.scoreMilli;
+  }
+  if (candidate.metrics.unpairedValueCellCount !=
+      incumbent.metrics.unpairedValueCellCount) {
+    return candidate.metrics.unpairedValueCellCount <
+        incumbent.metrics.unpairedValueCellCount;
+  }
+  return candidate.metrics.totalRunCount > incumbent.metrics.totalRunCount;
+}
+
+List<int>? _buildPortraitMaskSequence({
+  required SeededRng rng,
+  required int interiorWidth,
+  required int interiorHeight,
+  required int minWhiteCells,
+  required int maxWhiteCells,
+  required int targetWhiteCells,
+}) {
+  final List<int> masks = _validPortraitRowMasks(interiorWidth);
+  if (masks.isEmpty) {
+    return null;
+  }
+  final Map<int, int> whiteCellsByMask = <int, int>{
+    for (final int mask in masks) mask: interiorWidth - _popCount(mask),
+  };
+  int minRowWhiteCells = interiorWidth;
+  int maxRowWhiteCells = 0;
+  for (final int count in whiteCellsByMask.values) {
+    if (count < minRowWhiteCells) {
+      minRowWhiteCells = count;
+    }
+    if (count > maxRowWhiteCells) {
+      maxRowWhiteCells = count;
+    }
+  }
+
+  final List<int> selected = List<int>.filled(interiorHeight, 0);
+  final List<int> verticalRuns = List<int>.filled(interiorWidth, 0);
+  int nodeBudget = 1600;
+
+  bool search(int row, int whiteCellsSoFar, List<int> currentRuns) {
+    nodeBudget--;
+    if (nodeBudget < 0) {
+      return false;
+    }
+    if (row == interiorHeight) {
+      if (whiteCellsSoFar < minWhiteCells || whiteCellsSoFar > maxWhiteCells) {
+        return false;
+      }
+      for (final int run in currentRuns) {
+        if (run == 1 || run > 9) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    final List<int> ordered = _orderedPortraitMasks(
+      rng: rng,
+      masks: masks,
+      interiorWidth: interiorWidth,
+      whiteCellsByMask: whiteCellsByMask,
+      targetWhiteCells: targetWhiteCells,
+      whiteCellsSoFar: whiteCellsSoFar,
+      remainingRowsIncludingCurrent: interiorHeight - row,
+    );
+    final int remainingRows = interiorHeight - row - 1;
+    final bool isLastRow = row == interiorHeight - 1;
+    for (final int mask in ordered) {
+      final int rowWhiteCells = whiteCellsByMask[mask]!;
+      final int nextWhiteCells = whiteCellsSoFar + rowWhiteCells;
+      if (nextWhiteCells > maxWhiteCells) {
+        continue;
+      }
+      if (nextWhiteCells + remainingRows * maxRowWhiteCells < minWhiteCells) {
+        continue;
+      }
+      if (nextWhiteCells + remainingRows * minRowWhiteCells > maxWhiteCells) {
+        continue;
+      }
+      final List<int>? nextRuns = _appendPortraitMask(
+        mask: mask,
+        currentRuns: currentRuns,
+        isLastRow: isLastRow,
+      );
+      if (nextRuns == null) {
+        continue;
+      }
+      selected[row] = mask;
+      if (search(row + 1, nextWhiteCells, nextRuns)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (search(0, 0, verticalRuns)) {
+    return selected;
+  }
+  return null;
+}
+
+List<int> _orderedPortraitMasks({
+  required SeededRng rng,
+  required List<int> masks,
+  required int interiorWidth,
+  required Map<int, int> whiteCellsByMask,
+  required int targetWhiteCells,
+  required int whiteCellsSoFar,
+  required int remainingRowsIncludingCurrent,
+}) {
+  final int targetPerRowMilli =
+      ((targetWhiteCells - whiteCellsSoFar) * 1000) ~/
+      remainingRowsIncludingCurrent;
+  final List<_KakuroPortraitMaskChoice> choices = <_KakuroPortraitMaskChoice>[];
+  for (final int mask in masks) {
+    final int whiteCells = whiteCellsByMask[mask]!;
+    final int shapePenalty = _portraitMaskShapePenalty(
+      mask,
+      whiteCells,
+      interiorWidth: interiorWidth,
+    );
+    choices.add(
+      _KakuroPortraitMaskChoice(
+        mask: mask,
+        score:
+            ((whiteCells * 1000 - targetPerRowMilli).abs() * 4) +
+            shapePenalty +
+            rng.nextIntInRange(250),
+      ),
+    );
+  }
+  choices.sort(
+    (_KakuroPortraitMaskChoice a, _KakuroPortraitMaskChoice b) =>
+        a.score.compareTo(b.score),
+  );
+  return choices
+      .map((_KakuroPortraitMaskChoice choice) => choice.mask)
+      .toList(growable: false);
+}
+
+int _portraitMaskShapePenalty(
+  int mask,
+  int whiteCells, {
+  required int interiorWidth,
+}) {
+  final int blockCount = _popCount(mask);
+  int transitions = 0;
+  bool? previousValue;
+  for (int col = 0; col < interiorWidth; col++) {
+    final bool isValue = (mask & (1 << col)) == 0;
+    if (previousValue != null && previousValue != isValue) {
+      transitions++;
+    }
+    previousValue = isValue;
+  }
+  return (blockCount - 2).abs() * 180 +
+      (whiteCells < 2 ? 800 : 0) +
+      transitions * 20;
+}
+
+class _KakuroPortraitMaskChoice {
+  const _KakuroPortraitMaskChoice({required this.mask, required this.score});
+
+  final int mask;
+  final int score;
+}
+
+List<int>? _appendPortraitMask({
+  required int mask,
+  required List<int> currentRuns,
+  required bool isLastRow,
+}) {
+  final List<int> nextRuns = List<int>.filled(currentRuns.length, 0);
+  for (int col = 0; col < currentRuns.length; col++) {
+    final bool isBlock = (mask & (1 << col)) != 0;
+    if (isBlock) {
+      if (currentRuns[col] == 1) {
+        return null;
+      }
+      nextRuns[col] = 0;
+      continue;
+    }
+    final int nextRun = currentRuns[col] + 1;
+    if (nextRun > 9 || (isLastRow && nextRun == 1)) {
+      return null;
+    }
+    nextRuns[col] = nextRun;
+  }
+  return nextRuns;
+}
+
+List<int> _validPortraitRowMasks(int interiorWidth) {
+  final List<int> masks = <int>[];
+  final int limit = 1 << interiorWidth;
+  for (int mask = 0; mask < limit; mask++) {
+    final int whiteCells = interiorWidth - _popCount(mask);
+    if (whiteCells < 2) {
+      continue;
+    }
+    if (_rowMaskHasValidRuns(mask, interiorWidth)) {
+      masks.add(mask);
+    }
+  }
+  return masks;
+}
+
+bool _rowMaskHasValidRuns(int mask, int interiorWidth) {
+  int run = 0;
+  for (int col = 0; col < interiorWidth; col++) {
+    final bool isValue = (mask & (1 << col)) == 0;
+    if (isValue) {
+      run++;
+      continue;
+    }
+    if (run == 1 || run > 9) {
+      return false;
+    }
+    run = 0;
+  }
+  return run != 1 && run <= 9;
+}
+
+List<List<int>> _portraitMasksToGrid({
+  required List<int> rowMasks,
+  required int width,
+  required int height,
+}) {
+  final List<List<int>> grid = List<List<int>>.generate(
+    height,
+    (_) => List<int>.filled(width, 1),
+  );
+  for (int row = 1; row < height - 1; row++) {
+    final int mask = rowMasks[row - 1];
+    for (int col = 1; col < width - 1; col++) {
+      grid[row][col] = (mask & (1 << (col - 1))) == 0 ? 0 : 1;
+    }
+  }
+  return grid;
+}
+
+List<List<int>> _buildPortraitScaffoldGrid(int width, int height) {
+  final List<List<int>> grid = List<List<int>>.generate(
+    height,
+    (_) => List<int>.filled(width, 0),
+  );
+  _ensureBoundaryBlocks(grid);
+  for (int row = 2; row < height - 2; row += 3) {
+    for (int col = 2; col < width - 2; col += 4) {
+      grid[row][col] = 1;
+    }
+  }
+  _repairRuns(
+    SeededRng(Seed.fromString('kakuro_portrait_scaffold')),
+    grid,
+    2,
+    9,
+  );
+  return grid;
+}
+
+int _ceilDiv(int numerator, int denominator) {
+  return (numerator + denominator - 1) ~/ denominator;
+}
+
+int _popCount(int value) {
+  int count = 0;
+  int bits = value;
+  while (bits != 0) {
+    bits &= bits - 1;
+    count++;
+  }
+  return count;
 }
 
 void _applyFamilyMutations({

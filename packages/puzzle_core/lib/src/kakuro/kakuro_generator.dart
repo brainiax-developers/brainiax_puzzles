@@ -2014,6 +2014,12 @@ int _layoutEarlyAcceptScoreThreshold({
           difficulty == 'expert')) {
     return 1001;
   }
+  if ((width == 7 && height == 9 && difficulty == 'easy') ||
+      (width == 7 && height == 10 && difficulty == 'medium') ||
+      (width == 8 && height == 11 && difficulty == 'hard') ||
+      (width == 9 && height == 12 && difficulty == 'expert')) {
+    return 1001;
+  }
   return 1000;
 }
 

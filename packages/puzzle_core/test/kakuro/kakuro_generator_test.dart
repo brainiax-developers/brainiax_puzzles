@@ -418,10 +418,10 @@ void main() {
 
         expect(
           const <String>{
-            'medium-balanced',
-            'hard-crossing-heavy',
-            'expert-long-run-controlled',
-            'easy-9x9-calibration',
+            'medium_balanced_v1',
+            'hard_crossing_heavy_v1',
+            'expert_long_run_controlled_v1',
+            'easy_9x9_calibration_v1',
             'newspaper_random_v1',
           }.contains(metrics.layoutFamilyId),
           isTrue,
@@ -440,6 +440,87 @@ void main() {
       expect(signatures.length, greaterThan(1));
     },
   );
+
+  test('portrait layout families are deterministic and structurally valid', () {
+    const List<({int width, int height, String difficulty, String familyId})>
+    profiles = <({int width, int height, String difficulty, String familyId})>[
+      (
+        width: 7,
+        height: 9,
+        difficulty: 'easy',
+        familyId: 'portrait_7x9_easy_v1',
+      ),
+      (
+        width: 7,
+        height: 10,
+        difficulty: 'medium',
+        familyId: 'portrait_7x10_medium_v1',
+      ),
+      (
+        width: 8,
+        height: 11,
+        difficulty: 'hard',
+        familyId: 'portrait_8x11_hard_v1',
+      ),
+      (
+        width: 9,
+        height: 12,
+        difficulty: 'expert',
+        familyId: 'portrait_9x12_expert_v1',
+      ),
+    ];
+    const KakuroLayoutPreScorer scorer = KakuroLayoutPreScorer();
+
+    for (final profile in profiles) {
+      final int seed64 = Seed.fromString(
+        'kakuro_portrait_family_${profile.width}x${profile.height}_${profile.difficulty}',
+      );
+      final KakuroLayout first = KakuroGenerator.buildLayoutCandidateForTest(
+        seed64: seed64,
+        width: profile.width,
+        height: profile.height,
+        difficulty: profile.difficulty,
+        attemptIndex: 0,
+      );
+      final KakuroLayout repeated = KakuroGenerator.buildLayoutCandidateForTest(
+        seed64: seed64,
+        width: profile.width,
+        height: profile.height,
+        difficulty: profile.difficulty,
+        attemptIndex: 0,
+      );
+      final KakuroLayoutPreScoreResult verdict = scorer.score(
+        layout: first,
+        difficulty: profile.difficulty,
+      );
+
+      expect(first.layout, equals(repeated.layout), reason: profile.familyId);
+      expect(first.width, equals(profile.width), reason: profile.familyId);
+      expect(first.height, equals(profile.height), reason: profile.familyId);
+      expect(first.layoutFamilyId, equals(profile.familyId));
+      expect(verdict.accepted, isTrue, reason: profile.familyId);
+      expect(verdict.metrics.layoutFamilyId, equals(profile.familyId));
+      expect(verdict.metrics.layoutHash, isNotEmpty);
+      expect(verdict.metrics.unpairedValueCellCount, equals(0));
+      expect(verdict.metrics.maxRunLength, lessThanOrEqualTo(9));
+
+      for (final KakuroLayoutEntry entry in first.entries) {
+        expect(entry.length, inInclusiveRange(2, 9), reason: profile.familyId);
+      }
+      for (final int cell in first.valueCells) {
+        expect(
+          first.acrossEntryForCell[cell],
+          greaterThanOrEqualTo(0),
+          reason: profile.familyId,
+        );
+        expect(
+          first.downEntryForCell[cell],
+          greaterThanOrEqualTo(0),
+          reason: profile.familyId,
+        );
+      }
+    }
+  });
 
   test('generator rejects unknown uniqueness when search budget is tiny', () {
     const KakuroGenerator generator = KakuroGenerator(
@@ -560,31 +641,33 @@ void main() {
     );
   });
 
-  test('generator accepts 7x9 and never throws unsupported-size errors', () {
+  test('generator emits portrait family telemetry for 7x9', () {
     const KakuroGenerator generator = KakuroGenerator();
-    final int seed64 = Seed.fromString('kakuro_rectangular_7x9_seed');
+    const String seedStr = 'kakuro_portrait_search_7x9_easy_5';
+    final int seed64 = Seed.fromString(seedStr);
     final GeneratorContext context = GeneratorContext(
       rng: SeededRng(seed64),
-      seedStr: 'kakuro_rectangular_7x9_seed',
+      seedStr: seedStr,
       seed64: seed64,
       size: const SizeOpt(id: '7x9', description: '7x9', width: 7, height: 9),
       difficulty: const DifficultyRequest(level: 'easy'),
     );
 
-    PuzzleGenerationResult<KakuroBoard>? result;
-    Object? failure;
-    try {
-      result = generator.generate(context);
-    } catch (error) {
-      failure = error;
-    }
+    final PuzzleGenerationResult<KakuroBoard> result = generator.generate(
+      context,
+    );
 
-    if (result != null) {
-      expect(result.board.width, equals(7));
-      expect(result.board.height, equals(9));
-      return;
-    }
-    expect(failure, isA<GenerationFailure>());
+    expect(result.board.width, equals(7));
+    expect(result.board.height, equals(9));
+    expect(
+      result.snapshot.telemetry['layoutFamilyId'],
+      equals('portrait_7x9_easy_v1'),
+    );
+    expect(result.snapshot.telemetry['selectedSize'], equals('7x9'));
+    expect(
+      result.snapshot.telemetry['acceptedLayoutCandidates'],
+      isA<List<Object?>>(),
+    );
   });
 
   test('generator accepts 11x9 and remains deterministic by seed+size', () {
