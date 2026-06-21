@@ -160,6 +160,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     String layoutGateReason = 'not_scored';
     int layoutScoreMilli = 0;
     KakuroLayoutMetrics? selectedLayoutMetrics;
+    final List<Map<String, Object?>> acceptedLayoutCandidateTelemetry =
+        <Map<String, Object?>>[];
+    final List<Map<String, Object?>> rejectedLayoutCandidateTelemetry =
+        <Map<String, Object?>>[];
     final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
@@ -231,6 +235,41 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       });
     }
 
+    void recordLayoutCandidate({
+      required int candidateIndex,
+      required String source,
+      required bool accepted,
+      required String reason,
+      required KakuroLayoutPreScoreResult score,
+    }) {
+      final Map<String, Object?> entry = <String, Object?>{
+        'candidateIndex': candidateIndex,
+        'source': source,
+        'accepted': accepted,
+        'reason': reason,
+        'scoreMilli': score.scoreMilli,
+        'layoutHash': score.metrics.layoutHash,
+        'layoutFamilyId': score.metrics.layoutFamilyId,
+        'width': score.metrics.width,
+        'height': score.metrics.height,
+        'whiteCellCount': score.metrics.whiteCellCount,
+        'totalRunCount': score.metrics.totalRunCount,
+        'maxRunLength': score.metrics.maxRunLength,
+        'averageRunLengthMilli': score.metrics.averageRunLengthMilli,
+        'averageRunCombinationEstimateMilli':
+            score.metrics.averageRunCombinationEstimateMilli,
+        'runLengthWeightedCombinationEstimateMilli':
+            score.metrics.runLengthWeightedCombinationEstimateMilli,
+        'singleCombinationSumRatioEstimateMilli':
+            score.metrics.singleCombinationSumRatioEstimateMilli,
+      };
+      if (accepted) {
+        acceptedLayoutCandidateTelemetry.add(entry);
+      } else {
+        rejectedLayoutCandidateTelemetry.add(entry);
+      }
+    }
+
     Map<String, int> buildRejectCounters() {
       return <String, int>{
         'nullCandidate': nullSolutionCount,
@@ -243,6 +282,18 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'attemptBudget': attemptBudgetExceededCount,
         'hardBudget': hardBudgetExceededCount,
         'repairRejected': repairedRejectCount,
+      };
+    }
+
+    Map<String, Object?> buildLayoutCandidateTelemetry() {
+      return <String, Object?>{
+        'layoutCandidateCount':
+            acceptedLayoutCandidateTelemetry.length +
+            rejectedLayoutCandidateTelemetry.length,
+        'acceptedLayoutCandidateCount': acceptedLayoutCandidateTelemetry.length,
+        'rejectedLayoutCandidateCount': rejectedLayoutCandidateTelemetry.length,
+        'acceptedLayoutCandidates': acceptedLayoutCandidateTelemetry,
+        'rejectedLayoutCandidates': rejectedLayoutCandidateTelemetry,
       };
     }
 
@@ -287,8 +338,22 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           layoutGateReason = 'duplicate_layout_candidate';
           layoutGateReasonCounts['duplicate_layout_candidate'] =
               (layoutGateReasonCounts['duplicate_layout_candidate'] ?? 0) + 1;
+          recordLayoutCandidate(
+            candidateIndex: candidateIndex,
+            source: 'initial',
+            accepted: false,
+            reason: 'duplicate_layout_candidate',
+            score: preScore,
+          );
           continue;
         }
+        recordLayoutCandidate(
+          candidateIndex: candidateIndex,
+          source: 'initial',
+          accepted: true,
+          reason: preScore.reason,
+          score: preScore,
+        );
         acceptedLayouts.add(
           _KakuroAcceptedLayoutCandidate(
             layout: candidate,
@@ -315,6 +380,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       layoutGateReason = preScore.reason;
       layoutGateReasonCounts[preScore.reason] =
           (layoutGateReasonCounts[preScore.reason] ?? 0) + 1;
+      recordLayoutCandidate(
+        candidateIndex: candidateIndex,
+        source: 'initial',
+        accepted: false,
+        reason: preScore.reason,
+        score: preScore,
+      );
     }
     layoutWatch.stop();
     final int layoutScoreMs = layoutScoreWatch.elapsedMilliseconds;
@@ -323,7 +395,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     } else {
       acceptedLayouts.sort(
         (_KakuroAcceptedLayoutCandidate a, _KakuroAcceptedLayoutCandidate b) =>
-            b.scoreMilli.compareTo(a.scoreMilli),
+            _compareAcceptedLayoutCandidates(a, b),
       );
       final _KakuroAcceptedLayoutCandidate top = acceptedLayouts.first;
       layoutScoreMilli = top.scoreMilli;
@@ -358,6 +430,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           'layoutScoreMilli': layoutScoreMilli,
           'layoutGateReason': layoutGateReason,
           'layoutGateReasonCounts': layoutGateReasonCounts,
+          'bestAcceptedLayoutScoreMilli': bestAcceptedLayoutScore,
+          ...buildLayoutCandidateTelemetry(),
           'repairAttemptCount': repairAttemptCount,
           'repairOutcome': repairOutcome,
           'repairReason': repairReason,
@@ -1118,6 +1192,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'layoutScoreMilli': layoutScoreMilli,
         'layoutGateReason': layoutGateReason,
         'layoutGateReasonCounts': layoutGateReasonCounts,
+        'bestAcceptedLayoutScoreMilli': bestAcceptedLayoutScore,
+        ...buildLayoutCandidateTelemetry(),
         ...selectedLayoutMetrics.toTelemetry(),
         ...structuralTelemetry,
         'repairAttemptCount': repairAttemptCount,
@@ -1167,6 +1243,13 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
         layoutScoreMilli = preScore.scoreMilli;
         layoutGateReason = preScore.reason;
+        recordLayoutCandidate(
+          candidateIndex: maxLayoutCandidates + alt,
+          source: 'fallback_strict',
+          accepted: preScore.accepted,
+          reason: preScore.reason,
+          score: preScore,
+        );
         if (!preScore.accepted) {
           layoutGateRejectCount++;
           layoutGateReasonCounts[preScore.reason] =
@@ -1440,6 +1523,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'layoutScoreMilli': layoutScoreMilli,
             'layoutGateReason': layoutGateReason,
             'layoutGateReasonCounts': layoutGateReasonCounts,
+            'bestAcceptedLayoutScoreMilli': bestAcceptedLayoutScore,
+            ...buildLayoutCandidateTelemetry(),
             ...altMetrics.toTelemetry(),
             ...structuralTelemetry,
             'repairAttemptCount': repairAttemptCount,
@@ -1499,6 +1584,37 @@ class _KakuroAcceptedLayoutCandidate {
   final int scoreMilli;
   final String reason;
   final KakuroLayoutMetrics metrics;
+}
+
+int _compareAcceptedLayoutCandidates(
+  _KakuroAcceptedLayoutCandidate a,
+  _KakuroAcceptedLayoutCandidate b,
+) {
+  int cmp = b.scoreMilli.compareTo(a.scoreMilli);
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = b.metrics.totalRunCount.compareTo(a.metrics.totalRunCount);
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = a.metrics.averageRunCombinationEstimateMilli.compareTo(
+    b.metrics.averageRunCombinationEstimateMilli,
+  );
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = a.metrics.runLengthWeightedCombinationEstimateMilli.compareTo(
+    b.metrics.runLengthWeightedCombinationEstimateMilli,
+  );
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = a.metrics.maxRunLength.compareTo(b.metrics.maxRunLength);
+  if (cmp != 0) {
+    return cmp;
+  }
+  return a.metrics.layoutHash.compareTo(b.metrics.layoutHash);
 }
 
 class _KakuroAcceptedRepairCandidate {
@@ -1896,7 +2012,7 @@ int _layoutEarlyAcceptScoreThreshold({
       (difficulty == 'medium' ||
           difficulty == 'hard' ||
           difficulty == 'expert')) {
-    return 780;
+    return 1001;
   }
   return 1000;
 }

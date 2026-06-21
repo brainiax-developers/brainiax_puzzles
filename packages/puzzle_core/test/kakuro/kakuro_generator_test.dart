@@ -68,6 +68,21 @@ void main() {
     expect(telemetry['repairedFromNonUnique'], isA<bool>());
     expect(telemetry['finalLayoutHash'], isA<String>());
     expect(telemetry['runLengthHistogram'], isA<Map>());
+    expect(telemetry['averageRunCombinationEstimateMilli'], isA<int>());
+    expect(telemetry['runLengthWeightedCombinationEstimateMilli'], isA<int>());
+    expect(telemetry['singleCombinationSumRatioEstimateMilli'], isA<int>());
+    expect(telemetry['layoutCandidateCount'], isA<int>());
+    expect(telemetry['acceptedLayoutCandidateCount'], isA<int>());
+    expect(telemetry['rejectedLayoutCandidateCount'], isA<int>());
+    expect(telemetry['acceptedLayoutCandidates'], isA<List>());
+    expect(telemetry['rejectedLayoutCandidates'], isA<List>());
+    expect(
+      (telemetry['acceptedLayoutCandidateCount'] as num).toInt(),
+      greaterThan(0),
+    );
+    final List<Object?> acceptedLayoutCandidates =
+        telemetry['acceptedLayoutCandidates'] as List<Object?>;
+    expect(acceptedLayoutCandidates.first, isA<Map>());
     expect(telemetry['constructionTelemetry'], isA<Map>());
     final Map<String, Object?> constructionTelemetry =
         Map<String, Object?>.from(
@@ -451,6 +466,45 @@ void main() {
     );
   });
 
+  test('layout pre-score rejection stops before solution fill attempts', () {
+    const KakuroGenerator generator = KakuroGenerator(
+      maxTemplateAttempts: 2,
+      layoutPreScorer: _RejectAllLayoutPreScorer(),
+    );
+    final int seed64 = Seed.fromString('kakuro_layout_gate_only_seed');
+    final GeneratorContext context = GeneratorContext(
+      rng: SeededRng(seed64),
+      seedStr: 'kakuro_layout_gate_only_seed',
+      seed64: seed64,
+      size: const SizeOpt(
+        id: 'template9x9',
+        description: 'Template 9x9',
+        width: 9,
+        height: 9,
+      ),
+      difficulty: const DifficultyRequest(level: 'medium'),
+    );
+
+    try {
+      generator.generate(context);
+      fail('Expected layout gate to reject every candidate.');
+    } on GenerationFailure catch (failure) {
+      expect(failure.context['failureReason'], equals('layout_gate_exhausted'));
+      expect(failure.context['acceptedLayoutCandidateCount'], equals(0));
+      expect(
+        (failure.context['rejectedLayoutCandidateCount'] as num).toInt(),
+        greaterThan(0),
+      );
+      expect(failure.context['attemptsLog'], isEmpty);
+      final Map<String, Object?> rejectCounters = Map<String, Object?>.from(
+        failure.context['rejectCounters'] as Map,
+      );
+      expect((rejectCounters['layoutGate'] as num).toInt(), greaterThan(0));
+      expect(rejectCounters['nullCandidate'], equals(0));
+      expect(rejectCounters['nonUnique'], equals(0));
+    }
+  });
+
   test('generator rejects unsupported 8x8 size', () {
     const KakuroGenerator generator = KakuroGenerator();
     final int seed64 = Seed.fromString('kakuro_gen_8x8_seed');
@@ -650,4 +704,25 @@ void main() {
     expect(partialAvg, greaterThan(completeAvg));
     expect(partialSingle, lessThan(completeSingle));
   });
+}
+
+class _RejectAllLayoutPreScorer extends KakuroLayoutPreScorer {
+  const _RejectAllLayoutPreScorer();
+
+  @override
+  KakuroLayoutPreScoreResult score({
+    required KakuroLayout layout,
+    required String difficulty,
+  }) {
+    final KakuroLayoutPreScoreResult base = super.score(
+      layout: layout,
+      difficulty: difficulty,
+    );
+    return KakuroLayoutPreScoreResult(
+      accepted: false,
+      reason: 'test_reject_all',
+      scoreMilli: base.scoreMilli,
+      metrics: base.metrics,
+    );
+  }
 }

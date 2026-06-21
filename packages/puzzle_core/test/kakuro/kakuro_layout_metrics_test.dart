@@ -1,4 +1,5 @@
 import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
+import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -34,6 +35,12 @@ void main() {
       expect(first.longRunCount, equals(0));
       expect(first.shortRunRatioMilli, equals(1000));
       expect(first.longRunRatioMilli, equals(0));
+      expect(first.averageRunCombinationEstimateMilli, greaterThan(0));
+      expect(first.maxRunCombinationEstimateMilli, greaterThan(0));
+      expect(first.runLengthWeightedCombinationEstimateMilli, greaterThan(0));
+      expect(first.singleCombinationSumRatioEstimateMilli, greaterThan(0));
+      expect(first.highAmbiguityRunCount, equals(0));
+      expect(first.highAmbiguityRunRatioMilli, equals(0));
       expect(first.runGraphEdgeCount, equals(7));
       expect(first.runGraphNodeCount, equals(6));
       expect(first.minRunGraphDegree, equals(2));
@@ -41,6 +48,10 @@ void main() {
       expect(first.largestRunGraphComponentNodeCount, equals(6));
       expect(first.runGraphConnectivityMilli, equals(1000));
       expect(first.unpairedValueCellCount, equals(0));
+      expect(
+        first.toTelemetry()['averageRunCombinationEstimateMilli'],
+        equals(first.averageRunCombinationEstimateMilli),
+      );
 
       // Existing valid layouts should map each value cell to across/down runs.
       const int sharedCellIndex = 12; // row=2, col=2
@@ -81,6 +92,79 @@ void main() {
         ),
       );
     });
+
+    test('scores known weak layout below known strong layout', () {
+      final KakuroLayout weak = KakuroLayout.fromRows(const <String>[
+        '#########',
+        '#.......#',
+        '#.......#',
+        '#.......#',
+        '#.......#',
+        '#.......#',
+        '#.......#',
+        '#.......#',
+        '#########',
+      ]);
+      final KakuroLayout strong = KakuroLayout.fromRows(const <String>[
+        '#########',
+        '##..##..#',
+        '#.......#',
+        '#..#...##',
+        '##..#..##',
+        '##...#..#',
+        '#.......#',
+        '#..##..##',
+        '#########',
+      ]);
+
+      final KakuroLayoutScore weakScore = scorer.score(
+        layout: weak,
+        difficulty: 'medium',
+      );
+      final KakuroLayoutScore strongScore = scorer.score(
+        layout: strong,
+        difficulty: 'medium',
+      );
+
+      expect(weakScore.accepted, isFalse);
+      expect(strongScore.accepted, isTrue);
+      expect(strongScore.scoreMilli, greaterThan(weakScore.scoreMilli));
+      expect(
+        strongScore.stats.totalRunCount,
+        greaterThan(weakScore.stats.totalRunCount),
+      );
+    });
+
+    test(
+      'scores portrait rectangular layout without skipping profile gate',
+      () {
+        final int seed64 = Seed.fromString('kakuro_rectangular_7x9_seed');
+        final KakuroLayout layout = KakuroGenerator.buildLayoutCandidateForTest(
+          seed64: seed64,
+          width: 7,
+          height: 9,
+          difficulty: 'easy',
+          attemptIndex: 5,
+        );
+
+        final KakuroLayoutScore verdict = scorer.score(
+          layout: layout,
+          difficulty: 'easy',
+        );
+
+        expect(verdict.accepted, isTrue);
+        expect(verdict.reason, isNot(equals('gate_skipped')));
+        expect(verdict.stats.width, equals(7));
+        expect(verdict.stats.height, equals(9));
+        expect(verdict.stats.totalCells, equals(63));
+        expect(verdict.stats.whiteCellCount, equals(layout.valueCellCount));
+        expect(verdict.stats.averageRunLengthMilli, greaterThan(0));
+        expect(
+          verdict.stats.averageRunCombinationEstimateMilli,
+          greaterThan(0),
+        );
+      },
+    );
 
     test('keeps 7x7 easy gate permissive for valid layouts', () {
       final KakuroLayout easyLayout = KakuroLayout.fromRows(const <String>[

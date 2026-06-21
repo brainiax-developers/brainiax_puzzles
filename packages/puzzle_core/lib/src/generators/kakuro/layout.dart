@@ -38,6 +38,12 @@ class KakuroLayoutMetrics {
     required this.longRunCount,
     required this.shortRunRatioMilli,
     required this.longRunRatioMilli,
+    required this.averageRunCombinationEstimateMilli,
+    required this.maxRunCombinationEstimateMilli,
+    required this.runLengthWeightedCombinationEstimateMilli,
+    required this.singleCombinationSumRatioEstimateMilli,
+    required this.highAmbiguityRunCount,
+    required this.highAmbiguityRunRatioMilli,
     required this.runGraphNodeCount,
     required this.runGraphEdgeCount,
     required this.minRunGraphDegree,
@@ -67,6 +73,12 @@ class KakuroLayoutMetrics {
   final int longRunCount;
   final int shortRunRatioMilli;
   final int longRunRatioMilli;
+  final int averageRunCombinationEstimateMilli;
+  final int maxRunCombinationEstimateMilli;
+  final int runLengthWeightedCombinationEstimateMilli;
+  final int singleCombinationSumRatioEstimateMilli;
+  final int highAmbiguityRunCount;
+  final int highAmbiguityRunRatioMilli;
   final int runGraphNodeCount;
   final int runGraphEdgeCount;
   final int minRunGraphDegree;
@@ -95,6 +107,14 @@ class KakuroLayoutMetrics {
       'longRunCount': longRunCount,
       'shortRunRatioMilli': shortRunRatioMilli,
       'longRunRatioMilli': longRunRatioMilli,
+      'averageRunCombinationEstimateMilli': averageRunCombinationEstimateMilli,
+      'maxRunCombinationEstimateMilli': maxRunCombinationEstimateMilli,
+      'runLengthWeightedCombinationEstimateMilli':
+          runLengthWeightedCombinationEstimateMilli,
+      'singleCombinationSumRatioEstimateMilli':
+          singleCombinationSumRatioEstimateMilli,
+      'highAmbiguityRunCount': highAmbiguityRunCount,
+      'highAmbiguityRunRatioMilli': highAmbiguityRunRatioMilli,
       'runGraphNodeCount': runGraphNodeCount,
       'runGraphEdgeCount': runGraphEdgeCount,
       'minRunGraphDegree': minRunGraphDegree,
@@ -106,17 +126,39 @@ class KakuroLayoutMetrics {
   }
 }
 
-class KakuroLayoutPreScoreResult {
-  const KakuroLayoutPreScoreResult({
+typedef KakuroLayoutStats = KakuroLayoutMetrics;
+
+class KakuroLayoutScore {
+  const KakuroLayoutScore({
     required this.accepted,
     required this.reason,
     required this.scoreMilli,
-    required this.metrics,
+    required this.stats,
   });
 
   final bool accepted;
   final String reason;
   final int scoreMilli;
+  final KakuroLayoutStats stats;
+
+  Map<String, Object?> toTelemetry() {
+    return <String, Object?>{
+      'accepted': accepted,
+      'reason': reason,
+      'scoreMilli': scoreMilli,
+      ...stats.toTelemetry(),
+    };
+  }
+}
+
+class KakuroLayoutPreScoreResult extends KakuroLayoutScore {
+  const KakuroLayoutPreScoreResult({
+    required super.accepted,
+    required super.reason,
+    required super.scoreMilli,
+    required this.metrics,
+  }) : super(stats: metrics);
+
   final KakuroLayoutMetrics metrics;
 }
 
@@ -221,10 +263,54 @@ class KakuroLayoutPreScorer {
         metrics: metrics,
       );
     }
+    if (metrics.averageRunCombinationEstimateMilli >
+        profile.maxAverageRunCombinationEstimateMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'run_combination_ambiguity_high',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.runLengthWeightedCombinationEstimateMilli >
+        profile.maxWeightedRunCombinationEstimateMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'weighted_run_combination_ambiguity_high',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.singleCombinationSumRatioEstimateMilli <
+        profile.minSingleCombinationSumRatioEstimateMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'single_combination_sum_ratio_low',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.highAmbiguityRunRatioMilli >
+        profile.maxHighAmbiguityRunRatioMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'high_ambiguity_runs_heavy',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
     if (_isPathologicalHistogram(metrics, profile)) {
       return KakuroLayoutPreScoreResult(
         accepted: false,
         reason: 'run_histogram_pathological',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (scoreMilli < profile.minScoreMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'layout_score_low',
         scoreMilli: scoreMilli,
         metrics: metrics,
       );
@@ -252,6 +338,11 @@ class _KakuroLayoutThresholdProfile {
     required this.minRunGraphConnectivityMilli,
     required this.minSmallRunLengthBins,
     required this.maxDominantRunLengthRatioMilli,
+    required this.maxAverageRunCombinationEstimateMilli,
+    required this.maxWeightedRunCombinationEstimateMilli,
+    required this.minSingleCombinationSumRatioEstimateMilli,
+    required this.maxHighAmbiguityRunRatioMilli,
+    required this.minScoreMilli,
   });
 
   final int minWhiteDensityMilli;
@@ -265,6 +356,11 @@ class _KakuroLayoutThresholdProfile {
   final int minRunGraphConnectivityMilli;
   final int minSmallRunLengthBins;
   final int maxDominantRunLengthRatioMilli;
+  final int maxAverageRunCombinationEstimateMilli;
+  final int maxWeightedRunCombinationEstimateMilli;
+  final int minSingleCombinationSumRatioEstimateMilli;
+  final int maxHighAmbiguityRunRatioMilli;
+  final int minScoreMilli;
 }
 
 _KakuroLayoutThresholdProfile? _thresholdProfileFor({
@@ -272,8 +368,86 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
   required int height,
   required String difficulty,
 }) {
-  if (width != height) {
-    return null;
+  final String sizeId = '${width}x$height';
+  if (sizeId == '7x9' && difficulty == 'easy') {
+    return const _KakuroLayoutThresholdProfile(
+      minWhiteDensityMilli: 240,
+      maxWhiteDensityMilli: 640,
+      maxLongRuns: 12,
+      maxLongRunRatioMilli: 520,
+      minShortRuns: 4,
+      minShortRunRatioMilli: 380,
+      maxRunLength: 9,
+      minRunGraphDegree: 1,
+      minRunGraphConnectivityMilli: 1000,
+      minSmallRunLengthBins: 1,
+      maxDominantRunLengthRatioMilli: 860,
+      maxAverageRunCombinationEstimateMilli: 4200,
+      maxWeightedRunCombinationEstimateMilli: 4400,
+      minSingleCombinationSumRatioEstimateMilli: 220,
+      maxHighAmbiguityRunRatioMilli: 360,
+      minScoreMilli: 300,
+    );
+  }
+  if (sizeId == '7x10' && difficulty == 'medium') {
+    return const _KakuroLayoutThresholdProfile(
+      minWhiteDensityMilli: 240,
+      maxWhiteDensityMilli: 620,
+      maxLongRuns: 12,
+      maxLongRunRatioMilli: 500,
+      minShortRuns: 5,
+      minShortRunRatioMilli: 400,
+      maxRunLength: 9,
+      minRunGraphDegree: 1,
+      minRunGraphConnectivityMilli: 1000,
+      minSmallRunLengthBins: 1,
+      maxDominantRunLengthRatioMilli: 850,
+      maxAverageRunCombinationEstimateMilli: 4400,
+      maxWeightedRunCombinationEstimateMilli: 4600,
+      minSingleCombinationSumRatioEstimateMilli: 190,
+      maxHighAmbiguityRunRatioMilli: 400,
+      minScoreMilli: 280,
+    );
+  }
+  if (sizeId == '8x11' && difficulty == 'hard') {
+    return const _KakuroLayoutThresholdProfile(
+      minWhiteDensityMilli: 220,
+      maxWhiteDensityMilli: 620,
+      maxLongRuns: 14,
+      maxLongRunRatioMilli: 520,
+      minShortRuns: 5,
+      minShortRunRatioMilli: 360,
+      maxRunLength: 9,
+      minRunGraphDegree: 1,
+      minRunGraphConnectivityMilli: 1000,
+      minSmallRunLengthBins: 1,
+      maxDominantRunLengthRatioMilli: 860,
+      maxAverageRunCombinationEstimateMilli: 4600,
+      maxWeightedRunCombinationEstimateMilli: 4900,
+      minSingleCombinationSumRatioEstimateMilli: 160,
+      maxHighAmbiguityRunRatioMilli: 440,
+      minScoreMilli: 240,
+    );
+  }
+  if (sizeId == '9x12' && difficulty == 'expert') {
+    return const _KakuroLayoutThresholdProfile(
+      minWhiteDensityMilli: 220,
+      maxWhiteDensityMilli: 620,
+      maxLongRuns: 16,
+      maxLongRunRatioMilli: 540,
+      minShortRuns: 6,
+      minShortRunRatioMilli: 340,
+      maxRunLength: 9,
+      minRunGraphDegree: 1,
+      minRunGraphConnectivityMilli: 1000,
+      minSmallRunLengthBins: 1,
+      maxDominantRunLengthRatioMilli: 860,
+      maxAverageRunCombinationEstimateMilli: 4800,
+      maxWeightedRunCombinationEstimateMilli: 5200,
+      minSingleCombinationSumRatioEstimateMilli: 130,
+      maxHighAmbiguityRunRatioMilli: 480,
+      minScoreMilli: 220,
+    );
   }
   if (width == 9 &&
       (difficulty == 'medium' ||
@@ -291,6 +465,11 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       minRunGraphConnectivityMilli: 1000,
       minSmallRunLengthBins: 2,
       maxDominantRunLengthRatioMilli: 780,
+      maxAverageRunCombinationEstimateMilli: 5000,
+      maxWeightedRunCombinationEstimateMilli: 5400,
+      minSingleCombinationSumRatioEstimateMilli: 180,
+      maxHighAmbiguityRunRatioMilli: 400,
+      minScoreMilli: 320,
     );
   }
   return null;
@@ -308,6 +487,9 @@ int _scoreMetrics(
   score -= (metrics.longRunRatioMilli * 3) ~/ 4;
   score += (metrics.shortRunRatioMilli * 3) ~/ 5;
   score += metrics.runGraphConnectivityMilli ~/ 2;
+  score -= metrics.averageRunCombinationEstimateMilli ~/ 12;
+  score -= metrics.highAmbiguityRunRatioMilli ~/ 2;
+  score += metrics.singleCombinationSumRatioEstimateMilli ~/ 4;
   score -= metrics.unpairedValueCellCount * 180;
   if (score < 0) {
     return 0;
@@ -686,6 +868,12 @@ class KakuroLayout {
     int runLengthTotal = 0;
     int shortRunCount = 0;
     int longRunCount = 0;
+    int combinationEstimateTotalMilli = 0;
+    int maxRunCombinationEstimateMilli = 0;
+    int weightedCombinationEstimateNumerator = 0;
+    int weightedCombinationLengthTotal = 0;
+    int singleCombinationSumRatioTotalMilli = 0;
+    int highAmbiguityRunCount = 0;
     final Map<int, Set<int>> runGraphAdjacency = <int, Set<int>>{};
 
     for (final KakuroLayoutEntry entry in entries) {
@@ -723,11 +911,42 @@ class KakuroLayout {
       if (length >= 6) {
         longRunCount++;
       }
+      final _KakuroRunCombinationEstimate combinationEstimate =
+          _estimateCombinationAmbiguityForLength(length);
+      combinationEstimateTotalMilli +=
+          combinationEstimate.averageCombinationCountMilli;
+      if (combinationEstimate.maxCombinationCountMilli >
+          maxRunCombinationEstimateMilli) {
+        maxRunCombinationEstimateMilli =
+            combinationEstimate.maxCombinationCountMilli;
+      }
+      weightedCombinationEstimateNumerator +=
+          combinationEstimate.averageCombinationCountMilli * length;
+      weightedCombinationLengthTotal += length;
+      singleCombinationSumRatioTotalMilli +=
+          combinationEstimate.singleCombinationSumRatioMilli;
+      if (combinationEstimate.averageCombinationCountMilli >= 5000) {
+        highAmbiguityRunCount++;
+      }
     }
     final int totalRunCount = entries.length;
     final int averageRunLengthMilli = totalRunCount == 0
         ? 0
         : (runLengthTotal * 1000) ~/ totalRunCount;
+    final int averageRunCombinationEstimateMilli = totalRunCount == 0
+        ? 0
+        : combinationEstimateTotalMilli ~/ totalRunCount;
+    final int runLengthWeightedCombinationEstimateMilli =
+        weightedCombinationLengthTotal == 0
+        ? 0
+        : weightedCombinationEstimateNumerator ~/
+              weightedCombinationLengthTotal;
+    final int singleCombinationSumRatioEstimateMilli = totalRunCount == 0
+        ? 0
+        : singleCombinationSumRatioTotalMilli ~/ totalRunCount;
+    final int highAmbiguityRunRatioMilli = totalRunCount == 0
+        ? 0
+        : (highAmbiguityRunCount * 1000) ~/ totalRunCount;
 
     final Map<int, int> runDegree = <int, int>{};
     int runGraphEdgeCount = 0;
@@ -833,6 +1052,14 @@ class KakuroLayout {
       longRunCount: longRunCount,
       shortRunRatioMilli: shortRunRatioMilli,
       longRunRatioMilli: longRunRatioMilli,
+      averageRunCombinationEstimateMilli: averageRunCombinationEstimateMilli,
+      maxRunCombinationEstimateMilli: maxRunCombinationEstimateMilli,
+      runLengthWeightedCombinationEstimateMilli:
+          runLengthWeightedCombinationEstimateMilli,
+      singleCombinationSumRatioEstimateMilli:
+          singleCombinationSumRatioEstimateMilli,
+      highAmbiguityRunCount: highAmbiguityRunCount,
+      highAmbiguityRunRatioMilli: highAmbiguityRunRatioMilli,
       runGraphNodeCount: totalRunCount,
       runGraphEdgeCount: runGraphEdgeCount,
       minRunGraphDegree: minRunGraphDegree,
@@ -842,6 +1069,50 @@ class KakuroLayout {
       unpairedValueCellCount: unpairedValueCellCount,
     );
   }
+}
+
+class _KakuroRunCombinationEstimate {
+  const _KakuroRunCombinationEstimate({
+    required this.averageCombinationCountMilli,
+    required this.maxCombinationCountMilli,
+    required this.singleCombinationSumRatioMilli,
+  });
+
+  final int averageCombinationCountMilli;
+  final int maxCombinationCountMilli;
+  final int singleCombinationSumRatioMilli;
+}
+
+_KakuroRunCombinationEstimate _estimateCombinationAmbiguityForLength(
+  int length,
+) {
+  final Map<int, List<int>>? bySum = KakuroComboTable.instance.viewForLength(
+    length,
+  );
+  if (bySum == null || bySum.isEmpty) {
+    return const _KakuroRunCombinationEstimate(
+      averageCombinationCountMilli: 0,
+      maxCombinationCountMilli: 0,
+      singleCombinationSumRatioMilli: 0,
+    );
+  }
+  int comboTotal = 0;
+  int maxComboCount = 0;
+  int singleSumCount = 0;
+  for (final List<int> combos in bySum.values) {
+    comboTotal += combos.length;
+    if (combos.length > maxComboCount) {
+      maxComboCount = combos.length;
+    }
+    if (combos.length == 1) {
+      singleSumCount++;
+    }
+  }
+  return _KakuroRunCombinationEstimate(
+    averageCombinationCountMilli: (comboTotal * 1000) ~/ bySum.length,
+    maxCombinationCountMilli: maxComboCount * 1000,
+    singleCombinationSumRatioMilli: (singleSumCount * 1000) ~/ bySum.length,
+  );
 }
 
 String _computeLayoutHash(List<String> layout) {
