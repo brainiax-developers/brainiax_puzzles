@@ -88,6 +88,8 @@ void main() {
     expect(find.text('Random Play'), findsOneWidget);
     expect(find.text('Same puzzle for everyone'), findsOneWidget);
     expect(find.text('Unique to you'), findsOneWidget);
+    await tester.tap(find.text('Random Play'));
+    await tester.pump();
     expect(find.text('Easy'), findsOneWidget);
     expect(find.text('Medium'), findsOneWidget);
     expect(find.text('Hard'), findsOneWidget);
@@ -106,7 +108,7 @@ void main() {
 
     expect(find.text('Saved Game'), findsOneWidget);
     expect(find.text('Resume'), findsOneWidget);
-    expect(find.text('Random Play'), findsOneWidget);
+    expect(find.text('Random Play'), findsWidgets);
   });
 
   testWidgets('changes the daily CTA when the puzzle is completed today', (

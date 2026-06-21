@@ -8,6 +8,7 @@ import '../models/puzzle_type.dart' as app;
 import '../config/app_environment.dart';
 import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
+import '../services/generated_puzzle_difficulty.dart';
 import 'engine_provider.dart';
 import '../services/generation_isolate.dart';
 import '../services/slitherlink_on_demand_service.dart';
@@ -82,6 +83,11 @@ class PuzzleGenerationController
               size: resolvedSize,
               seed: resolvedSeed,
             );
+        final core.GeneratedPuzzle<dynamic> normalized =
+            normalizeGeneratedPuzzleDifficulty(
+              puzzle: generated,
+              requestedDifficulty: difficultyScore,
+            );
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
@@ -90,15 +96,16 @@ class PuzzleGenerationController
           );
         }
         if (token == _generationToken) {
-          state = AsyncValue.data(generated);
+          state = AsyncValue.data(normalized);
         }
-        return generated;
+        return normalized;
       }
       // Retry with deterministic sub-seeds derived from one base seed.
       final String baseSeed =
           seed ?? SeedService().generateRandomSeed(puzzleType.key);
       Object? lastError;
       StackTrace? lastStack;
+      core.GeneratedPuzzle<dynamic>? lastDifficultyMismatch;
       for (int attempt = 1; attempt <= _maxGenerationAttempts; attempt++) {
         final String attemptSeed = _seedForAttempt(baseSeed, attempt);
         final Duration attemptTimeout = _attemptTimeoutFor(
@@ -136,18 +143,43 @@ class PuzzleGenerationController
             ),
             timeout: attemptTimeout,
           );
+          if (!generatedPuzzleMatchesDifficulty(generated, difficultyScore)) {
+            lastDifficultyMismatch = generated;
+            lastError = StateError(
+              'Generated ${generated.meta.difficulty.level} puzzle for '
+              'requested ${difficultyScore.level}',
+            );
+            lastStack = StackTrace.current;
+            if (attempt < _maxGenerationAttempts) {
+              if (kDebugMode) {
+                debugPrint(
+                  '[Generation][RetryDifficulty] type=${puzzleType.key} '
+                  'requested=${difficultyScore.level} '
+                  'generated=${generated.meta.difficulty.level} '
+                  'seed=${generated.meta.seedStr} attempt=$attempt',
+                );
+              }
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+              continue;
+            }
+          }
+          final core.GeneratedPuzzle<dynamic> normalized =
+              normalizeGeneratedPuzzleDifficulty(
+                puzzle: generated,
+                requestedDifficulty: difficultyScore,
+              );
           if (token == _generationToken) {
-            state = AsyncValue.data(generated);
+            state = AsyncValue.data(normalized);
           }
           if (kDebugMode) {
             debugPrint(
               '[Generation][Success] type=${puzzleType.key} '
               'difficulty=$difficulty size=${resolvedSize.id} '
-              'seed=${generated.meta.seedStr} attempt=$attempt '
+              'seed=${normalized.meta.seedStr} attempt=$attempt '
               'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );
           }
-          return generated;
+          return normalized;
         } catch (e, st) {
           lastError = e;
           lastStack = st;
@@ -155,6 +187,25 @@ class PuzzleGenerationController
           // brief microtask yield to keep UI responsive
           await Future<void>.delayed(const Duration(milliseconds: 10));
         }
+      }
+      if (lastDifficultyMismatch != null) {
+        final normalized = normalizeGeneratedPuzzleDifficulty(
+          puzzle: lastDifficultyMismatch,
+          requestedDifficulty: difficultyScore,
+        );
+        if (token == _generationToken) {
+          state = AsyncValue.data(normalized);
+        }
+        if (kDebugMode) {
+          debugPrint(
+            '[Generation][DifficultyFallback] type=${puzzleType.key} '
+            'requested=${difficultyScore.level} '
+            'generated=${lastDifficultyMismatch.meta.difficulty.level} '
+            'seed=${lastDifficultyMismatch.meta.seedStr} '
+            'elapsedMs=${stopwatch.elapsedMilliseconds}',
+          );
+        }
+        return normalized;
       }
       // If we get here, all attempts failed.
       if (token == _generationToken) {

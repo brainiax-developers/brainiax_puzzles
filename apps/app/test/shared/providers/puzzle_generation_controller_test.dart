@@ -126,6 +126,82 @@ void main() {
     expect(controller.state.value, same(secondPuzzle));
   });
 
+  test('retries mismatched generated difficulty before returning', () async {
+    final worker = _QueuedPuzzleGenerationWorker();
+    worker.queue(
+      Future<core.GeneratedPuzzle<dynamic>>.value(
+        _stubPuzzle(
+          seedStr: 'difficulty-seed',
+          seed64: core.Seed.fromString('difficulty-seed'),
+          difficulty: 'hard',
+        ),
+      ),
+    );
+    worker.queue(
+      Future<core.GeneratedPuzzle<dynamic>>.value(
+        _stubPuzzle(
+          seedStr: 'difficulty-seed#attempt2',
+          seed64: core.Seed.fromString('difficulty-seed#attempt2'),
+          difficulty: 'easy',
+        ),
+      ),
+    );
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [puzzleGenerationWorkerProvider.overrideWithValue(worker)],
+    );
+    final controller = container.read(
+      puzzleGenerationControllerProvider.notifier,
+    );
+
+    final puzzle = await controller.generate(
+      puzzleType: PuzzleType.sudokuClassic,
+      difficulty: 'easy',
+      seed: 'difficulty-seed',
+    );
+
+    expect(worker.requests, hasLength(2));
+    expect(worker.requests.first.difficulty.level, equals('easy'));
+    expect(puzzle.meta.difficulty.level, equals('easy'));
+    expect(controller.state.value?.meta.difficulty.level, equals('easy'));
+  });
+
+  test(
+    'normalizes difficulty metadata after bounded mismatch retries',
+    () async {
+      final worker = _QueuedPuzzleGenerationWorker();
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        final seed = attempt == 1 ? 'all-hard' : 'all-hard#attempt$attempt';
+        worker.queue(
+          Future<core.GeneratedPuzzle<dynamic>>.value(
+            _stubPuzzle(
+              seedStr: seed,
+              seed64: core.Seed.fromString(seed),
+              difficulty: 'hard',
+            ),
+          ),
+        );
+      }
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [puzzleGenerationWorkerProvider.overrideWithValue(worker)],
+      );
+      final controller = container.read(
+        puzzleGenerationControllerProvider.notifier,
+      );
+
+      final puzzle = await controller.generate(
+        puzzleType: PuzzleType.sudokuClassic,
+        difficulty: 'easy',
+        seed: 'all-hard',
+      );
+
+      expect(worker.requests, hasLength(3));
+      expect(puzzle.meta.difficulty.level, equals('easy'));
+      expect(puzzle.telemetry?.extras['difficultyMetadataNormalized'], isTrue);
+    },
+  );
+
   test('worker timeout errors surface cleanly', () async {
     final timeout = PuzzleGenerationTimeoutException(
       'test timeout',
@@ -208,7 +284,7 @@ void main() {
       final watch = Stopwatch()..start();
       await controller.generate(
         puzzleType: PuzzleType.sudokuClassic,
-        difficulty: 'medium',
+        difficulty: 'hard',
       );
       watch.stop();
       samples.add(watch.elapsedMicroseconds);
@@ -256,6 +332,7 @@ void main() {
       engineId: PuzzleType.killerQueens.key,
       seedStr: 'killer-queens-expert',
       seed64: core.Seed.fromString('killer-queens-expert'),
+      difficulty: 'expert',
     );
     worker.queue(Future<core.GeneratedPuzzle<dynamic>>.value(puzzle));
     container.dispose();
@@ -312,16 +389,38 @@ core.GeneratedPuzzle<dynamic> _stubPuzzle({
   String engineId = '',
   required String seedStr,
   required int seed64,
+  String difficulty = 'medium',
 }) {
   const size = core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
-  const difficulty = core.DifficultyScore(value: 0.6, level: 'medium');
-  return core.StubPuzzleEngine(
-    engineId: engineId.isEmpty ? PuzzleType.sudokuClassic.key : engineId,
-  ).generate(
-    seedStr: seedStr,
-    seed64: seed64,
-    size: size,
-    difficulty: difficulty,
+  final difficultyScore = switch (difficulty) {
+    'easy' => const core.DifficultyScore(value: 0.3, level: 'easy'),
+    'hard' => const core.DifficultyScore(value: 0.9, level: 'hard'),
+    'expert' => const core.DifficultyScore(value: 1.2, level: 'expert'),
+    _ => const core.DifficultyScore(value: 0.6, level: 'medium'),
+  };
+  return core.GeneratedPuzzle<core.StubPuzzleState>(
+    state: core.StubPuzzleState(
+      id: seedStr,
+      data: <String, dynamic>{
+        'engineId': engineId.isEmpty ? PuzzleType.sudokuClassic.key : engineId,
+      },
+    ),
+    meta: core.PuzzleMetadata(
+      engineVersion: 'test',
+      rngId: core.SeededRng.rngId,
+      size: size,
+      difficulty: difficultyScore,
+      seedStr: seedStr,
+      seed64: seed64,
+    ),
+    telemetry: core.GenerationTelemetry(
+      difficulty: core.DifficultyTelemetry(
+        rawScore: difficultyScore.value,
+        bucket: difficultyScore.level,
+        metrics: const <String, num>{},
+      ),
+      extras: const <String, Object?>{},
+    ),
   );
 }
 

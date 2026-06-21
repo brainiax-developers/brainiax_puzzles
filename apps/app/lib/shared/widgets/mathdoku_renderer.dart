@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -424,9 +426,11 @@ class MathdokuCellLayout {
   static MathdokuCellLayout forCell(Rect rect) {
     final double inset = (rect.shortestSide * 0.07).clamp(2.0, 4.0);
     final double labelHeight = (rect.height * 0.28).clamp(10.0, 16.0);
+    final double maxLabelWidth = math.max(1.0, rect.width - inset * 2);
+    final double minLabelWidth = math.min(18.0, maxLabelWidth);
     final double labelWidth = (rect.width * 0.62).clamp(
-      18.0,
-      rect.width - inset * 2,
+      minLabelWidth,
+      maxLabelWidth,
     );
     final Rect labelRect = Rect.fromLTWH(
       rect.left + inset,

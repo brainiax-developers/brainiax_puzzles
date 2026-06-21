@@ -73,11 +73,12 @@ core.SudokuBoard buildSudokuPuzzleBoard() {
 
 core.GeneratedPuzzle<core.SudokuBoard> buildSudokuPuzzle({
   bool solved = false,
+  String difficulty = 'easy',
 }) {
   final board = solved ? _sudokuSolutionBoard : buildSudokuPuzzleBoard();
   return core.GeneratedPuzzle<core.SudokuBoard>(
     state: board,
-    meta: _metadataFor(size: '9x9', difficulty: 'easy'),
+    meta: _metadataFor(size: '9x9', difficulty: difficulty),
   );
 }
 

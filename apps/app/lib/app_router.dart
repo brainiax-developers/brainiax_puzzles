@@ -84,6 +84,7 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.home}) {
             puzzleType: puzzleType,
             mode: mode,
             puzzleInstance: state.extra,
+            difficulty: state.uri.queryParameters['difficulty'],
           );
         },
       ),
@@ -105,6 +106,7 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.home}) {
             puzzleType: puzzleType,
             mode: PuzzleMode.random,
             puzzleInstance: state.extra,
+            difficulty: state.uri.queryParameters['difficulty'],
           );
         },
       ),

@@ -7,10 +7,13 @@ import 'package:app/features/play/play_screen.dart';
 import 'package:app/features/daily/daily_providers.dart';
 import 'package:app/shared/providers/game_state_provider.dart';
 import 'package:app/shared/services/puzzle_local_store.dart';
+import 'package:app/shared/services/puzzle_progress_service.dart';
 import 'package:app/shared/widgets/nonogram_renderer.dart';
 import 'package:app/shared/widgets/killer_queens_renderer.dart';
+import 'package:app/shared/widgets/mathdoku_renderer.dart';
 import 'package:app/shared/widgets/slitherlink_renderer.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
+import 'package:app/shared/widgets/takuzu_renderer.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:app/shared/models/models.dart';
 
@@ -82,6 +85,299 @@ void main() {
     );
     expect(container.read(gameStateProvider)?.isSolved, isTrue);
   });
+
+  for (final difficulty in <String>['medium', 'hard']) {
+    testWidgets('random $difficulty puzzle keeps generated difficulty', (
+      tester,
+    ) async {
+      final engine = TestSudokuEngine();
+      core.EngineRegistry().register(engine);
+
+      final solved = buildSudokuPuzzle(solved: true, difficulty: difficulty);
+      final puzzle = core.GeneratedPuzzle<core.SudokuBoard>(
+        state: solved.state.setCell(0, 0, 0),
+        meta: solved.meta,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.sudokuClassic,
+              mode: PuzzleMode.random,
+              puzzleInstance: puzzle,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text(_titleCase(difficulty)), findsOneWidget);
+
+      tester
+          .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
+          .onMove!(const core.SudokuMove(row: 0, col: 0, digit: 5));
+      await tester.pumpAndSettle();
+
+      final prefs = await SharedPreferences.getInstance();
+      final store = SharedPreferencesPuzzleLocalStore(prefs);
+      final records = await store.completionRecords();
+      expect(records.single.difficulty, difficulty);
+      expect(
+        await store.bestTime(PuzzleType.sudokuClassic, difficulty),
+        isNotNull,
+      );
+      expect(find.textContaining(_titleCase(difficulty)), findsWidgets);
+    });
+  }
+
+  testWidgets(
+    'completed daily opens read-only solved view without regenerating',
+    (tester) async {
+      core.EngineRegistry().register(TestSudokuEngine());
+      final prefs = await SharedPreferences.getInstance();
+      final store = SharedPreferencesPuzzleLocalStore(prefs);
+      final progress = PuzzleProgressService(prefs);
+      final String todayKey = DailyUtcDate.todayKey();
+      final solvedPuzzle = buildSudokuPuzzle(solved: true);
+
+      await store.recordCompletion(
+        puzzleType: PuzzleType.sudokuClassic,
+        difficulty: solvedPuzzle.meta.difficulty.level,
+        completionTime: const Duration(minutes: 1, seconds: 17),
+        mode: PuzzleMode.daily,
+        size: solvedPuzzle.meta.size.id,
+        seed: solvedPuzzle.meta.seedStr,
+        moveCount: 9,
+        hintsUsed: 1,
+        dailyDateKeyUtc: todayKey,
+      );
+      await progress.saveRunForPuzzle(
+        puzzleType: PuzzleType.sudokuClassic,
+        mode: PuzzleMode.daily,
+        puzzle: solvedPuzzle,
+        elapsed: const Duration(minutes: 1, seconds: 17),
+        moveCount: 9,
+        hintsUsed: 1,
+        isSolved: true,
+        dailyDateKeyUtc: todayKey,
+      );
+
+      var generatedDaily = false;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+              generatedDaily = true;
+              return buildSudokuPuzzle();
+            }),
+          ],
+          child: const MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.sudokuClassic,
+              mode: PuzzleMode.daily,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(generatedDaily, isFalse);
+      expect(find.byType(SudokuRendererWidget), findsOneWidget);
+      expect(find.text('Solved'), findsOneWidget);
+      expect(find.text('01:17'), findsOneWidget);
+
+      final restartButton = tester.widget<InkWell>(
+        find
+            .ancestor(of: find.text('Restart'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(restartButton.onTap, isNull);
+
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('01:17'), findsOneWidget);
+      expect((await store.completionRecords()), hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'daily solved in the same screen disables restart and keeps solved run',
+    (tester) async {
+      core.EngineRegistry().register(TestSudokuEngine());
+
+      final solved = buildSudokuPuzzle(solved: true);
+      final puzzle = core.GeneratedPuzzle<core.SudokuBoard>(
+        state: solved.state.setCell(0, 0, 0),
+        meta: solved.meta,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.sudokuClassic,
+              mode: PuzzleMode.daily,
+              puzzleInstance: puzzle,
+              difficulty: 'Easy',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      tester
+          .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
+          .onMove!(const core.SudokuMove(row: 0, col: 0, digit: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Solved'), findsOneWidget);
+      expect(find.text('Restart puzzle?'), findsNothing);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+
+      final restartButton = tester.widget<InkWell>(
+        find
+            .ancestor(of: find.text('Restart'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(restartButton.onTap, isNull);
+
+      await tester.tap(find.text('Restart'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text('Restart puzzle?'), findsNothing);
+
+      final prefs = await SharedPreferences.getInstance();
+      final store = SharedPreferencesPuzzleLocalStore(prefs);
+      final records = await store.completionRecords();
+      expect(records, hasLength(1));
+
+      final run = await PuzzleProgressService(prefs).loadActiveRunFor(
+        type: PuzzleType.sudokuClassic,
+        mode: PuzzleMode.daily,
+        dailyDateKeyUtc: DailyUtcDate.todayKey(),
+      );
+      expect(run?.isSolved, isTrue);
+      expect(
+        run == null ? null : PuzzleProgressService(prefs).loadPuzzleForRun(run),
+        isNotNull,
+      );
+    },
+  );
+
+  testWidgets('completed Nonogram daily reopens solved board view', (
+    tester,
+  ) async {
+    final solvedPuzzle = buildNonogramPuzzle();
+    core.EngineRegistry().register(_TestNonogramEngine(solvedPuzzle));
+    final prefs = await SharedPreferences.getInstance();
+    final store = SharedPreferencesPuzzleLocalStore(prefs);
+    final progress = PuzzleProgressService(prefs);
+    final String todayKey = DailyUtcDate.todayKey();
+
+    await store.recordCompletion(
+      puzzleType: PuzzleType.nonogramMono,
+      difficulty: solvedPuzzle.meta.difficulty.level,
+      completionTime: const Duration(seconds: 42),
+      mode: PuzzleMode.daily,
+      size: solvedPuzzle.meta.size.id,
+      seed: solvedPuzzle.meta.seedStr,
+      moveCount: 3,
+      hintsUsed: 0,
+      dailyDateKeyUtc: todayKey,
+    );
+    await progress.saveRunForPuzzle(
+      puzzleType: PuzzleType.nonogramMono,
+      mode: PuzzleMode.daily,
+      puzzle: solvedPuzzle,
+      elapsed: const Duration(seconds: 42),
+      moveCount: 3,
+      hintsUsed: 0,
+      dailyDateKeyUtc: todayKey,
+    );
+
+    var generatedDaily = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+            generatedDaily = true;
+            return buildNonogramPuzzle();
+          }),
+        ],
+        child: const MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.nonogramMono,
+            mode: PuzzleMode.daily,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(generatedDaily, isFalse);
+    expect(find.byType(NonogramRendererWidget), findsOneWidget);
+    expect(find.textContaining('complete for today'), findsNothing);
+    expect(find.text('Solved'), findsOneWidget);
+  });
+
+  testWidgets(
+    'unfinished daily resumes persisted elapsed time before generating',
+    (tester) async {
+      core.EngineRegistry().register(TestSudokuEngine());
+      final prefs = await SharedPreferences.getInstance();
+      final progress = PuzzleProgressService(prefs);
+      final String todayKey = DailyUtcDate.todayKey();
+      final puzzle = buildSudokuPuzzle();
+
+      await progress.saveRunForPuzzle(
+        puzzleType: PuzzleType.sudokuClassic,
+        mode: PuzzleMode.daily,
+        puzzle: puzzle,
+        elapsed: const Duration(minutes: 3, seconds: 12),
+        moveCount: 4,
+        hintsUsed: 0,
+        dailyDateKeyUtc: todayKey,
+        notes: const <int, Set<int>>{
+          0: <int>{2, 3},
+        },
+      );
+
+      var generatedDaily = false;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+              generatedDaily = true;
+              return buildSudokuPuzzle();
+            }),
+          ],
+          child: const MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.sudokuClassic,
+              mode: PuzzleMode.daily,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(generatedDaily, isFalse);
+      expect(find.text('03:12'), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlayScreen)),
+      );
+      expect(
+        container.read(gameStateProvider)?.notes[0],
+        containsAll(<int>{2, 3}),
+      );
+    },
+  );
 
   testWidgets('Nonogram completes after final fill without requiring crosses', (
     tester,
@@ -286,6 +582,203 @@ void main() {
     expect(find.text('Full tutorial coming soon.'), findsOneWidget);
   });
 
+  testWidgets('Clear removes Sudoku notes-only and value-plus-notes cells', (
+    tester,
+  ) async {
+    core.EngineRegistry().register(TestSudokuEngine());
+    final puzzle = buildSudokuPuzzle();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.sudokuClassic,
+            mode: PuzzleMode.random,
+            puzzleInstance: puzzle,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlayScreen)),
+    );
+    final notifier = container.read(gameStateProvider.notifier);
+    notifier.recordNoteAction(0, 5, true);
+    tester
+        .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
+        .onCellSelected!(Offset.zero);
+    await tester.ensureVisible(find.text('Clear'));
+    await tester.tap(find.text('Clear'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(container.read(gameStateProvider)!.notes.containsKey(0), isFalse);
+
+    await notifier.makeMove(const core.SudokuMove(row: 0, col: 0, digit: 5));
+    notifier.recordNoteAction(0, 6, true);
+    await tester.pump();
+    await tester.tap(find.text('Clear'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final state = container.read(gameStateProvider)!;
+    final board = state.puzzle.state as core.SudokuBoard;
+    expect(board.cellAt(0, 0), 0);
+    expect(state.notes.containsKey(0), isFalse);
+
+    final prefs = await SharedPreferences.getInstance();
+    final run = await PuzzleProgressService(
+      prefs,
+    ).loadActiveRunFor(type: PuzzleType.sudokuClassic, mode: PuzzleMode.random);
+    expect(run?.notes.containsKey(0), isFalse);
+  });
+
+  testWidgets('Clear removes MathDoku notes-only and value-plus-notes cells', (
+    tester,
+  ) async {
+    core.EngineRegistry().register(const _TestMathdokuEngine());
+    final puzzle = buildMathdokuPuzzle();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.mathdokuClassic,
+            mode: PuzzleMode.random,
+            puzzleInstance: puzzle,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlayScreen)),
+    );
+    final notifier = container.read(gameStateProvider.notifier);
+
+    await notifier.makeMove(const core.MathdokuMove(row: 0, col: 0, value: 0));
+    notifier.recordNoteAction(0, 3, true);
+    tester
+        .widget<MathdokuRendererWidget>(find.byType(MathdokuRendererWidget))
+        .onCellSelected!(Offset.zero);
+    await tester.ensureVisible(find.text('Clear'));
+    await tester.tap(find.text('Clear'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(container.read(gameStateProvider)!.notes.containsKey(0), isFalse);
+
+    await notifier.makeMove(const core.MathdokuMove(row: 0, col: 0, value: 1));
+    notifier.recordNoteAction(0, 2, true);
+    await tester.pump();
+    await tester.tap(find.text('Clear'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final state = container.read(gameStateProvider)!;
+    final board = state.puzzle.state as core.MathdokuBoard;
+    expect(board.cellAt(0, 0), 0);
+    expect(state.notes.containsKey(0), isFalse);
+  });
+
+  for (final entry
+      in <
+        (
+          PuzzleType,
+          core.PuzzleEngine<dynamic, dynamic>,
+          core.GeneratedPuzzle<dynamic>,
+          Type,
+        )
+      >[
+        (
+          PuzzleType.takuzuBinary,
+          core.TakuzuEngine(),
+          _buildTakuzuHintPuzzle(),
+          TakuzuRendererWidget,
+        ),
+        (
+          PuzzleType.slitherlinkLoop,
+          core.SlitherlinkEngine(),
+          _buildAlmostSolvedSlitherlinkPuzzle(),
+          SlitherlinkRendererWidget,
+        ),
+        (
+          PuzzleType.killerQueens,
+          core.KillerQueensEngine(),
+          _buildKillerQueensHintPuzzle(),
+          KillerQueensRendererWidget,
+        ),
+      ]) {
+    testWidgets('${entry.$1.displayName} hint applies and increments count', (
+      tester,
+    ) async {
+      core.EngineRegistry().register(entry.$2);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: PlayScreen(
+              puzzleType: entry.$1,
+              mode: PuzzleMode.random,
+              puzzleInstance: entry.$3,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(entry.$4), findsOneWidget);
+      final InkWell hintButton = tester.widget<InkWell>(
+        find
+            .ancestor(of: find.text('Hint'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(hintButton.onTap, isNotNull);
+
+      await tester.tap(find.text('Hint'));
+      await tester.pump(const Duration(milliseconds: 2300));
+
+      final prefs = await SharedPreferences.getInstance();
+      final store = SharedPreferencesPuzzleLocalStore(prefs);
+      final records = await store.completionRecords();
+      if (records.isNotEmpty) {
+        expect(records.last.hintsUsed, 1);
+      } else {
+        final run = await PuzzleProgressService(
+          prefs,
+        ).loadActiveRunFor(type: entry.$1, mode: PuzzleMode.random);
+        expect(run?.hintsUsed, 1);
+      }
+    });
+  }
+
+  testWidgets('supported Sudoku hint applies and increments hints used', (
+    tester,
+  ) async {
+    core.EngineRegistry().register(HintingSudokuEngine());
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.sudokuClassic,
+            mode: PuzzleMode.random,
+            puzzleInstance: buildSudokuPuzzle(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Hint'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final prefs = await SharedPreferences.getInstance();
+    final run = await PuzzleProgressService(
+      prefs,
+    ).loadActiveRunFor(type: PuzzleType.sudokuClassic, mode: PuzzleMode.random);
+    expect(run?.hintsUsed, 1);
+  });
+
   testWidgets(
     'daily Kakuro shows loading immediately and does not render stale puzzle',
     (tester) async {
@@ -398,6 +891,25 @@ _buildAlmostSolvedSlitherlinkPuzzle() {
       difficulty: 'easy',
       dailyPuzzleType: PuzzleType.slitherlinkLoop,
     ),
+  );
+}
+
+core.GeneratedPuzzle<core.TakuzuBoard> _buildTakuzuHintPuzzle() {
+  final puzzle = buildTakuzuPuzzle();
+  final board = puzzle.state.setCell(1, 1, core.TakuzuBoard.emptyValue);
+  return core.GeneratedPuzzle<core.TakuzuBoard>(
+    state: board,
+    meta: puzzle.meta,
+  );
+}
+
+core.GeneratedPuzzle<core.KillerQueensBoard> _buildKillerQueensHintPuzzle() {
+  final puzzle = buildKillerQueensPuzzle();
+  final cells = List<int>.from(puzzle.state.cells);
+  cells[9] = 0;
+  return core.GeneratedPuzzle<core.KillerQueensBoard>(
+    state: puzzle.state.copyWith(cells: cells),
+    meta: puzzle.meta,
   );
 }
 
@@ -611,4 +1123,80 @@ bool _cluesEqual(List<int> a, List<int> b) {
     }
   }
   return true;
+}
+
+String _titleCase(String value) {
+  return value[0].toUpperCase() + value.substring(1);
+}
+
+class HintingSudokuEngine extends TestSudokuEngine {
+  @override
+  core.PuzzleCapabilities get capabilities =>
+      const core.PuzzleCapabilities(supportsHints: true);
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.SudokuBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return core.PuzzleHint(
+      cells: <core.PuzzleHintCell>[
+        core.PuzzleHintCell(
+          row: 0,
+          column: 0,
+          metadata: <String, Object?>{'digit': 5},
+        ),
+      ],
+      metadata: const <String, Object?>{'kind': 'fill_single_cell'},
+    );
+  }
+}
+
+class _TestMathdokuEngine
+    implements core.PuzzleEngine<core.MathdokuBoard, core.MathdokuMove> {
+  const _TestMathdokuEngine();
+
+  @override
+  String get id => PuzzleType.mathdokuClassic.key;
+
+  @override
+  String get name => 'Test MathDoku';
+
+  @override
+  String get version => '1.0.0';
+
+  @override
+  core.PuzzleCapabilities get capabilities =>
+      const core.PuzzleCapabilities(supportsHints: true);
+
+  @override
+  core.GeneratedPuzzle<core.MathdokuBoard> generate({
+    required String seedStr,
+    required int seed64,
+    required core.SizeOpt size,
+    required core.DifficultyScore difficulty,
+  }) {
+    return buildMathdokuPuzzle();
+  }
+
+  @override
+  bool isSolved(core.MathdokuBoard state) => false;
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.MathdokuBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+
+  @override
+  core.MoveResult<core.MathdokuBoard> validateMove({
+    required core.MathdokuBoard currentState,
+    required core.MathdokuMove move,
+  }) {
+    return core.MoveResult.success(
+      currentState.setCell(move.row, move.col, move.value),
+    );
+  }
 }

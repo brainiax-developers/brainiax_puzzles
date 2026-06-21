@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../../shared/services/generation_isolate.dart';
 import '../../shared/config/app_environment.dart';
+import '../../shared/services/generated_puzzle_difficulty.dart';
 
 import '../../shared/providers/engine_provider.dart';
 import 'daily_seed_generator.dart';
@@ -42,7 +43,7 @@ final dailyPuzzleProvider =
               : '${seed.seedStr}#attempt$attempt';
           final int attemptSeed64 = Seed.fromString(attemptSeedStr);
           try {
-            return await ref
+            final GeneratedPuzzle<dynamic> generated = await ref
                 .read(puzzleGenerationWorkerProvider)
                 .generate(
                   PuzzleGenerationRequest(
@@ -54,6 +55,10 @@ final dailyPuzzleProvider =
                   ),
                   timeout: remaining,
                 );
+            return normalizeGeneratedPuzzleDifficulty(
+              puzzle: generated,
+              requestedDifficulty: difficulty,
+            );
           } catch (error, stackTrace) {
             lastError = error;
             lastStackTrace = stackTrace;
@@ -71,7 +76,7 @@ final dailyPuzzleProvider =
         );
       }
 
-      return ref
+      final GeneratedPuzzle<dynamic> generated = await ref
           .read(puzzleGenerationWorkerProvider)
           .generate(
             PuzzleGenerationRequest(
@@ -83,6 +88,10 @@ final dailyPuzzleProvider =
             ),
             timeout: const Duration(seconds: 2),
           );
+      return normalizeGeneratedPuzzleDifficulty(
+        puzzle: generated,
+        requestedDifficulty: difficulty,
+      );
     });
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {

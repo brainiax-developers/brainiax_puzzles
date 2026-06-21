@@ -194,6 +194,8 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
       'propagationRounds': search.propagationRounds,
       'initialCandidateSlots': search.initialCandidateSlots,
       'searchBudgetExceeded': search.searchBudgetExceeded,
+      'hitSearchDepthLimit': search.hitSearchDepthLimit,
+      'hitBacktrackNodeLimit': search.hitBacktrackNodeLimit,
       'solverStatus': status.name,
     };
     final Map<String, Object?>? disagreementSummary = _buildDisagreementSummary(

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'generation_isolate.dart';
+import 'generated_puzzle_difficulty.dart';
 import '../config/app_environment.dart';
 
 import '../models/models.dart';
@@ -91,7 +92,10 @@ class PuzzlePreloadService {
               ),
               timeout: attemptTimeout,
             );
-            _cache[key] = generated;
+            _cache[key] = normalizeGeneratedPuzzleDifficulty(
+              puzzle: generated,
+              requestedDifficulty: diffScore,
+            );
             if (kDebugMode) {
               print(
                 'Preloaded puzzle for ${metadata.type.key} @ $difficulty (seed: $seed)',

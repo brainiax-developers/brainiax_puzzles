@@ -181,14 +181,17 @@ final activeRunsProvider = FutureProvider<List<ActivePuzzleRun>>((ref) async {
   final List<ActivePuzzleRun> runs = <ActivePuzzleRun>[];
 
   for (final puzzleType in PuzzleType.values) {
-    final ActivePuzzleRun? run = await progress.loadActiveRun(puzzleType);
-    if (run == null || run.isSolved) {
-      continue;
+    final List<ActivePuzzleRun> puzzleRuns = await progress
+        .loadActiveRunsForType(puzzleType);
+    for (final run in puzzleRuns) {
+      if (run.isSolved) {
+        continue;
+      }
+      if (run.mode == PuzzleMode.daily && run.dailyDateKeyUtc != todayKey) {
+        continue;
+      }
+      runs.add(run);
     }
-    if (run.mode == PuzzleMode.daily && run.dailyDateKeyUtc != todayKey) {
-      continue;
-    }
-    runs.add(run);
   }
 
   runs.sort((a, b) => b.updatedAtUtc.compareTo(a.updatedAtUtc));

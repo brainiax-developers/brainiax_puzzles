@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../services/generation_isolate.dart';
+import '../services/generated_puzzle_difficulty.dart';
 import '../models/puzzle_input_moves.dart';
 import 'engine_provider.dart';
 
@@ -48,7 +49,7 @@ class GameStateNotifier extends Notifier<GameState?> {
       engineId: engineId,
       difficulty: difficulty,
     );
-    final puzzle = await ref
+    final generatedPuzzle = await ref
         .read(puzzleGenerationWorkerProvider)
         .generate(
           PuzzleGenerationRequest(
@@ -60,6 +61,10 @@ class GameStateNotifier extends Notifier<GameState?> {
           ),
           timeout: timeout,
         );
+    final puzzle = normalizeGeneratedPuzzleDifficulty(
+      puzzle: generatedPuzzle,
+      requestedDifficulty: difficultyScore,
+    );
     stopwatch.stop();
 
     if (kDebugMode) {
@@ -74,7 +79,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     final gameState = GameState(
       engineId: engineId,
       seed: seed,
-      difficulty: difficulty,
+      difficulty: puzzle.meta.difficulty.level,
       size: sizeOpt.id,
       puzzle: puzzle,
       isSolved: false,
@@ -101,6 +106,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     required String size,
     required GeneratedPuzzle puzzle,
     Map<int, Set<int>> notes = const <int, Set<int>>{},
+    bool isSolved = false,
   }) async {
     if (kDebugMode) {
       // ignore: avoid_print
@@ -109,19 +115,29 @@ class GameStateNotifier extends Notifier<GameState?> {
         'difficulty=$difficulty size=$size',
       );
     }
+    final DifficultyScore? requestedDifficulty = _tryParseDifficulty(
+      difficulty,
+    );
+    final GeneratedPuzzle effectivePuzzle = requestedDifficulty == null
+        ? puzzle
+        : normalizeGeneratedPuzzleDifficulty(
+            puzzle: puzzle,
+            requestedDifficulty: requestedDifficulty,
+          );
+
     // Reset action history
     _actionHistory.clear();
     _currentActionIndex = -1;
-    _initialPuzzle = puzzle;
+    _initialPuzzle = effectivePuzzle;
     _initialNotes = _copyNotes(notes);
 
     final gameState = GameState(
       engineId: engineId,
       seed: seed,
-      difficulty: difficulty,
+      difficulty: effectivePuzzle.meta.difficulty.level,
       size: size,
-      puzzle: puzzle,
-      isSolved: false,
+      puzzle: effectivePuzzle,
+      isSolved: isSolved,
       startTime: DateTime.now(),
       notes: _copyNotes(notes),
     );
@@ -641,6 +657,47 @@ class GameStateNotifier extends Notifier<GameState?> {
     state = state!.copyWith(notes: newNotes);
   }
 
+  /// Clean up Kakuro pencil marks after a digit is placed in a run cell.
+  void cleanupKakuroNotesForPlacement({
+    required int row,
+    required int col,
+    required int digit,
+  }) {
+    if (state == null || digit <= 0) return;
+    final Object boardState = state!.puzzle.state;
+    if (boardState is! KakuroBoard || state!.notes.isEmpty) return;
+
+    final int placedIndex = boardState.indexOf(row, col);
+    if (!boardState.isPlayableIndex(placedIndex)) return;
+
+    final Set<int> peerCells = <int>{};
+    final int acrossEntryId = boardState.acrossEntryForCell[placedIndex];
+    if (acrossEntryId >= 0) {
+      peerCells.addAll(boardState.entries[acrossEntryId].cells);
+    }
+    final int downEntryId = boardState.downEntryForCell[placedIndex];
+    if (downEntryId >= 0) {
+      peerCells.addAll(boardState.entries[downEntryId].cells);
+    }
+    peerCells.remove(placedIndex);
+
+    final Map<int, Set<int>> newNotes = <int, Set<int>>{};
+    state!.notes.forEach((int index, Set<int> notes) {
+      if (index == placedIndex) {
+        return;
+      }
+      final Set<int> updated = Set<int>.from(notes);
+      if (peerCells.contains(index)) {
+        updated.remove(digit);
+      }
+      if (updated.isNotEmpty) {
+        newNotes[index] = updated;
+      }
+    });
+
+    state = state!.copyWith(notes: newNotes);
+  }
+
   /// Reconstruct state from action history.
   void _reconstructState() {
     if (state == null) return;
@@ -814,6 +871,11 @@ class GameStateNotifier extends Notifier<GameState?> {
 
   /// Parse difficulty string to DifficultyScore.
   DifficultyScore _parseDifficulty(String difficulty) {
+    return _tryParseDifficulty(difficulty) ??
+        const DifficultyScore(value: 0.6, level: 'medium');
+  }
+
+  DifficultyScore? _tryParseDifficulty(String difficulty) {
     switch (difficulty.toLowerCase()) {
       case 'easy':
         return const DifficultyScore(value: 0.3, level: 'easy');
@@ -824,7 +886,7 @@ class GameStateNotifier extends Notifier<GameState?> {
       case 'expert':
         return const DifficultyScore(value: 1.2, level: 'expert');
       default:
-        return const DifficultyScore(value: 0.6, level: 'medium');
+        return null;
     }
   }
 

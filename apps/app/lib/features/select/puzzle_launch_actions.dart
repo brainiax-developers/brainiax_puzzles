@@ -21,7 +21,9 @@ Future<void> resumePuzzleRun({
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final PuzzleProgressService progress = PuzzleProgressService(prefs);
   final ActivePuzzleRun? run = await progress.loadActiveRun(puzzleType);
-  final core.GeneratedPuzzle<dynamic>? puzzle = progress.load(puzzleType);
+  final core.GeneratedPuzzle<dynamic>? puzzle = run == null
+      ? null
+      : progress.loadPuzzleForRun(run);
 
   if (!context.mounted) {
     return;
@@ -149,7 +151,7 @@ Future<void> _clearProgress(WidgetRef ref, PuzzleType puzzleType) async {
   try {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final PuzzleProgressService progress = PuzzleProgressService(prefs);
-    await progress.clear(puzzleType);
+    await progress.clearRun(type: puzzleType, mode: PuzzleMode.random);
   } catch (_) {
     // Ignore persistence failures and allow the new launch flow to continue.
   } finally {

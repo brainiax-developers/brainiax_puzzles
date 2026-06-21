@@ -22,4 +22,13 @@ void main() {
     expect(layout.noteGridRect.width, greaterThan(0));
     expect(layout.noteGridRect.height, greaterThan(0));
   });
+
+  test('cell layout accepts compressed play-screen cells', () {
+    final layout = MathdokuCellLayout.forCell(
+      const Rect.fromLTWH(0, 0, 16, 24),
+    );
+
+    expect(layout.cageLabelRect.width, greaterThan(0));
+    expect(layout.noteGridRect.width, greaterThan(0));
+  });
 }

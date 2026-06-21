@@ -155,14 +155,9 @@ class _DailyHubContent extends StatelessWidget {
               child: _DailyPuzzleCard(
                 entry: entry,
                 metadata: metadataByType[entry.puzzleType],
-                onPressed: entry.cardState == DailyHubCardState.completed
-                    ? null
-                    : () => context.push(
-                        AppRoutes.play(
-                          entry.puzzleType.key,
-                          PuzzleMode.daily.key,
-                        ),
-                      ),
+                onPressed: () => context.push(
+                  AppRoutes.play(entry.puzzleType.key, PuzzleMode.daily.key),
+                ),
               ),
             );
           }),
@@ -422,7 +417,7 @@ class _DailyPuzzleCard extends StatelessWidget {
     final String actionLabel = switch (entry.cardState) {
       DailyHubCardState.play => 'Play',
       DailyHubCardState.resume => 'Resume',
-      DailyHubCardState.completed => 'Completed',
+      DailyHubCardState.completed => 'View',
     };
 
     return Card(

@@ -363,6 +363,77 @@ void main() {
       expect(run!.mode, PuzzleMode.daily);
       expect(run.dailyDateKeyUtc, '2024-02-03');
     });
+
+    test(
+      'keeps random and daily active runs separate by mode and UTC date',
+      () async {
+        final service = PuzzleProgressService(prefs);
+        final randomPuzzle = buildSudokuPuzzle(difficulty: 'medium');
+        final dailyPuzzle = buildSudokuPuzzle(difficulty: 'easy');
+
+        await service.saveRunForPuzzle(
+          puzzleType: PuzzleType.sudokuClassic,
+          mode: PuzzleMode.random,
+          puzzle: randomPuzzle,
+          elapsed: const Duration(seconds: 11),
+          moveCount: 1,
+          hintsUsed: 0,
+        );
+        await service.saveRunForPuzzle(
+          puzzleType: PuzzleType.sudokuClassic,
+          mode: PuzzleMode.daily,
+          puzzle: dailyPuzzle,
+          elapsed: const Duration(minutes: 3, seconds: 12),
+          moveCount: 7,
+          hintsUsed: 2,
+          dailyDateKeyUtc: '2026-06-20',
+          notes: const <int, Set<int>>{
+            0: <int>{4, 5},
+          },
+        );
+
+        final randomRun = await service.loadActiveRunFor(
+          type: PuzzleType.sudokuClassic,
+          mode: PuzzleMode.random,
+        );
+        final dailyRun = await service.loadActiveRunFor(
+          type: PuzzleType.sudokuClassic,
+          mode: PuzzleMode.daily,
+          dailyDateKeyUtc: '2026-06-20',
+        );
+
+        expect(randomRun, isNotNull);
+        expect(randomRun!.mode, PuzzleMode.random);
+        expect(randomRun.elapsedMs, 11000);
+        expect(dailyRun, isNotNull);
+        expect(dailyRun!.mode, PuzzleMode.daily);
+        expect(dailyRun.dailyDateKeyUtc, '2026-06-20');
+        expect(dailyRun.elapsedMs, 192000);
+        expect(dailyRun.moveCount, 7);
+        expect(dailyRun.hintsUsed, 2);
+        expect(dailyRun.notes[0], containsAll(<int>{4, 5}));
+
+        await service.clearRun(
+          type: PuzzleType.sudokuClassic,
+          mode: PuzzleMode.random,
+        );
+        expect(
+          await service.loadActiveRunFor(
+            type: PuzzleType.sudokuClassic,
+            mode: PuzzleMode.random,
+          ),
+          isNull,
+        );
+        expect(
+          await service.loadActiveRunFor(
+            type: PuzzleType.sudokuClassic,
+            mode: PuzzleMode.daily,
+            dailyDateKeyUtc: '2026-06-20',
+          ),
+          isNotNull,
+        );
+      },
+    );
   });
 
   group('FavouritePuzzleService', () {

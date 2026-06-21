@@ -1,5 +1,6 @@
 import 'package:app/app_router.dart';
 import 'package:app/features/daily/daily_hub_provider.dart';
+import 'package:app/features/daily/daily_providers.dart';
 import 'package:app/features/daily/daily_screen.dart';
 import 'package:app/features/play/play_screen.dart';
 import 'package:app/shared/models/models.dart';
@@ -9,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../helpers/test_puzzle_data.dart';
 
 void main() {
   setUp(() {
@@ -23,7 +26,18 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [dailyHubProvider.overrideWith((ref) async => view)],
+        overrides: [
+          dailyHubProvider.overrideWith((ref) async => view),
+          dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+            return switch (puzzleTypeKey) {
+              'kakuro_classic' => buildKakuroPuzzle(),
+              'slitherlink_loop' => buildSlitherlinkPuzzle(),
+              'mathdoku_classic' => buildMathdokuPuzzle(),
+              'nonogram_mono' => buildNonogramPuzzle(),
+              _ => buildSudokuPuzzle(),
+            };
+          }),
+        ],
         child: MaterialApp.router(
           routeInformationProvider: router.routeInformationProvider,
           routeInformationParser: router.routeInformationParser,
@@ -105,7 +119,7 @@ void main() {
       tester,
       find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
     );
-    expect(find.widgetWithText(ElevatedButton, 'Completed'), findsWidgets);
+    expect(find.widgetWithText(ElevatedButton, 'View'), findsWidgets);
     expect(find.text('Solved in 4m 5s'), findsOneWidget);
   });
 
@@ -134,20 +148,31 @@ void main() {
     expect(find.text('Slitherlink Loop'), findsOneWidget);
   });
 
-  testWidgets('completed daily puzzle cards stay on the hub', (
+  testWidgets('completed daily puzzle cards route through the daily gate', (
     WidgetTester tester,
   ) async {
-    final GoRouter router = await pumpDailyRouter(tester, view: _buildView());
+    await pumpDailyRouter(tester, view: _buildView());
 
     await _scrollTo(
       tester,
       find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
     );
-    await tester.tap(find.byKey(const ValueKey('daily-puzzle-kakuro_classic')));
-    await tester.pumpAndSettle();
+    final kakuroCard = find.byKey(
+      const ValueKey('daily-puzzle-kakuro_classic'),
+    );
+    await tester.tap(
+      find.descendant(
+        of: kakuroCard,
+        matching: find.widgetWithText(ElevatedButton, 'View'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.byType(PlayScreen), findsNothing);
-    expect(router.routeInformationProvider.value.uri.path, AppRoutes.daily);
+    expect(find.byType(PlayScreen), findsOneWidget);
+    final PlayScreen playScreen = tester.widget(find.byType(PlayScreen));
+    expect(playScreen.puzzleType, PuzzleType.kakuroClassic);
+    expect(playScreen.mode, PuzzleMode.daily);
   });
 
   testWidgets('all-complete state does not show an enabled start action', (
