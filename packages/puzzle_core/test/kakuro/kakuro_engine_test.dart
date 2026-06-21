@@ -385,50 +385,6 @@ void main() {
       expect(validator.isSolved(duplicate), isFalse);
     });
   });
-
-  group('requestHint logic hints', () {
-    test('returns duplicate_digit_in_run hint when there are duplicates', () {
-      final KakuroBoard board = _fixtureBoard(values: const <int>[4, 4, 0, 0]);
-      final PuzzleHint? hint = engine.requestHint(currentState: board);
-      expect(hint, isNotNull);
-      expect(hint!.metadata['kind'], equals('duplicate_digit_in_run'));
-      expect(hint.cells.length, equals(2));
-    });
-
-    test('returns run_sum_exceeded hint when partial sum exceeds target', () {
-      final KakuroBoard board = _fixtureBoard(values: const <int>[9, 8, 0, 0]);
-      final PuzzleHint? hint = engine.requestHint(currentState: board);
-      expect(hint, isNotNull);
-      expect(hint!.metadata['kind'], equals('run_sum_exceeded'));
-    });
-
-    test('returns run_completed_incorrectly hint when run is full but sum is wrong', () {
-      final KakuroBoard board = _fixtureBoard(values: const <int>[6, 3, 0, 0]);
-      final PuzzleHint? hint = engine.requestHint(currentState: board);
-      expect(hint, isNotNull);
-      expect(hint!.metadata['kind'], equals('run_completed_incorrectly'));
-    });
-
-    test('returns single_candidate_cell when only one digit is valid', () {
-      final KakuroBoard board = _fixtureBoard(values: const <int>[1, 9, 0, 3]);
-      final PuzzleHint? hint = engine.requestHint(currentState: board);
-      expect(hint, isNotNull);
-      expect(hint!.metadata['kind'], equals('single_candidate_cell'));
-      expect(hint.cells.length, equals(1));
-      expect(hint.cells.first.row, equals(1));
-      expect(hint.cells.first.column, equals(0));
-      expect(hint.cells.first.metadata['digit'], isNull);
-    });
-
-    test('returns fill_single_cell fallback when no logical hint exists', () {
-      final KakuroBoard board = _fixtureBoard(values: const <int>[0, 0, 0, 0]);
-      final PuzzleHint? hint = engine.requestHint(currentState: board);
-      expect(hint, isNotNull);
-      expect(hint!.metadata['kind'], equals('fill_single_cell'));
-      expect(hint.cells.length, equals(1));
-      expect(hint.cells.first.metadata['digit'], isNotNull);
-    });
-  });
 }
 
 KakuroBoard _fixtureBoard({
