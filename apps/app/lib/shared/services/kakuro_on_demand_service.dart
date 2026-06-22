@@ -48,20 +48,27 @@ class KakuroOnDemandService {
       }
       attemptsStarted = attempt;
       final int attemptSeed = _deriveAttemptSeed(baseSeed, attempt);
+      final int attemptsRemaining = maxAttempts - attempt + 1;
+      final Duration attemptBudget = Duration(
+        milliseconds: (remaining.inMilliseconds / attemptsRemaining).ceil(),
+      );
+
       if (kDebugMode) {
         debugPrint(
           '[KakuroOnDemand] start attempt=$attempt '
-          'difficulty=$normalized seed=$attemptSeed '
-          'baseSeed=$baseSeed '
-          'budgetMs=${timeBudget.inMilliseconds}',
+              'difficulty=$normalized seed=$attemptSeed '
+              'baseSeed=$baseSeed '
+              'attemptBudgetMs=${attemptBudget.inMilliseconds} '
+              'remainingBudgetMs=${remaining.inMilliseconds}',
         );
       }
+
       final request = core.GenerateKakuroRequest(
         width: width,
         height: height,
         difficulty: normalized,
         seed: attemptSeed,
-        timeBudget: remaining,
+        timeBudget: attemptBudget,
         maxRestarts: 1,
         strategy: core.KakuroGenerationStrategy.solutionFirst,
       );

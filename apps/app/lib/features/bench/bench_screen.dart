@@ -19,21 +19,28 @@ class BenchScreen extends StatefulWidget {
 
 class _BenchScreenState extends State<BenchScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _puzzleIdController = TextEditingController(text: 'stub');
-  final _difficultyController = TextEditingController(text: 'medium');
-  final _sizeController = TextEditingController(text: '9x9');
-  final _countController = TextEditingController(text: '100');
-  
+  final _countController = TextEditingController(text: '20');
+
+  String _selectedPuzzleId = 'kakuro_classic';
+  String _selectedDifficulty = 'easy';
+  late String _selectedSize;
+
   bool _isRunning = false;
   bool _skipFirstRun = false;
   BenchResult? _lastResult;
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _selectedSize = _defaultSizeForPuzzleDifficulty(
+      _selectedPuzzleId,
+      _selectedDifficulty,
+    );
+  }
+
+  @override
   void dispose() {
-    _puzzleIdController.dispose();
-    _difficultyController.dispose();
-    _sizeController.dispose();
     _countController.dispose();
     super.dispose();
   }
@@ -70,19 +77,19 @@ class _BenchScreenState extends State<BenchScreen> {
   Future<BenchResult> _runBenchmarkInIsolate() async {
     // Collect device info in main thread
     final deviceInfo = await _collectDeviceInfo();
-    
+
     // Generate RNG ID and seed for telemetry
     final rngId = 'benchmark_${DateTime.now().millisecondsSinceEpoch}';
     final seed64 = _stableHash64(rngId);
-    
+
     final receivePort = ReceivePort();
     final isolate = await Isolate.spawn(
       _benchmarkIsolate,
       _BenchmarkIsolateData(
         sendPort: receivePort.sendPort,
-        puzzleId: _puzzleIdController.text,
-        difficulty: _difficultyController.text,
-        size: _sizeController.text,
+        puzzleId: _selectedPuzzleId,
+        difficulty: _selectedDifficulty,
+        size: _selectedSize,
         count: int.parse(_countController.text),
         skipFirstRun: _skipFirstRun,
         deviceModel: deviceInfo['deviceModel']!,
@@ -102,10 +109,10 @@ class _BenchScreenState extends State<BenchScreen> {
 
   void _copyJsonToClipboard() {
     if (_lastResult == null) return;
-    
+
     final json = jsonEncode(_lastResult!.toJson());
     Clipboard.setData(ClipboardData(text: json));
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('JSON copied to clipboard')),
     );
@@ -117,10 +124,10 @@ class _BenchScreenState extends State<BenchScreen> {
     String chipsetAbi = 'Unknown';
     String osVersion = 'Unknown';
     String buildMode = 'Unknown';
-    
+
     try {
       final deviceInfo = DeviceInfoPlugin();
-      
+
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
         deviceModel = androidInfo.model;
@@ -134,7 +141,7 @@ class _BenchScreenState extends State<BenchScreen> {
         chipsetAbi = iosInfo.utsname.machine;
         osVersion = 'iOS ${iosInfo.systemVersion}';
       }
-      
+
       // Get build mode
       if (kDebugMode) {
         buildMode = 'Debug';
@@ -146,7 +153,7 @@ class _BenchScreenState extends State<BenchScreen> {
     } catch (e) {
       print('DEBUG: Failed to get device info: $e');
     }
-    
+
     return {
       'deviceModel': deviceModel,
       'deviceManufacturer': deviceManufacturer,
@@ -158,22 +165,22 @@ class _BenchScreenState extends State<BenchScreen> {
 
   Future<void> _exportJsonToFile() async {
     if (_lastResult == null) return;
-    
+
     try {
       final json = jsonEncode(_lastResult!.toJson());
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final filename = 'benchmark_${_lastResult!.puzzleId}_$timestamp.json';
-      
+
       Directory directory;
       if (Platform.isAndroid) {
         directory = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
       } else {
         directory = await getApplicationDocumentsDirectory();
       }
-      
+
       final file = File('${directory.path}/$filename');
       await file.writeAsString(json);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('JSON exported to: ${file.path}'),
@@ -193,7 +200,7 @@ class _BenchScreenState extends State<BenchScreen> {
   @override
   Widget build(BuildContext context) {
     final availableEngines = EngineRegistry().registeredIds;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Engine Bench'),
@@ -238,50 +245,80 @@ class _BenchScreenState extends State<BenchScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _puzzleIdController,
-                        decoration: InputDecoration(
-                          labelText: 'Puzzle ID',
-                          hintText: 'e.g., sudoku, nonogram, stub',
-                          suffixText: 'Available: ${availableEngines.join(', ')}',
+                      DropdownButtonFormField<String>(
+                        value: availableEngines.contains(_selectedPuzzleId)
+                            ? _selectedPuzzleId
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Puzzle',
                         ),
+                        items: availableEngines
+                            .map(
+                              (engineId) => DropdownMenuItem<String>(
+                            value: engineId,
+                            child: Text(_labelForPuzzleId(engineId)),
+                          ),
+                        )
+                            .toList(growable: false),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter a puzzle ID';
-                          }
-                          if (!availableEngines.contains(value)) {
-                            return 'Engine not found. Available: ${availableEngines.join(', ')}';
+                            return 'Please select a puzzle';
                           }
                           return null;
                         },
+                        onChanged: _isRunning
+                            ? null
+                            : (value) {
+                          if (value == null) return;
+                          final nextDifficulty = _defaultDifficultyForPuzzle(value);
+                          setState(() {
+                            _selectedPuzzleId = value;
+                            _selectedDifficulty = nextDifficulty;
+                            _selectedSize = _defaultSizeForPuzzleDifficulty(
+                              value,
+                              nextDifficulty,
+                            );
+                          });
+                        },
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _difficultyController,
+                      DropdownButtonFormField<String>(
+                        value: _difficultiesForPuzzle(_selectedPuzzleId)
+                            .contains(_selectedDifficulty)
+                            ? _selectedDifficulty
+                            : _difficultiesForPuzzle(_selectedPuzzleId).first,
                         decoration: const InputDecoration(
                           labelText: 'Difficulty',
-                          hintText: 'e.g., easy, medium, hard',
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a difficulty';
-                          }
-                          return null;
+                        items: _difficultiesForPuzzle(_selectedPuzzleId)
+                            .map(
+                              (difficulty) => DropdownMenuItem<String>(
+                            value: difficulty,
+                            child: Text(_titleCase(difficulty)),
+                          ),
+                        )
+                            .toList(growable: false),
+                        onChanged: _isRunning
+                            ? null
+                            : (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _selectedDifficulty = value;
+                            _selectedSize = _defaultSizeForPuzzleDifficulty(
+                              _selectedPuzzleId,
+                              value,
+                            );
+                          });
                         },
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _sizeController,
+                      InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'Size',
-                          hintText: 'e.g., 9x9, 6x6, 4x4',
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a size';
-                          }
-                          return null;
-                        },
+                        child: Text(
+                          '$_selectedSize  ·  auto-selected for ${_titleCase(_selectedDifficulty)}',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -575,6 +612,109 @@ class _AcceptanceGateRow extends StatelessWidget {
   }
 }
 
+const List<String> _standardDifficulties = <String>[
+  'easy',
+  'medium',
+  'hard',
+  'expert',
+];
+
+String _labelForPuzzleId(String puzzleId) {
+  switch (puzzleId) {
+    case 'sudoku_classic':
+      return 'Sudoku';
+    case 'nonogram_mono':
+      return 'Nonogram';
+    case 'kakuro_classic':
+      return 'Kakuro';
+    case 'slitherlink_loop':
+      return 'Slitherlink';
+    case 'mathdoku_classic':
+      return 'Mathdoku';
+    case 'killer_queens':
+      return 'Killer Queens';
+    case 'takuzu_binary':
+      return 'Takuzu';
+    default:
+      return puzzleId;
+  }
+}
+
+String _titleCase(String value) {
+  if (value.isEmpty) return value;
+  return value[0].toUpperCase() + value.substring(1);
+}
+
+List<String> _difficultiesForPuzzle(String puzzleId) {
+  if (puzzleId == 'kakuro_classic') {
+    return KakuroSupportedProfiles.appDifficultiesForSurface(
+      KakuroAppProfileSurface.nonProduction,
+    );
+  }
+  return _standardDifficulties;
+}
+
+String _defaultDifficultyForPuzzle(String puzzleId) {
+  final difficulties = _difficultiesForPuzzle(puzzleId);
+  return difficulties.contains('easy') ? 'easy' : difficulties.first;
+}
+
+String _defaultSizeForPuzzleDifficulty(String puzzleId, String difficulty) {
+  switch (puzzleId) {
+    case 'kakuro_classic':
+      return KakuroSupportedProfiles.appSizeForDifficulty(
+        difficulty: difficulty,
+        surface: KakuroAppProfileSurface.nonProduction,
+      );
+    case 'slitherlink_loop':
+      switch (difficulty) {
+        case 'easy':
+          return '5x5';
+        case 'medium':
+          return '7x7';
+        case 'hard':
+        case 'expert':
+          return '10x10';
+      }
+    case 'killer_queens':
+      switch (difficulty) {
+        case 'easy':
+          return '6x6';
+        case 'medium':
+          return '8x8';
+        case 'hard':
+        case 'expert':
+          return '10x10';
+      }
+    case 'mathdoku_classic':
+      return '9x9';
+    case 'nonogram_mono':
+      switch (difficulty) {
+        case 'easy':
+          return '5x5';
+        case 'medium':
+          return '10x10';
+        case 'hard':
+        case 'expert':
+          return '15x15';
+      }
+    case 'takuzu_binary':
+      switch (difficulty) {
+        case 'easy':
+          return '6x6';
+        case 'medium':
+          return '8x8';
+        case 'hard':
+        case 'expert':
+          return '10x10';
+      }
+    case 'sudoku_classic':
+    default:
+      return '9x9';
+  }
+  return '9x9';
+}
+
 // Isolate data structure
 class _BenchmarkIsolateData {
   final SendPort sendPort;
@@ -717,7 +857,7 @@ void _benchmarkIsolate(_BenchmarkIsolateData data) async {
   try {
     // Initialize engines in the isolate
     await _initializeEnginesInIsolate();
-    
+
     final result = await _runBenchmark(
       puzzleId: data.puzzleId,
       difficulty: data.difficulty,
@@ -773,23 +913,47 @@ void _benchmarkIsolate(_BenchmarkIsolateData data) async {
 
 Future<void> _initializeEnginesInIsolate() async {
   final registry = EngineRegistry();
-  
-  // Register stub engines for testing
-  try {
-    registry.register(StubPuzzleEngine());
-    print('DEBUG: Registered StubPuzzleEngine in isolate');
-  } catch (e) {
-    print('DEBUG: Failed to register StubPuzzleEngine in isolate: $e');
+
+  void registerIfMissing(PuzzleEngine<dynamic, dynamic> engine) {
+    if (!registry.hasEngine(engine.id)) {
+      registry.register(engine);
+    }
   }
-  
+
   try {
-    registry.register(StubSudokuEngine());
-    print('DEBUG: Registered StubSudokuEngine in isolate');
-  } catch (e) {
-    print('DEBUG: Failed to register StubSudokuEngine in isolate: $e');
+    registerIfMissing(SudokuEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(NonogramEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(KakuroEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(SlitherlinkEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(MathdokuEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(KillerQueensEngine());
+  } catch (_) {}
+
+  try {
+    registerIfMissing(TakuzuEngine());
+  } catch (_) {}
+
+  if (kDebugMode) {
+    debugPrint(
+      'Bench isolate registry has ${registry.engineCount} engines: '
+          '${registry.registeredIds}',
+    );
   }
-  
-  print('DEBUG: Isolate registry has ${registry.engineCount} engines: ${registry.registeredIds}');
 }
 
 // Benchmark implementation
@@ -836,7 +1000,7 @@ Future<BenchResult> _runBenchmark({
   final generationTimes = <int>[];
   final validationTimes = <int>[];
   final acceptanceGates = <String, bool>{};
-  
+
   // Telemetry collection
   bool uniquenessChecked = false;
   bool secondSolutionFound = false;
@@ -874,7 +1038,7 @@ Future<BenchResult> _runBenchmark({
     );
     final genEndTime = DateTime.now().millisecondsSinceEpoch;
     final genTimeMs = genEndTime - genStartTime;
-    
+
     if (i >= startIndex) {
       generationTimes.add(genTimeMs);
     }
@@ -934,7 +1098,7 @@ Future<BenchResult> _runBenchmark({
     final isValid = _validatePuzzle(engine, puzzle);
     final valEndTime = DateTime.now().millisecondsSinceEpoch;
     final valTimeMs = valEndTime - valStartTime;
-    
+
     if (i >= startIndex) {
       validationTimes.add(valTimeMs);
     }
@@ -1006,6 +1170,8 @@ DifficultyScore _parseDifficulty(String difficulty) {
       return const DifficultyScore(value: 0.6, level: 'medium');
     case 'hard':
       return const DifficultyScore(value: 0.9, level: 'hard');
+    case 'expert':
+      return const DifficultyScore(value: 1.0, level: 'expert');
     default:
       return const DifficultyScore(value: 0.6, level: 'medium');
   }

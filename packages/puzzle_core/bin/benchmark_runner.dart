@@ -478,6 +478,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final difficultyScore = _parseDifficulty(difficulty);
 
   final times = <int>[];
+  final List<int> wallTimes = <int>[];
   final List<int> uniquenessSolveTimes = <int>[];
   final List<int> slitherlinkSolveTimes = <int>[];
   final List<int> killerQueensSolveTimes = <int>[];
@@ -589,6 +590,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
     stopwatch.stop();
     final int generationMicros = stopwatch.elapsedMicroseconds;
     final double generationMs = generationMicros / 1000.0;
+    wallTimes.add(generationMicros);
     final Map<String, Object?> generatorTelemetry = _asObjectMap(
       puzzle?.telemetry?.extras['generator'],
     );
@@ -946,9 +948,11 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
   // Calculate percentiles
   final List<int> sortedTimes = List<int>.from(times)..sort();
-  final p50 = _percentile(sortedTimes, 0.50);
-  final p95 = _percentile(sortedTimes, 0.95);
-  final p99 = _percentile(sortedTimes, 0.99);
+  final List<int> sortedWallTimes = List<int>.from(wallTimes)..sort();
+
+  final p50 = _percentile(sortedWallTimes, 0.50);
+  final p95 = _percentile(sortedWallTimes, 0.95);
+  final p99 = _percentile(sortedWallTimes, 0.99);
   final int totalIterations = seedCorpus.length;
   final int successfulIterations = measureSlitherlinkCorrectness
       ? slitherlinkUniqueCount
@@ -987,10 +991,20 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         'difficultyGateCount': difficultyGateCount,
         if (repairAttemptCount > 0) 'repairCount': repairAttemptCount,
         'generationMs': <String, double>{
-          'p50': _percentile(sortedTimes, 0.50) / 1000.0,
-          'p95': _percentile(sortedTimes, 0.95) / 1000.0,
-          'p99': _percentile(sortedTimes, 0.99) / 1000.0,
+          'p50': _percentile(sortedWallTimes, 0.50) / 1000.0,
+          'p95': _percentile(sortedWallTimes, 0.95) / 1000.0,
+          'p99': _percentile(sortedWallTimes, 0.99) / 1000.0,
         },
+        if (sortedTimes.isNotEmpty)
+          'successfulGenerationMs': <String, double>{
+            'p50': _percentile(sortedTimes, 0.50) / 1000.0,
+            'p95': _percentile(sortedTimes, 0.95) / 1000.0,
+            'p99': _percentile(sortedTimes, 0.99) / 1000.0,
+          },
+        'failedIterationSamples': iterationDetails
+            .where((Map<String, Object?> detail) => detail['status'] != 'success')
+            .take(5)
+            .toList(growable: false),
         'measuredDifficultyDistribution': measuredDifficultyDistribution,
         'difficultyMatchRate': difficultyMatchSamples == 0
             ? 0.0

@@ -55,6 +55,7 @@ Future<void> startRandomPuzzleFlow({
   if (puzzleType == PuzzleType.kakuroClassic) {
     bool dialogOpen = true;
     bool cancelled = false;
+    bool closingProgrammatically = false;
 
     showDialog<void>(
       context: context,
@@ -62,7 +63,7 @@ Future<void> startRandomPuzzleFlow({
       builder: (_) => PopScope<void>(
         canPop: true,
         onPopInvokedWithResult: (didPop, _) {
-          if (didPop) {
+          if (didPop && !closingProgrammatically) {
             cancelled = true;
           }
         },
@@ -70,7 +71,9 @@ Future<void> startRandomPuzzleFlow({
       ),
     ).then((_) {
       dialogOpen = false;
-      cancelled = true;
+      if (!closingProgrammatically) {
+        cancelled = true;
+      }
     });
 
     try {
@@ -98,6 +101,7 @@ Future<void> startRandomPuzzleFlow({
       }
 
       if (dialogOpen && context.mounted) {
+        closingProgrammatically = true;
         Navigator.of(context, rootNavigator: true).pop();
         dialogOpen = false;
       }
@@ -120,6 +124,7 @@ Future<void> startRandomPuzzleFlow({
       return;
     } catch (error) {
       if (dialogOpen && context.mounted) {
+        closingProgrammatically = true;
         Navigator.of(context, rootNavigator: true).pop();
         dialogOpen = false;
       }
