@@ -761,3 +761,329 @@ class _KakuroSearch {
     return bestIndex;
   }
 }
+
+class KakuroBottomUpSnapshot {
+  KakuroBottomUpSnapshot({
+    required this.values,
+    required this.candidates,
+    required this.activeEntryStates,
+    required this.unsatisfiable,
+    required this.propagationRounds,
+    required this.candidateRemovals,
+    required this.forcedAssignments,
+  });
+
+  final List<int> values;
+  final List<int> candidates;
+  final List<List<int>> activeEntryStates;
+  final bool unsatisfiable;
+  final int propagationRounds;
+  final int candidateRemovals;
+  final int forcedAssignments;
+
+  static KakuroBottomUpSnapshot capture(KakuroBottomUpEvaluator eval) =>
+      KakuroBottomUpSnapshot(
+        values: List<int>.from(eval.values),
+        candidates: List<int>.from(eval.candidates),
+        activeEntryStates: eval.activeEntries
+            .map((_EntryState e) => List<int>.from(e.combos))
+            .toList(growable: false),
+        unsatisfiable: eval.unsatisfiable,
+        propagationRounds: eval.propagationRounds,
+        candidateRemovals: eval.candidateRemovals,
+        forcedAssignments: eval.forcedAssignments,
+      );
+
+  void restore(KakuroBottomUpEvaluator eval) {
+    for (int i = 0; i < eval.values.length; i++) {
+      eval.values[i] = values[i];
+      eval.candidates[i] = candidates[i];
+    }
+    for (int i = 0; i < activeEntryStates.length; i++) {
+      eval.activeEntries[i].combos = List<int>.from(activeEntryStates[i]);
+    }
+    if (eval.activeEntries.length > activeEntryStates.length) {
+      eval.activeEntries.length = activeEntryStates.length;
+    }
+    eval.unsatisfiable = unsatisfiable;
+    eval.propagationRounds = propagationRounds;
+    eval.candidateRemovals = candidateRemovals;
+    eval.forcedAssignments = forcedAssignments;
+  }
+}
+
+class KakuroBottomUpEvaluator {
+  KakuroBottomUpEvaluator(this.board)
+      : cellCount = board.cellCount,
+        values = List<int>.filled(board.cellCount, 0),
+        candidates = List<int>.filled(board.cellCount, _allDigitsMask),
+        activeEntries = <_EntryState>[] {
+    for (int i = 0; i < cellCount; i++) {
+      if (!board.isPlayableIndex(i)) {
+        candidates[i] = 0;
+      }
+    }
+  }
+
+  final KakuroBoard board;
+  final int cellCount;
+
+  final List<int> values;
+  final List<int> candidates;
+  final List<_EntryState> activeEntries;
+
+  Map<int, int> get activeEntrySums {
+    final Map<int, int> sums = <int, int>{};
+    for (final _EntryState state in activeEntries) {
+      sums[state.entry.id] = state.entry.sum;
+    }
+    return sums;
+  }
+
+  bool unsatisfiable = false;
+  int candidateRemovals = 0;
+  int forcedAssignments = 0;
+  int propagationRounds = 0;
+  int searchNodes = 0;
+  int backtracks = 0;
+
+  KakuroBottomUpSnapshot capture() => KakuroBottomUpSnapshot.capture(this);
+  void restore(KakuroBottomUpSnapshot snapshot) => snapshot.restore(this);
+
+  bool injectSum(KakuroEntry entry, int sum) {
+    if (unsatisfiable) return false;
+
+    final Set<int>? combos = KakuroDictionary.getCombinations(entry.cells.length, sum);
+    if (combos == null || combos.isEmpty) {
+      unsatisfiable = true;
+      return false;
+    }
+
+    final List<int> filtered = combos.where((int combo) {
+      for (final int cellIndex in entry.cells) {
+        final int value = values[cellIndex];
+        if (value == 0) continue;
+        if ((combo & _bitFor(value)) == 0) return false;
+      }
+      return true;
+    }).toList(growable: false);
+
+    if (filtered.isEmpty) {
+      unsatisfiable = true;
+      return false;
+    }
+
+    activeEntries.add(_EntryState(entry: entry.copyWith(sum: sum), combos: filtered));
+    return _propagate();
+  }
+
+  bool _propagate() {
+    bool changed = true;
+    while (!unsatisfiable && changed) {
+      changed = false;
+      propagationRounds++;
+      for (final _EntryState state in activeEntries) {
+        final bool updated = _updateEntry(state);
+        if (unsatisfiable) {
+          return false;
+        }
+        if (updated) {
+          changed = true;
+        }
+      }
+    }
+    return !unsatisfiable;
+  }
+
+  bool _updateEntry(_EntryState state) {
+    final List<int> cells = state.entry.cells;
+    final List<int> validCombos = <int>[];
+    final List<List<int>> perComboMasks = <List<int>>[];
+
+    for (final int combo in state.combos) {
+      final List<int>? masks = _evaluateCombo(state, combo);
+      if (masks == null) {
+        continue;
+      }
+      validCombos.add(combo);
+      perComboMasks.add(masks);
+    }
+
+    if (validCombos.isEmpty) {
+      unsatisfiable = true;
+      return false;
+    }
+
+    bool changed = validCombos.length != state.combos.length;
+    state.combos = validCombos;
+
+    final int length = cells.length;
+    final List<int> aggregated = List<int>.filled(length, 0);
+    for (final List<int> masks in perComboMasks) {
+      for (int i = 0; i < length; i++) {
+        aggregated[i] |= masks[i];
+      }
+    }
+
+    final List<int> refined = List<int>.from(aggregated);
+    if (_applySubsetLogic(refined)) {
+      changed = true;
+    }
+
+    for (int i = 0; i < length; i++) {
+      final int cellIndex = cells[i];
+      final int assigned = values[cellIndex];
+      final int allowed = refined[i];
+      if (assigned > 0) {
+        if ((allowed & _bitFor(assigned)) == 0) {
+          unsatisfiable = true;
+          return false;
+        }
+        candidates[cellIndex] = _bitFor(assigned);
+        continue;
+      }
+      if (allowed == 0) {
+        unsatisfiable = true;
+        return false;
+      }
+      final int current = candidates[cellIndex];
+      final int newMask = current & allowed;
+      if (newMask != current) {
+        final int removed = _countBits(current) - _countBits(newMask);
+        if (removed > 0) {
+          candidateRemovals += removed;
+        }
+        candidates[cellIndex] = newMask;
+        changed = true;
+        if (newMask == 0) {
+          unsatisfiable = true;
+          return false;
+        }
+      }
+      if (values[cellIndex] == 0 && _countBits(candidates[cellIndex]) == 1) {
+        final int digit = _singleDigit(candidates[cellIndex]);
+        values[cellIndex] = digit;
+        forcedAssignments++;
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  List<int>? _evaluateCombo(_EntryState state, int combo) {
+    final List<int> digits = _digitsFromMask(combo);
+    final List<int> available = List<int>.from(digits);
+    final List<int?> chosen = List<int?>.filled(state.entry.cells.length, null);
+    final List<int> maskAccum = List<int>.filled(state.entry.cells.length, 0);
+
+    bool any = _exploreAssignments(state, 0, available, chosen, maskAccum);
+    if (!any) {
+      return null;
+    }
+    return maskAccum;
+  }
+
+  bool _exploreAssignments(
+    _EntryState state,
+    int depth,
+    List<int> available,
+    List<int?> chosen,
+    List<int> maskAccum,
+  ) {
+    if (depth >= state.entry.cells.length) {
+      for (int i = 0; i < state.entry.cells.length; i++) {
+        final int cellIndex = state.entry.cells[i];
+        int digit = values[cellIndex];
+        if (digit == 0) {
+          digit = chosen[i]!;
+        }
+        maskAccum[i] |= _bitFor(digit);
+      }
+      return true;
+    }
+
+    final int cellIndex = state.entry.cells[depth];
+    final int assigned = values[cellIndex];
+    final int mask = candidates[cellIndex];
+
+    if (assigned > 0) {
+      if (!available.remove(assigned)) {
+        return false;
+      }
+      if (mask != 0 && (mask & _bitFor(assigned)) == 0) {
+        available.add(assigned);
+        return false;
+      }
+      chosen[depth] = assigned;
+      final bool result = _exploreAssignments(
+        state,
+        depth + 1,
+        available,
+        chosen,
+        maskAccum,
+      );
+      chosen[depth] = null;
+      available.add(assigned);
+      return result;
+    }
+
+    bool any = false;
+    final List<int> options = <int>[];
+    for (final int digit in List<int>.from(available)) {
+      final int bit = _bitFor(digit);
+      if (mask != 0 && (mask & bit) == 0) {
+        continue;
+      }
+      options.add(digit);
+    }
+    for (final int digit in options) {
+      available.remove(digit);
+      chosen[depth] = digit;
+      if (_exploreAssignments(state, depth + 1, available, chosen, maskAccum)) {
+        any = true;
+      }
+      chosen[depth] = null;
+      available.add(digit);
+    }
+    return any;
+  }
+
+  bool _applySubsetLogic(List<int> masks) {
+    bool changed = false;
+    final int length = masks.length;
+    final int maxMask = 1 << length;
+    for (int subset = 1; subset < maxMask; subset++) {
+      final int subsetSize = _countBits(subset);
+      if (subsetSize <= 1) {
+        continue;
+      }
+      int unionMask = 0;
+      for (int i = 0; i < length; i++) {
+        if ((subset & (1 << i)) != 0) {
+          unionMask |= masks[i];
+        }
+      }
+      final int digitCount = _countBits(unionMask);
+      if (digitCount == 0 || digitCount != subsetSize) {
+        continue;
+      }
+      for (int i = 0; i < length; i++) {
+        if ((subset & (1 << i)) != 0) {
+          final int newMask = masks[i] & unionMask;
+          if (newMask != masks[i]) {
+            masks[i] = newMask;
+            changed = true;
+          }
+        } else {
+          final int newMask = masks[i] & (~unionMask & _allDigitsMask);
+          if (newMask != masks[i]) {
+            masks[i] = newMask;
+            changed = true;
+          }
+        }
+      }
+    }
+    return changed;
+  }
+}

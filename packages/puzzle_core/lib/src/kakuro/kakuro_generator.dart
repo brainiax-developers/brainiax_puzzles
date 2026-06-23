@@ -945,14 +945,31 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
       }
 
-      // Build a fully solved board using the fast solution-first generator.
+      // Build a fully solved board using the appropriate generator.
       final Stopwatch fillWatch = Stopwatch()..start();
-      final List<KakuroSolution> fillCandidates = buildSolutionFirstCandidates(
-        selectedTemplate,
-        SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
-        difficulty: requestedLevel,
-        maxCompletedFills: _fillCandidateBatchSizeFor(requestedLevel),
-      );
+      final bool useBottomUp = requestedLevel == 'medium' ||
+          requestedLevel == 'hard' ||
+          requestedLevel == 'expert';
+      final List<KakuroSolution> fillCandidates = <KakuroSolution>[];
+
+      if (useBottomUp) {
+        final KakuroSolution? bottomUpSolution =
+            const KakuroBottomUpGenerator().generate(
+          selectedTemplate,
+          SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
+          difficulty: requestedLevel,
+        );
+        if (bottomUpSolution != null) {
+          fillCandidates.add(bottomUpSolution);
+        }
+      } else {
+        fillCandidates.addAll(buildSolutionFirstCandidates(
+          selectedTemplate,
+          SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
+          difficulty: requestedLevel,
+          maxCompletedFills: _fillCandidateBatchSizeFor(requestedLevel),
+        ));
+      }
       fillWatch.stop();
       if (fillCandidates.isEmpty) {
         nullSolutionCount++;
@@ -1103,6 +1120,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             (layoutNonUniqueRejectCounts[selectedLayoutHash] ?? 0) + 1;
         _KakuroAcceptedRepairCandidate? repaired;
         final bool canAttemptRepair =
+            !useBottomUp &&
             uniqueness.solutionStatus == SolverStatus.multiple &&
             uniqueness.telemetry['disagreementSummary'] != null &&
             signatureRejectCount <=
