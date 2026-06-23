@@ -46,10 +46,13 @@ class KakuroLayoutMetrics {
     required this.highAmbiguityRunRatioMilli,
     required this.runGraphNodeCount,
     required this.runGraphEdgeCount,
+    required this.runGraphAverageDegreeMilli,
     required this.minRunGraphDegree,
     required this.runGraphComponentCount,
     required this.largestRunGraphComponentNodeCount,
     required this.runGraphConnectivityMilli,
+    required this.anchorRunEstimateCount,
+    required this.anchorRunEstimateRatioMilli,
     required this.unpairedValueCellCount,
   });
 
@@ -81,10 +84,13 @@ class KakuroLayoutMetrics {
   final int highAmbiguityRunRatioMilli;
   final int runGraphNodeCount;
   final int runGraphEdgeCount;
+  final int runGraphAverageDegreeMilli;
   final int minRunGraphDegree;
   final int runGraphComponentCount;
   final int largestRunGraphComponentNodeCount;
   final int runGraphConnectivityMilli;
+  final int anchorRunEstimateCount;
+  final int anchorRunEstimateRatioMilli;
   final int unpairedValueCellCount;
 
   Map<String, Object?> toTelemetry() {
@@ -117,10 +123,13 @@ class KakuroLayoutMetrics {
       'highAmbiguityRunRatioMilli': highAmbiguityRunRatioMilli,
       'runGraphNodeCount': runGraphNodeCount,
       'runGraphEdgeCount': runGraphEdgeCount,
+      'runGraphAverageDegreeMilli': runGraphAverageDegreeMilli,
       'minRunGraphDegree': minRunGraphDegree,
       'runGraphComponentCount': runGraphComponentCount,
       'largestRunGraphComponentNodeCount': largestRunGraphComponentNodeCount,
       'runGraphConnectivityMilli': runGraphConnectivityMilli,
+      'anchorRunEstimateCount': anchorRunEstimateCount,
+      'anchorRunEstimateRatioMilli': anchorRunEstimateRatioMilli,
       'unpairedValueCellCount': unpairedValueCellCount,
     };
   }
@@ -253,12 +262,39 @@ class KakuroLayoutPreScorer {
         metrics: metrics,
       );
     }
+    if (metrics.totalRunCount < profile.minTotalRunCount) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'run_count_sparse',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
     if (metrics.minRunGraphDegree < profile.minRunGraphDegree ||
         metrics.runGraphConnectivityMilli <
             profile.minRunGraphConnectivityMilli) {
       return KakuroLayoutPreScoreResult(
         accepted: false,
         reason: 'run_graph_connectivity_weak',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.runGraphAverageDegreeMilli <
+        profile.minRunGraphAverageDegreeMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'run_intersection_density_weak',
+        scoreMilli: scoreMilli,
+        metrics: metrics,
+      );
+    }
+    if (metrics.anchorRunEstimateCount < profile.minAnchorRunEstimateCount ||
+        metrics.anchorRunEstimateRatioMilli <
+            profile.minAnchorRunEstimateRatioMilli) {
+      return KakuroLayoutPreScoreResult(
+        accepted: false,
+        reason: 'anchor_runs_sparse',
         scoreMilli: scoreMilli,
         metrics: metrics,
       );
@@ -334,8 +370,12 @@ class _KakuroLayoutThresholdProfile {
     required this.minShortRuns,
     required this.minShortRunRatioMilli,
     required this.maxRunLength,
+    required this.minTotalRunCount,
     required this.minRunGraphDegree,
     required this.minRunGraphConnectivityMilli,
+    required this.minRunGraphAverageDegreeMilli,
+    required this.minAnchorRunEstimateCount,
+    required this.minAnchorRunEstimateRatioMilli,
     required this.minSmallRunLengthBins,
     required this.maxDominantRunLengthRatioMilli,
     required this.maxAverageRunCombinationEstimateMilli,
@@ -352,8 +392,12 @@ class _KakuroLayoutThresholdProfile {
   final int minShortRuns;
   final int minShortRunRatioMilli;
   final int maxRunLength;
+  final int minTotalRunCount;
   final int minRunGraphDegree;
   final int minRunGraphConnectivityMilli;
+  final int minRunGraphAverageDegreeMilli;
+  final int minAnchorRunEstimateCount;
+  final int minAnchorRunEstimateRatioMilli;
   final int minSmallRunLengthBins;
   final int maxDominantRunLengthRatioMilli;
   final int maxAverageRunCombinationEstimateMilli;
@@ -377,9 +421,13 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       maxLongRunRatioMilli: 520,
       minShortRuns: 4,
       minShortRunRatioMilli: 380,
-      maxRunLength: 9,
+      maxRunLength: 6,
+      minTotalRunCount: 8,
       minRunGraphDegree: 1,
       minRunGraphConnectivityMilli: 1000,
+      minRunGraphAverageDegreeMilli: 2200,
+      minAnchorRunEstimateCount: 4,
+      minAnchorRunEstimateRatioMilli: 380,
       minSmallRunLengthBins: 1,
       maxDominantRunLengthRatioMilli: 860,
       maxAverageRunCombinationEstimateMilli: 4200,
@@ -397,9 +445,13 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       maxLongRunRatioMilli: 500,
       minShortRuns: 5,
       minShortRunRatioMilli: 400,
-      maxRunLength: 9,
+      maxRunLength: 8,
+      minTotalRunCount: 16,
       minRunGraphDegree: 1,
       minRunGraphConnectivityMilli: 1000,
+      minRunGraphAverageDegreeMilli: 2200,
+      minAnchorRunEstimateCount: 5,
+      minAnchorRunEstimateRatioMilli: 400,
       minSmallRunLengthBins: 1,
       maxDominantRunLengthRatioMilli: 850,
       maxAverageRunCombinationEstimateMilli: 4400,
@@ -417,9 +469,13 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       maxLongRunRatioMilli: 520,
       minShortRuns: 5,
       minShortRunRatioMilli: 360,
-      maxRunLength: 9,
+      maxRunLength: 8,
+      minTotalRunCount: 18,
       minRunGraphDegree: 1,
       minRunGraphConnectivityMilli: 1000,
+      minRunGraphAverageDegreeMilli: 2100,
+      minAnchorRunEstimateCount: 5,
+      minAnchorRunEstimateRatioMilli: 360,
       minSmallRunLengthBins: 1,
       maxDominantRunLengthRatioMilli: 860,
       maxAverageRunCombinationEstimateMilli: 4600,
@@ -438,8 +494,12 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       minShortRuns: 6,
       minShortRunRatioMilli: 340,
       maxRunLength: 9,
+      minTotalRunCount: 22,
       minRunGraphDegree: 1,
       minRunGraphConnectivityMilli: 1000,
+      minRunGraphAverageDegreeMilli: 2000,
+      minAnchorRunEstimateCount: 6,
+      minAnchorRunEstimateRatioMilli: 330,
       minSmallRunLengthBins: 1,
       maxDominantRunLengthRatioMilli: 860,
       maxAverageRunCombinationEstimateMilli: 4800,
@@ -461,8 +521,12 @@ _KakuroLayoutThresholdProfile? _thresholdProfileFor({
       minShortRuns: 12,
       minShortRunRatioMilli: 560,
       maxRunLength: 8,
+      minTotalRunCount: 16,
       minRunGraphDegree: 1,
       minRunGraphConnectivityMilli: 1000,
+      minRunGraphAverageDegreeMilli: 2200,
+      minAnchorRunEstimateCount: 10,
+      minAnchorRunEstimateRatioMilli: 520,
       minSmallRunLengthBins: 2,
       maxDominantRunLengthRatioMilli: 780,
       maxAverageRunCombinationEstimateMilli: 5000,
@@ -479,23 +543,27 @@ int _scoreMetrics(
   KakuroLayoutMetrics metrics,
   _KakuroLayoutThresholdProfile? profile,
 ) {
-  int score = 1000;
+  int score = 1100;
   final int targetDensity = profile == null
       ? 430
       : (profile.minWhiteDensityMilli + profile.maxWhiteDensityMilli) ~/ 2;
-  score -= ((metrics.whiteCellDensityMilli - targetDensity).abs() * 2);
-  score -= (metrics.longRunRatioMilli * 3) ~/ 4;
-  score += (metrics.shortRunRatioMilli * 3) ~/ 5;
-  score += metrics.runGraphConnectivityMilli ~/ 2;
-  score -= metrics.averageRunCombinationEstimateMilli ~/ 12;
-  score -= metrics.highAmbiguityRunRatioMilli ~/ 2;
-  score += metrics.singleCombinationSumRatioEstimateMilli ~/ 4;
+  score -= ((metrics.whiteCellDensityMilli - targetDensity).abs() * 3);
+  score -= metrics.longRunRatioMilli;
+  score += (metrics.shortRunRatioMilli * 4) ~/ 5;
+  score += metrics.runGraphConnectivityMilli ~/ 3;
+  score += metrics.runGraphAverageDegreeMilli ~/ 4;
+  score += (metrics.anchorRunEstimateRatioMilli * 3) ~/ 4;
+  score -= metrics.maxRunLength * 80;
+  score -= metrics.averageRunCombinationEstimateMilli ~/ 10;
+  score -= metrics.runLengthWeightedCombinationEstimateMilli ~/ 16;
+  score -= (metrics.highAmbiguityRunRatioMilli * 3) ~/ 4;
+  score += metrics.singleCombinationSumRatioEstimateMilli ~/ 3;
   score -= metrics.unpairedValueCellCount * 180;
   if (score < 0) {
     return 0;
   }
-  if (score > 1000) {
-    return 1000;
+  if (score > 3000) {
+    return 3000;
   }
   return score;
 }
@@ -874,6 +942,7 @@ class KakuroLayout {
     int weightedCombinationLengthTotal = 0;
     int singleCombinationSumRatioTotalMilli = 0;
     int highAmbiguityRunCount = 0;
+    int anchorRunEstimateCount = 0;
     final Map<int, Set<int>> runGraphAdjacency = <int, Set<int>>{};
 
     for (final KakuroLayoutEntry entry in entries) {
@@ -928,6 +997,10 @@ class KakuroLayout {
       if (combinationEstimate.averageCombinationCountMilli >= 5000) {
         highAmbiguityRunCount++;
       }
+      if (length <= 4 ||
+          combinationEstimate.singleCombinationSumRatioMilli >= 180) {
+        anchorRunEstimateCount++;
+      }
     }
     final int totalRunCount = entries.length;
     final int averageRunLengthMilli = totalRunCount == 0
@@ -947,6 +1020,9 @@ class KakuroLayout {
     final int highAmbiguityRunRatioMilli = totalRunCount == 0
         ? 0
         : (highAmbiguityRunCount * 1000) ~/ totalRunCount;
+    final int anchorRunEstimateRatioMilli = totalRunCount == 0
+        ? 0
+        : (anchorRunEstimateCount * 1000) ~/ totalRunCount;
 
     final Map<int, int> runDegree = <int, int>{};
     int runGraphEdgeCount = 0;
@@ -1011,6 +1087,9 @@ class KakuroLayout {
     final int runGraphConnectivityMilli = totalRunCount == 0
         ? 0
         : (largestRunGraphComponentNodeCount * 1000) ~/ totalRunCount;
+    final int runGraphAverageDegreeMilli = totalRunCount == 0
+        ? 0
+        : (runGraphEdgeCount * 2000) ~/ totalRunCount;
 
     final List<int> sortedRunLengths = runLengthHistogram.keys.toList()..sort();
     final Map<String, int> stableHistogram = <String, int>{};
@@ -1062,10 +1141,13 @@ class KakuroLayout {
       highAmbiguityRunRatioMilli: highAmbiguityRunRatioMilli,
       runGraphNodeCount: totalRunCount,
       runGraphEdgeCount: runGraphEdgeCount,
+      runGraphAverageDegreeMilli: runGraphAverageDegreeMilli,
       minRunGraphDegree: minRunGraphDegree,
       runGraphComponentCount: runGraphComponentCount,
       largestRunGraphComponentNodeCount: largestRunGraphComponentNodeCount,
       runGraphConnectivityMilli: runGraphConnectivityMilli,
+      anchorRunEstimateCount: anchorRunEstimateCount,
+      anchorRunEstimateRatioMilli: anchorRunEstimateRatioMilli,
       unpairedValueCellCount: unpairedValueCellCount,
     );
   }

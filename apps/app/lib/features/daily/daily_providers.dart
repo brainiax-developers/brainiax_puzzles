@@ -5,7 +5,7 @@ import 'package:puzzle_core/puzzle_core.dart';
 import '../../shared/services/generation_isolate.dart';
 import '../../shared/config/app_environment.dart';
 import '../../shared/services/generated_puzzle_difficulty.dart';
-
+import '../../shared/services/slitherlink_on_demand_service.dart';
 import '../../shared/providers/engine_provider.dart';
 import 'daily_seed_generator.dart';
 
@@ -27,6 +27,20 @@ final dailyPuzzleProvider =
       final seed = seedGenerator.generate(puzzleTypeKey);
       final size = _defaultSizeFor(puzzleTypeKey);
       final difficulty = _defaultDifficultyFor(puzzleTypeKey);
+      if (puzzleTypeKey == 'slitherlink_loop') {
+        final generated = await ref.read(slitherlinkOnDemandProvider).nextPuzzle(
+          difficulty: difficulty.level,
+          width: size.width,
+          height: size.height,
+          seed: seed.seedStr,
+          timeBudget: const Duration(milliseconds: 900),
+        );
+
+        return normalizeGeneratedPuzzleDifficulty(
+          puzzle: generated,
+          requestedDifficulty: difficulty,
+        );
+      }
       if (puzzleTypeKey == 'kakuro_classic') {
         const Duration cap = Duration(seconds: 8);
         const int maxAttempts = 3;

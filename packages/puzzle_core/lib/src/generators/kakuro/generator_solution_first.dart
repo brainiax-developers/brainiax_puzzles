@@ -7,6 +7,18 @@ class KakuroConstructionMetrics {
     required this.maxRunAmbiguityMilli,
     required this.intersectionCandidateReductionMilli,
     required this.runLengthWeightedAmbiguityMilli,
+    required this.intersectionSizeHistogram,
+    required this.forcedIntersectionCellCount,
+    required this.nearForcedIntersectionCellCount,
+    required this.weakIntersectionCellCount,
+    required this.averageIntersectionSizeMilli,
+    required this.maxIntersectionSize,
+    required this.weakestRegionScore,
+    required this.weakRegionCount,
+    required this.runCombinationCountHistogram,
+    required this.singleCombinationRunCount,
+    required this.lowCombinationRunCount,
+    required this.lowCombinationRunRatioMilli,
     required this.runCount,
     required this.valueCellCount,
   });
@@ -16,6 +28,18 @@ class KakuroConstructionMetrics {
   final int maxRunAmbiguityMilli;
   final int intersectionCandidateReductionMilli;
   final int runLengthWeightedAmbiguityMilli;
+  final Map<String, int> intersectionSizeHistogram;
+  final int forcedIntersectionCellCount;
+  final int nearForcedIntersectionCellCount;
+  final int weakIntersectionCellCount;
+  final int averageIntersectionSizeMilli;
+  final int maxIntersectionSize;
+  final int weakestRegionScore;
+  final int weakRegionCount;
+  final Map<String, int> runCombinationCountHistogram;
+  final int singleCombinationRunCount;
+  final int lowCombinationRunCount;
+  final int lowCombinationRunRatioMilli;
   final int runCount;
   final int valueCellCount;
 
@@ -29,6 +53,18 @@ class KakuroConstructionMetrics {
       maxRunAmbiguityMilli: 0,
       intersectionCandidateReductionMilli: 0,
       runLengthWeightedAmbiguityMilli: 0,
+      intersectionSizeHistogram: _emptyIntersectionHistogram(),
+      forcedIntersectionCellCount: 0,
+      nearForcedIntersectionCellCount: 0,
+      weakIntersectionCellCount: 0,
+      averageIntersectionSizeMilli: 0,
+      maxIntersectionSize: 0,
+      weakestRegionScore: 0,
+      weakRegionCount: 0,
+      runCombinationCountHistogram: const <String, int>{},
+      singleCombinationRunCount: 0,
+      lowCombinationRunCount: 0,
+      lowCombinationRunRatioMilli: 0,
       runCount: runCount,
       valueCellCount: valueCellCount,
     );
@@ -49,10 +85,28 @@ class KakuroConstructionMetrics {
       'intersectionCandidateReductionMilli':
           intersectionCandidateReductionMilli,
       'runLengthWeightedAmbiguityMilli': runLengthWeightedAmbiguityMilli,
+      'intersectionSizeHistogram': intersectionSizeHistogram,
+      'forcedIntersectionCellCount': forcedIntersectionCellCount,
+      'nearForcedIntersectionCellCount': nearForcedIntersectionCellCount,
+      'weakIntersectionCellCount': weakIntersectionCellCount,
+      'averageIntersectionSizeMilli': averageIntersectionSizeMilli,
+      'maxIntersectionSize': maxIntersectionSize,
+      'weakestRegionScore': weakestRegionScore,
+      'weakRegionCount': weakRegionCount,
+      'runCombinationCountHistogram': runCombinationCountHistogram,
+      'singleCombinationRunCount': singleCombinationRunCount,
+      'lowCombinationRunCount': lowCombinationRunCount,
+      'lowCombinationRunRatioMilli': lowCombinationRunRatioMilli,
       'runCount': runCount,
       'valueCellCount': valueCellCount,
     };
   }
+}
+
+Map<String, int> _emptyIntersectionHistogram() {
+  return <String, int>{
+    for (int size = 1; size <= 9; size++) size.toString(): 0,
+  };
 }
 
 class KakuroSolution {
@@ -162,9 +216,13 @@ class _KakuroConstructionSearchConfig {
 }
 
 class _KakuroSumComboInfo {
-  _KakuroSumComboInfo({required this.combos, required this.unionMask})
-    : comboCount = combos.length;
+  _KakuroSumComboInfo({
+    required this.sum,
+    required this.combos,
+    required this.unionMask,
+  }) : comboCount = combos.length;
 
+  final int sum;
   final List<int> combos;
   final int comboCount;
   final int unionMask;
@@ -201,7 +259,9 @@ class _KakuroConstructionScorer {
           for (final int combo in combos) {
             unionMask |= combo;
           }
-          sums.add(_KakuroSumComboInfo(combos: combos, unionMask: unionMask));
+          sums.add(
+            _KakuroSumComboInfo(sum: sum, combos: combos, unionMask: unionMask),
+          );
         }
       }
       byId[entry.id] = _KakuroEntryComboInfo(entry: entry, sums: sums);
@@ -211,7 +271,17 @@ class _KakuroConstructionScorer {
         .toList(growable: false);
   }
 
-  KakuroConstructionMetrics score(List<int> entryMasks) {
+  KakuroConstructionMetrics score(
+    List<int> entryMasks, {
+    Map<int, int>? entrySums,
+  }) {
+    if (entrySums != null && entrySums.length == template.entries.length) {
+      return _scoreComplete(entrySums);
+    }
+    return _scorePartial(entryMasks);
+  }
+
+  KakuroConstructionMetrics _scorePartial(List<int> entryMasks) {
     if (_entryInfos.isEmpty) {
       return KakuroConstructionMetrics.zero(
         runCount: 0,
@@ -259,6 +329,18 @@ class _KakuroConstructionScorer {
           maxRunAmbiguityMilli: 12000,
           intersectionCandidateReductionMilli: 0,
           runLengthWeightedAmbiguityMilli: 12000,
+          intersectionSizeHistogram: _emptyIntersectionHistogram(),
+          forcedIntersectionCellCount: 0,
+          nearForcedIntersectionCellCount: 0,
+          weakIntersectionCellCount: template.valueCellCount,
+          averageIntersectionSizeMilli: 9000,
+          maxIntersectionSize: 9,
+          weakestRegionScore: 0,
+          weakRegionCount: template.entries.length,
+          runCombinationCountHistogram: const <String, int>{},
+          singleCombinationRunCount: 0,
+          lowCombinationRunCount: 0,
+          lowCombinationRunRatioMilli: 0,
           runCount: runCount,
           valueCellCount: template.valueCellCount,
         );
@@ -284,8 +366,160 @@ class _KakuroConstructionScorer {
         ? 0
         : weightedAmbiguityNumerator ~/ weightedLengthTotal;
 
-    int reductionTotal = 0;
-    int reductionCells = 0;
+    final _KakuroIntersectionStats intersection = _scoreIntersections(
+      runDigitMasks,
+    );
+
+    return KakuroConstructionMetrics(
+      averageRunCombinationCountMilli: averageRunCombinationCountMilli,
+      singleCombinationRunRatioMilli: singleCombinationRunRatioMilli,
+      maxRunAmbiguityMilli: maxAmbiguityMilli,
+      intersectionCandidateReductionMilli:
+          intersection.intersectionCandidateReductionMilli,
+      runLengthWeightedAmbiguityMilli: runLengthWeightedAmbiguityMilli,
+      intersectionSizeHistogram: intersection.histogram,
+      forcedIntersectionCellCount: intersection.forcedCellCount,
+      nearForcedIntersectionCellCount: intersection.nearForcedCellCount,
+      weakIntersectionCellCount: intersection.weakCellCount,
+      averageIntersectionSizeMilli: intersection.averageSizeMilli,
+      maxIntersectionSize: intersection.maxSize,
+      weakestRegionScore: intersection.weakestRegionScore,
+      weakRegionCount: intersection.weakRegionCount,
+      runCombinationCountHistogram: const <String, int>{},
+      singleCombinationRunCount: 0,
+      lowCombinationRunCount: 0,
+      lowCombinationRunRatioMilli: 0,
+      runCount: runCount,
+      valueCellCount: template.valueCellCount,
+    );
+  }
+
+  KakuroConstructionMetrics _scoreComplete(Map<int, int> entrySums) {
+    if (_entryInfos.isEmpty) {
+      return KakuroConstructionMetrics.zero(
+        runCount: 0,
+        valueCellCount: template.valueCellCount,
+      );
+    }
+
+    final int runCount = _entryInfos.length;
+    final List<int> runDigitMasks = List<int>.filled(runCount, 0);
+    final Map<String, int> comboHistogram = <String, int>{};
+    int comboTotal = 0;
+    int singleCombinationRunCount = 0;
+    int lowCombinationRunCount = 0;
+    int maxComboCount = 0;
+    int weightedComboNumerator = 0;
+    int weightedLengthTotal = 0;
+
+    for (final _KakuroEntryComboInfo info in _entryInfos) {
+      final int sum = entrySums[info.entry.id] ?? -1;
+      _KakuroSumComboInfo? matchingSum;
+      for (final _KakuroSumComboInfo sumInfo in info.sums) {
+        if (sumInfo.sum == sum) {
+          matchingSum = sumInfo;
+          break;
+        }
+      }
+      if (matchingSum == null || matchingSum.comboCount <= 0) {
+        return KakuroConstructionMetrics(
+          averageRunCombinationCountMilli: 12000,
+          singleCombinationRunRatioMilli: 0,
+          maxRunAmbiguityMilli: 12000,
+          intersectionCandidateReductionMilli: 0,
+          runLengthWeightedAmbiguityMilli: 12000,
+          intersectionSizeHistogram: _emptyIntersectionHistogram(),
+          forcedIntersectionCellCount: 0,
+          nearForcedIntersectionCellCount: 0,
+          weakIntersectionCellCount: template.valueCellCount,
+          averageIntersectionSizeMilli: 9000,
+          maxIntersectionSize: 9,
+          weakestRegionScore: 0,
+          weakRegionCount: template.entries.length,
+          runCombinationCountHistogram: const <String, int>{},
+          singleCombinationRunCount: 0,
+          lowCombinationRunCount: 0,
+          lowCombinationRunRatioMilli: 0,
+          runCount: runCount,
+          valueCellCount: template.valueCellCount,
+        );
+      }
+
+      final int comboCount = matchingSum.comboCount;
+      comboTotal += comboCount;
+      if (comboCount > maxComboCount) {
+        maxComboCount = comboCount;
+      }
+      if (comboCount == 1) {
+        singleCombinationRunCount++;
+      }
+      if (comboCount <= 3) {
+        lowCombinationRunCount++;
+      }
+      final String histogramKey = comboCount.toString();
+      comboHistogram[histogramKey] = (comboHistogram[histogramKey] ?? 0) + 1;
+      weightedComboNumerator += comboCount * 1000 * info.entry.length;
+      weightedLengthTotal += info.entry.length;
+      runDigitMasks[info.entry.id] = matchingSum.unionMask == 0
+          ? KakuroMask.allDigits
+          : matchingSum.unionMask;
+    }
+
+    final _KakuroIntersectionStats intersection = _scoreIntersections(
+      runDigitMasks,
+    );
+    final int averageRunCombinationCountMilli = (comboTotal * 1000) ~/ runCount;
+    final int singleCombinationRunRatioMilli =
+        (singleCombinationRunCount * 1000) ~/ runCount;
+    final int lowCombinationRunRatioMilli =
+        (lowCombinationRunCount * 1000) ~/ runCount;
+    final int runLengthWeightedAmbiguityMilli = weightedLengthTotal == 0
+        ? 0
+        : weightedComboNumerator ~/ weightedLengthTotal;
+    final List<int> histogramKeys =
+        comboHistogram.keys
+            .map((String key) => int.parse(key))
+            .toList(growable: false)
+          ..sort();
+    final Map<String, int> stableComboHistogram = <String, int>{
+      for (final int key in histogramKeys)
+        key.toString(): comboHistogram[key.toString()]!,
+    };
+
+    return KakuroConstructionMetrics(
+      averageRunCombinationCountMilli: averageRunCombinationCountMilli,
+      singleCombinationRunRatioMilli: singleCombinationRunRatioMilli,
+      maxRunAmbiguityMilli: maxComboCount * 1000,
+      intersectionCandidateReductionMilli:
+          intersection.intersectionCandidateReductionMilli,
+      runLengthWeightedAmbiguityMilli: runLengthWeightedAmbiguityMilli,
+      intersectionSizeHistogram: intersection.histogram,
+      forcedIntersectionCellCount: intersection.forcedCellCount,
+      nearForcedIntersectionCellCount: intersection.nearForcedCellCount,
+      weakIntersectionCellCount: intersection.weakCellCount,
+      averageIntersectionSizeMilli: intersection.averageSizeMilli,
+      maxIntersectionSize: intersection.maxSize,
+      weakestRegionScore: intersection.weakestRegionScore,
+      weakRegionCount: intersection.weakRegionCount,
+      runCombinationCountHistogram: stableComboHistogram,
+      singleCombinationRunCount: singleCombinationRunCount,
+      lowCombinationRunCount: lowCombinationRunCount,
+      lowCombinationRunRatioMilli: lowCombinationRunRatioMilli,
+      runCount: runCount,
+      valueCellCount: template.valueCellCount,
+    );
+  }
+
+  _KakuroIntersectionStats _scoreIntersections(List<int> runDigitMasks) {
+    final Map<String, int> histogram = _emptyIntersectionHistogram();
+    final Map<int, List<int>> sizesByRun = <int, List<int>>{};
+    int forcedCellCount = 0;
+    int nearForcedCellCount = 0;
+    int weakCellCount = 0;
+    int sizeTotal = 0;
+    int maxSize = 0;
+    int scoredCellCount = 0;
+
     for (final int cell in template.valueCells) {
       final int acrossId = template.acrossEntryForCell[cell];
       final int downId = template.downEntryForCell[cell];
@@ -294,26 +528,115 @@ class _KakuroConstructionScorer {
       }
       final int intersectionMask =
           runDigitMasks[acrossId] & runDigitMasks[downId];
-      final int candidates = KakuroMask.popcount(intersectionMask);
-      final int clamped = candidates.clamp(0, 9);
-      final int reductionMilli = ((9 - clamped) * 1000) ~/ 9;
-      reductionTotal += reductionMilli;
-      reductionCells++;
+      int size = KakuroMask.popcount(intersectionMask);
+      size = size.clamp(1, 9);
+      histogram[size.toString()] = (histogram[size.toString()] ?? 0) + 1;
+      if (size == 1) {
+        forcedCellCount++;
+      }
+      if (size <= 2) {
+        nearForcedCellCount++;
+      }
+      if (size >= 5) {
+        weakCellCount++;
+      }
+      if (size > maxSize) {
+        maxSize = size;
+      }
+      sizeTotal += size;
+      scoredCellCount++;
+      sizesByRun.putIfAbsent(acrossId, () => <int>[]).add(size);
+      sizesByRun.putIfAbsent(downId, () => <int>[]).add(size);
     }
-    final int intersectionCandidateReductionMilli = reductionCells == 0
-        ? 0
-        : reductionTotal ~/ reductionCells;
 
-    return KakuroConstructionMetrics(
-      averageRunCombinationCountMilli: averageRunCombinationCountMilli,
-      singleCombinationRunRatioMilli: singleCombinationRunRatioMilli,
-      maxRunAmbiguityMilli: maxAmbiguityMilli,
-      intersectionCandidateReductionMilli: intersectionCandidateReductionMilli,
-      runLengthWeightedAmbiguityMilli: runLengthWeightedAmbiguityMilli,
-      runCount: runCount,
-      valueCellCount: template.valueCellCount,
+    int weakestRegionScore = 1000;
+    int weakRegionCount = 0;
+    if (template.entries.isEmpty) {
+      weakestRegionScore = 0;
+    } else {
+      for (final KakuroLayoutEntry entry in template.entries) {
+        final List<int> sizes = sizesByRun[entry.id] ?? const <int>[];
+        if (sizes.isEmpty) {
+          weakestRegionScore = 0;
+          weakRegionCount++;
+          continue;
+        }
+        int nearCount = 0;
+        int forcedCount = 0;
+        int weakCount = 0;
+        int runSizeTotal = 0;
+        for (final int size in sizes) {
+          if (size == 1) {
+            forcedCount++;
+          }
+          if (size <= 2) {
+            nearCount++;
+          }
+          if (size >= 5) {
+            weakCount++;
+          }
+          runSizeTotal += size;
+        }
+        final int averageSizeMilli = (runSizeTotal * 1000) ~/ sizes.length;
+        int regionScore =
+            1000 -
+            (averageSizeMilli ~/ 10) +
+            forcedCount * 90 +
+            nearCount * 45 -
+            weakCount * 80;
+        regionScore = regionScore.clamp(0, 1000);
+        if (regionScore < weakestRegionScore) {
+          weakestRegionScore = regionScore;
+        }
+        if (nearCount == 0 || weakCount * 2 >= sizes.length) {
+          weakRegionCount++;
+        }
+      }
+    }
+
+    final int averageSizeMilli = scoredCellCount == 0
+        ? 0
+        : (sizeTotal * 1000) ~/ scoredCellCount;
+    final int reductionMilli = scoredCellCount == 0
+        ? 0
+        : ((9 * scoredCellCount - sizeTotal) * 1000) ~/ (9 * scoredCellCount);
+
+    return _KakuroIntersectionStats(
+      histogram: histogram,
+      forcedCellCount: forcedCellCount,
+      nearForcedCellCount: nearForcedCellCount,
+      weakCellCount: weakCellCount,
+      averageSizeMilli: averageSizeMilli,
+      maxSize: maxSize,
+      weakestRegionScore: weakestRegionScore,
+      weakRegionCount: weakRegionCount,
+      intersectionCandidateReductionMilli: reductionMilli,
     );
   }
+}
+
+class _KakuroIntersectionStats {
+  const _KakuroIntersectionStats({
+    required this.histogram,
+    required this.forcedCellCount,
+    required this.nearForcedCellCount,
+    required this.weakCellCount,
+    required this.averageSizeMilli,
+    required this.maxSize,
+    required this.weakestRegionScore,
+    required this.weakRegionCount,
+    required this.intersectionCandidateReductionMilli,
+  });
+
+  final Map<String, int> histogram;
+  final int forcedCellCount;
+  final int nearForcedCellCount;
+  final int weakCellCount;
+  final int averageSizeMilli;
+  final int maxSize;
+  final int weakestRegionScore;
+  final int weakRegionCount;
+  final int intersectionCandidateReductionMilli;
 }
 
 class _KakuroCellChoice {
@@ -340,6 +663,22 @@ class _KakuroCandidateScore {
   final int digit;
   final int scoreMilli;
   final int tieOrder;
+}
+
+class _KakuroCapturedFill {
+  const _KakuroCapturedFill({
+    required this.values,
+    required this.entrySums,
+    required this.metrics,
+    required this.scoreMilli,
+    required this.ordinal,
+  });
+
+  final List<int> values;
+  final Map<int, int> entrySums;
+  final KakuroConstructionMetrics metrics;
+  final int scoreMilli;
+  final int ordinal;
 }
 
 class _KakuroAmbiguityAwareSearch {
@@ -370,10 +709,7 @@ class _KakuroAmbiguityAwareSearch {
   bool completionBudgetHit = false;
   int? firstScoreMilli;
 
-  int _bestScoreMilli = -0x3fffffff;
-  List<int>? _bestValues;
-  Map<int, int>? _bestEntrySums;
-  KakuroConstructionMetrics? _bestMetrics;
+  final List<_KakuroCapturedFill> _capturedFills = <_KakuroCapturedFill>[];
 
   static List<int> _orderedCells(KakuroLayout template) {
     final List<int> ordered = List<int>.from(template.valueCells);
@@ -406,22 +742,41 @@ class _KakuroAmbiguityAwareSearch {
   }
 
   KakuroSolution? run() {
-    _search(0);
-    if (_bestValues == null || _bestEntrySums == null || _bestMetrics == null) {
+    final List<KakuroSolution> candidates = runCandidates();
+    if (candidates.isEmpty) {
       return null;
     }
-    return KakuroSolution(
-      values: _bestValues!,
-      entrySums: _bestEntrySums!,
-      constructionMetrics: _bestMetrics!,
-      constructionScoreMilli: _bestScoreMilli,
-      constructionFirstScoreMilli: firstScoreMilli ?? _bestScoreMilli,
-      constructionSearchNodes: searchNodes,
-      constructionScoredFills: scoredFills,
-      constructionSoftBudgetHit: softBudgetHit,
-      constructionHardBudgetHit: hardBudgetHit,
-      constructionCompletionBudgetHit: completionBudgetHit,
-    );
+    return candidates.first;
+  }
+
+  List<KakuroSolution> runCandidates() {
+    _search(0);
+    if (_capturedFills.isEmpty) {
+      return const <KakuroSolution>[];
+    }
+    _capturedFills.sort((_KakuroCapturedFill a, _KakuroCapturedFill b) {
+      final int byScore = b.scoreMilli.compareTo(a.scoreMilli);
+      if (byScore != 0) {
+        return byScore;
+      }
+      return a.ordinal.compareTo(b.ordinal);
+    });
+    return _capturedFills
+        .map(
+          (_KakuroCapturedFill fill) => KakuroSolution(
+            values: fill.values,
+            entrySums: fill.entrySums,
+            constructionMetrics: fill.metrics,
+            constructionScoreMilli: fill.scoreMilli,
+            constructionFirstScoreMilli: firstScoreMilli ?? fill.scoreMilli,
+            constructionSearchNodes: searchNodes,
+            constructionScoredFills: scoredFills,
+            constructionSoftBudgetHit: softBudgetHit,
+            constructionHardBudgetHit: hardBudgetHit,
+            constructionCompletionBudgetHit: completionBudgetHit,
+          ),
+        )
+        .toList(growable: false);
   }
 
   void _search(int depth) {
@@ -546,21 +901,26 @@ class _KakuroAmbiguityAwareSearch {
   }
 
   void _captureCompleteFill() {
-    final KakuroConstructionMetrics metrics = scorer.score(entryMasks);
-    final int scoreMilli = _constructionProfileScoreMilli(metrics, difficulty);
-    scoredFills++;
-    firstScoreMilli ??= scoreMilli;
-    if (scoreMilli <= _bestScoreMilli) {
-      return;
-    }
     final Map<int, int> sums = _buildEntrySums(values, template.entries);
     if (sums.isEmpty) {
       return;
     }
-    _bestScoreMilli = scoreMilli;
-    _bestValues = List<int>.from(values);
-    _bestEntrySums = sums;
-    _bestMetrics = metrics;
+    final KakuroConstructionMetrics metrics = scorer.score(
+      entryMasks,
+      entrySums: sums,
+    );
+    final int scoreMilli = _constructionProfileScoreMilli(metrics, difficulty);
+    scoredFills++;
+    firstScoreMilli ??= scoreMilli;
+    _capturedFills.add(
+      _KakuroCapturedFill(
+        values: List<int>.from(values),
+        entrySums: Map<int, int>.from(sums),
+        metrics: metrics,
+        scoreMilli: scoreMilli,
+        ordinal: scoredFills,
+      ),
+    );
   }
 
   void _assign(int cell, int digit) {
@@ -591,15 +951,57 @@ int _constructionProfileScoreMilli(
   final int maxAmbiguity = metrics.maxRunAmbiguityMilli;
   final int crossing = metrics.intersectionCandidateReductionMilli;
   final int weighted = metrics.runLengthWeightedAmbiguityMilli;
+  final int cellCount = metrics.valueCellCount == 0
+      ? 1
+      : metrics.valueCellCount;
+  final int forcedRatio =
+      (metrics.forcedIntersectionCellCount * 1000) ~/ cellCount;
+  final int nearRatio =
+      (metrics.nearForcedIntersectionCellCount * 1000) ~/ cellCount;
+  final int weakRatio = (metrics.weakIntersectionCellCount * 1000) ~/ cellCount;
+  final int lowRunRatio = metrics.lowCombinationRunRatioMilli;
+  final int avgIntersection = metrics.averageIntersectionSizeMilli;
+  final int maxIntersection = metrics.maxIntersectionSize;
+  final int weakRegionPenalty = metrics.weakRegionCount * 180;
   switch (difficulty) {
     case 'easy':
-      return single * 8 +
+      return single * 10 +
+          lowRunRatio * 4 +
+          forcedRatio * 9 +
+          nearRatio * 8 +
           crossing * 5 -
+          weakRatio * 9 -
+          avgIntersection * 2 -
+          maxIntersection * 100 -
+          weakRegionPenalty -
           avg * 3 -
           weighted * 2 -
           maxAmbiguity * 2;
     case 'medium':
-      return single * 4 + crossing * 4 - avg * 2 - weighted - maxAmbiguity;
+      final int avgBalance = _constructionBalanceScore(avg, 2200, 1400);
+      final int weightedBalance = _constructionBalanceScore(
+        weighted,
+        2500,
+        1600,
+      );
+      final int singleBalance = _constructionBalanceScore(single, 550, 450);
+      final int highAmbiguityPenalty =
+          _constructionExcessPenalty(avg, 4600) +
+          _constructionExcessPenalty(weighted, 5200) +
+          _constructionExcessPenalty(maxAmbiguity, 7600);
+      return avgBalance * 5 +
+          weightedBalance * 3 +
+          singleBalance * 3 +
+          lowRunRatio +
+          forcedRatio * 6 +
+          nearRatio * 6 +
+          crossing * 5 -
+          weakRatio * 8 -
+          avgIntersection -
+          maxIntersection * 80 -
+          weakRegionPenalty -
+          highAmbiguityPenalty -
+          (maxAmbiguity ~/ 2);
     case 'hard':
       final int avgBalance = _constructionBalanceScore(avg, 3600, 1400);
       final int weightedBalance = _constructionBalanceScore(
@@ -613,6 +1015,13 @@ int _constructionProfileScoreMilli(
           _constructionExcessPenalty(maxAmbiguity, 8500);
       return crossing * 6 +
           single * 2 +
+          lowRunRatio * 2 +
+          forcedRatio * 3 +
+          nearRatio * 5 -
+          weakRatio * 7 -
+          avgIntersection -
+          maxIntersection * 70 -
+          weakRegionPenalty -
           avgBalance * 5 +
           weightedBalance * 3 -
           highAmbiguityPenalty -
@@ -630,6 +1039,13 @@ int _constructionProfileScoreMilli(
           _constructionExcessPenalty(maxAmbiguity, 9500);
       return crossing * 7 +
           single +
+          lowRunRatio +
+          forcedRatio * 2 +
+          nearRatio * 4 -
+          weakRatio * 6 -
+          avgIntersection -
+          maxIntersection * 60 -
+          weakRegionPenalty -
           avgBalance * 6 +
           weightedBalance * 4 -
           highAmbiguityPenalty -
@@ -768,6 +1184,7 @@ KakuroSolution? _buildLegacyFirstSolution(
   final _KakuroConstructionScorer scorer = _KakuroConstructionScorer(template);
   final KakuroConstructionMetrics metrics = scorer.score(
     _entryMasksFromValues(template, values),
+    entrySums: entrySums,
   );
   final int scoreMilli = _constructionProfileScoreMilli(metrics, difficulty);
   return KakuroSolution(
@@ -791,10 +1208,32 @@ KakuroSolution? buildSolutionFirst(
   int? maxSearchNodes,
   int? maxCompletedFills,
 }) {
+  final List<KakuroSolution> candidates = buildSolutionFirstCandidates(
+    template,
+    rng,
+    difficulty: difficulty,
+    maxSearchNodes: maxSearchNodes,
+    maxCompletedFills: maxCompletedFills,
+  );
+  return candidates.isEmpty ? null : candidates.first;
+}
+
+List<KakuroSolution> buildSolutionFirstCandidates(
+  KakuroLayout template,
+  SeededRng rng, {
+  String difficulty = 'medium',
+  int? maxSearchNodes,
+  int? maxCompletedFills,
+}) {
   if (difficulty == 'easy' && template.valueCellCount <= 16) {
     // Tiny easy layouts are retained as legacy repair/diagnostic fixtures.
     // Shipping easy layouts still use the ambiguity-aware search below.
-    return _buildLegacyFirstSolution(template, rng, difficulty);
+    final KakuroSolution? legacy = _buildLegacyFirstSolution(
+      template,
+      rng,
+      difficulty,
+    );
+    return legacy == null ? const <KakuroSolution>[] : <KakuroSolution>[legacy];
   }
 
   final _KakuroConstructionSearchConfig config =
@@ -810,9 +1249,14 @@ KakuroSolution? buildSolutionFirst(
     difficulty: difficulty,
     config: config,
   );
-  final KakuroSolution? best = search.run();
-  if (best != null) {
-    return best;
+  final List<KakuroSolution> candidates = search.runCandidates();
+  if (candidates.isNotEmpty) {
+    return candidates;
   }
-  return _buildLegacyFirstSolution(template, rng, difficulty);
+  final KakuroSolution? legacy = _buildLegacyFirstSolution(
+    template,
+    rng,
+    difficulty,
+  );
+  return legacy == null ? const <KakuroSolution>[] : <KakuroSolution>[legacy];
 }

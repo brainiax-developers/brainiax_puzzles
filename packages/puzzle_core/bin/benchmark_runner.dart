@@ -28,22 +28,22 @@ void main(List<String> arguments) async {
             scenarioName: invocation.slitherlinkScenarioName,
           )
         : invocation.engineId == 'kakuro_profiles'
-            ? await _benchmarkKakuroProfiles(
-                count: invocation.count,
-                iterationCapMs: invocation.iterationCapMs,
-                enforceExperimentalKakuroGate:
-                    invocation.enforceExperimentalKakuroGate,
-              )
-            : await _benchmarkEngine(
-                engineId: invocation.engineId,
-                count: invocation.count,
-                difficulty: invocation.difficulty,
-                size: invocation.size,
-                iterationCapMs: invocation.iterationCapMs,
-                kakuroBenchmarkProfileName: invocation.kakuroProfileName,
-                enforceExperimentalKakuroGate:
-                    invocation.enforceExperimentalKakuroGate,
-              );
+        ? await _benchmarkKakuroProfiles(
+            count: invocation.count,
+            iterationCapMs: invocation.iterationCapMs,
+            enforceExperimentalKakuroGate:
+                invocation.enforceExperimentalKakuroGate,
+          )
+        : await _benchmarkEngine(
+            engineId: invocation.engineId,
+            count: invocation.count,
+            difficulty: invocation.difficulty,
+            size: invocation.size,
+            iterationCapMs: invocation.iterationCapMs,
+            kakuroBenchmarkProfileName: invocation.kakuroProfileName,
+            enforceExperimentalKakuroGate:
+                invocation.enforceExperimentalKakuroGate,
+          );
 
     // Output result as JSON
     print(jsonEncode(result.toJson()));
@@ -645,8 +645,24 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'singleComboRunRatioMilli',
       'ambiguityScore',
       'ambiguityScoreMilli',
+      'constructionTelemetry',
       'averageRunCombinationCountMilli',
       'singleCombinationRunRatioMilli',
+      'intersectionSizeHistogram',
+      'forcedIntersectionCellCount',
+      'nearForcedIntersectionCellCount',
+      'weakIntersectionCellCount',
+      'averageIntersectionSizeMilli',
+      'maxIntersectionSize',
+      'weakestRegionScore',
+      'weakRegionCount',
+      'runCombinationCountHistogram',
+      'singleCombinationRunCount',
+      'lowCombinationRunCount',
+      'lowCombinationRunRatioMilli',
+      'constructionCandidateRank',
+      'constructionCandidateBatchSize',
+      'constructionQualityGatePassed',
       'stageTimingMs',
       'repairAttemptCount',
       'repairOutcome',
@@ -655,6 +671,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'repairedRejectCount',
       'acceptPath',
       'finalLayoutHash',
+      'layoutNonUniqueRejectCounts',
+      'nonUniquePatternRejectCounts',
     ];
     for (final String field in kakuroTelemetryFields) {
       final Object? value = generatorTelemetry[field];
@@ -1002,7 +1020,9 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
             'p99': _percentile(sortedTimes, 0.99) / 1000.0,
           },
         'failedIterationSamples': iterationDetails
-            .where((Map<String, Object?> detail) => detail['status'] != 'success')
+            .where(
+              (Map<String, Object?> detail) => detail['status'] != 'success',
+            )
             .take(5)
             .toList(growable: false),
         'measuredDifficultyDistribution': measuredDifficultyDistribution,
@@ -1442,13 +1462,16 @@ Future<EngineBenchmarkResult> _benchmarkKakuroProfiles({
   int totalIterations = 0;
   final Stopwatch totalStopwatch = Stopwatch()..start();
 
-  for (final KakuroProfile profile in KakuroSupportedProfiles.benchmarkEligibleProfiles) {
+  for (final KakuroProfile profile
+      in KakuroSupportedProfiles.benchmarkEligibleProfiles) {
     final String profileName = 'kakuro_${profile.sizeId}_${profile.difficulty}';
     if (!_kakuroBenchmarkProfiles.containsKey(profileName)) {
-      final KakuroProfileTier tier = KakuroSupportedProfiles.tierFor(
-        sizeId: profile.sizeId,
-        difficulty: profile.difficulty,
-      ) ?? KakuroProfileTier.experimental;
+      final KakuroProfileTier tier =
+          KakuroSupportedProfiles.tierFor(
+            sizeId: profile.sizeId,
+            difficulty: profile.difficulty,
+          ) ??
+          KakuroProfileTier.experimental;
 
       _kakuroBenchmarkProfiles[profileName] = _KakuroBenchmarkProfile(
         name: profileName,
@@ -1509,7 +1532,8 @@ Future<EngineBenchmarkResult> _benchmarkKakuroProfiles({
     iterations: totalIterations,
     extras: <String, Object?>{
       'benchmarkMode': 'kakuro_all_profiles',
-      'benchmarkNote': 'Runs all benchmark-eligible Kakuro profiles with device-dependent gates.',
+      'benchmarkNote':
+          'Runs all benchmark-eligible Kakuro profiles with device-dependent gates.',
       'generationMs': <String, double>{
         'p50': p50 / 1000.0,
         'p95': p95 / 1000.0,
@@ -1953,6 +1977,30 @@ Map<String, Object?> _sanitizeFailureContext(Map<String, Object?> context) {
         compact['constructionTelemetry'] = <String, Object?>{
           if (construction['constructionScoreMilli'] != null)
             'constructionScoreMilli': construction['constructionScoreMilli'],
+          if (construction['constructionCandidateRank'] != null)
+            'constructionCandidateRank':
+                construction['constructionCandidateRank'],
+          if (construction['constructionCandidateBatchSize'] != null)
+            'constructionCandidateBatchSize':
+                construction['constructionCandidateBatchSize'],
+          if (construction['forcedIntersectionCellCount'] != null)
+            'forcedIntersectionCellCount':
+                construction['forcedIntersectionCellCount'],
+          if (construction['nearForcedIntersectionCellCount'] != null)
+            'nearForcedIntersectionCellCount':
+                construction['nearForcedIntersectionCellCount'],
+          if (construction['weakIntersectionCellCount'] != null)
+            'weakIntersectionCellCount':
+                construction['weakIntersectionCellCount'],
+          if (construction['averageIntersectionSizeMilli'] != null)
+            'averageIntersectionSizeMilli':
+                construction['averageIntersectionSizeMilli'],
+          if (construction['lowCombinationRunRatioMilli'] != null)
+            'lowCombinationRunRatioMilli':
+                construction['lowCombinationRunRatioMilli'],
+          if (construction['constructionQualityGatePassed'] != null)
+            'constructionQualityGatePassed':
+                construction['constructionQualityGatePassed'],
         };
       }
       trimmed.add(compact);

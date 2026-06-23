@@ -266,9 +266,21 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               return;
             }
             _dailyGateResolved = true;
-          } catch (_) {
-            _dailyGateResolved = true;
-            // If daily generation fails, allow the screen to render an empty state.
+          } catch (error, stackTrace) {
+            if (kDebugMode) {
+              debugPrint(
+                '[DailyGeneration][Failure] type=$engineId '
+                    'error=$error\n$stackTrace',
+              );
+            }
+
+            if (!mounted) return;
+            setState(() {
+              _dailyGateResolved = true;
+              _dailyBlocked = true;
+              _dailyBlockedMessage =
+              'Could not generate today’s ${widget.puzzleType.displayName}. Please go back and try again.';
+            });
           }
         }
 

@@ -230,6 +230,33 @@ KakuroLayout _buildLayoutCandidateForAttempt({
       layoutFamilyId: _defaultKakuroLayoutFamilyId,
     );
   }
+  final bool usePhoneNewspaperProbe =
+      ((width == 7 && height == 10 && difficulty == 'medium') ||
+          (width == 8 && height == 11 && difficulty == 'hard') ||
+          (width == 9 && height == 12 && difficulty == 'expert')) &&
+      (difficulty == 'medium'
+          ? attemptIndex % 3 == 2
+          : difficulty == 'hard'
+          ? attemptIndex % 8 != 0
+          : attemptIndex % 4 == 3);
+  if (usePhoneNewspaperProbe) {
+    return KakuroLayout.buildNewspaper(
+      rng: SeededRng(
+        _deriveLayoutFamilySeed(
+          seed64,
+          width,
+          height,
+          difficulty,
+          attemptIndex,
+          0x4f57,
+        ),
+      ),
+      width: width,
+      height: height,
+      difficulty: difficulty,
+      layoutFamilyId: _defaultKakuroLayoutFamilyId,
+    );
+  }
 
   final List<KakuroLayoutFamily> eligible = _kakuroLayoutFamilies
       .where(
@@ -501,7 +528,7 @@ List<String> _buildPortraitProfileBaseRows({
 
   KakuroLayout? bestLayout;
   KakuroLayoutPreScoreResult? bestScore;
-  for (int variant = 0; variant < 32; variant++) {
+  for (int variant = 0; variant < 96; variant++) {
     final SeededRng variantRng = SeededRng(
       rng.nextInt64() ^
           Seed.fromString(
@@ -557,6 +584,19 @@ bool _isBetterPortraitPreScore(
   }
   if (candidate.scoreMilli != incumbent.scoreMilli) {
     return candidate.scoreMilli > incumbent.scoreMilli;
+  }
+  if (candidate.metrics.maxRunLength != incumbent.metrics.maxRunLength) {
+    return candidate.metrics.maxRunLength < incumbent.metrics.maxRunLength;
+  }
+  if (candidate.metrics.runLengthWeightedCombinationEstimateMilli !=
+      incumbent.metrics.runLengthWeightedCombinationEstimateMilli) {
+    return candidate.metrics.runLengthWeightedCombinationEstimateMilli <
+        incumbent.metrics.runLengthWeightedCombinationEstimateMilli;
+  }
+  if (candidate.metrics.highAmbiguityRunRatioMilli !=
+      incumbent.metrics.highAmbiguityRunRatioMilli) {
+    return candidate.metrics.highAmbiguityRunRatioMilli <
+        incumbent.metrics.highAmbiguityRunRatioMilli;
   }
   if (candidate.metrics.unpairedValueCellCount !=
       incumbent.metrics.unpairedValueCellCount) {

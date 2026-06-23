@@ -100,10 +100,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       );
     }
     final List<int> entryMasks = _entryMasksFromValues(template, values);
+    final Map<int, int> entrySums = _buildEntrySums(values, template.entries);
     final _KakuroConstructionScorer scorer = _KakuroConstructionScorer(
       template,
     );
-    final KakuroConstructionMetrics metrics = scorer.score(entryMasks);
+    final KakuroConstructionMetrics metrics = scorer.score(
+      entryMasks,
+      entrySums: entrySums.isEmpty ? null : entrySums,
+    );
     final int constructionScoreMilli = _constructionProfileScoreMilli(
       metrics,
       difficulty,
@@ -149,6 +153,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     int unknownStatusCount = 0;
     int logicRejectCount = 0;
     int comboRejectCount = 0;
+    int constructionQualityRejectCount = 0;
     int difficultyRejectCount = 0;
     int attemptBudgetExceededCount = 0;
     int hardBudgetExceededCount = 0;
@@ -168,6 +173,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     final List<Map<String, Object?>> rejectedLayoutCandidateTelemetry =
         <Map<String, Object?>>[];
     final List<Map<String, Object?>> attemptLog = <Map<String, Object?>>[];
+    final Map<String, int> layoutNonUniqueRejectCounts = <String, int>{};
+    final Map<String, int> nonUniqueSignatureRejectCounts = <String, int>{};
+    final Map<String, int> repairAttemptLayouts = <String, int>{};
     Map<String, Object?> telemetry = const <String, Object?>{};
     KakuroBoard? puzzle;
     String? terminalFailureReason;
@@ -211,6 +219,8 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       String? repairOutcome,
       String? repairReason,
       bool? repairedFromNonUnique,
+      int? constructionCandidateRank,
+      int? constructionCandidateBatchSize,
       String? layoutHash,
     }) {
       attemptLog.add(<String, Object?>{
@@ -232,6 +242,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         if (repairReason != null) 'repairReason': repairReason,
         if (repairedFromNonUnique != null)
           'repairedFromNonUnique': repairedFromNonUnique,
+        if (constructionCandidateRank != null)
+          'constructionCandidateRank': constructionCandidateRank,
+        if (constructionCandidateBatchSize != null)
+          'constructionCandidateBatchSize': constructionCandidateBatchSize,
         if (layoutHash != null) 'layoutHash': layoutHash,
         if (constructionTelemetry != null)
           'constructionTelemetry': constructionTelemetry,
@@ -265,6 +279,10 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             score.metrics.runLengthWeightedCombinationEstimateMilli,
         'singleCombinationSumRatioEstimateMilli':
             score.metrics.singleCombinationSumRatioEstimateMilli,
+        'runGraphAverageDegreeMilli': score.metrics.runGraphAverageDegreeMilli,
+        'anchorRunEstimateCount': score.metrics.anchorRunEstimateCount,
+        'anchorRunEstimateRatioMilli':
+            score.metrics.anchorRunEstimateRatioMilli,
       };
       if (accepted) {
         acceptedLayoutCandidateTelemetry.add(entry);
@@ -281,6 +299,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'unknownStatus': unknownStatusCount,
         'logicGate': logicRejectCount,
         'comboGate': comboRejectCount,
+        'constructionQualityGate': constructionQualityRejectCount,
         'difficultyGate': difficultyRejectCount,
         'attemptBudget': attemptBudgetExceededCount,
         'hardBudget': hardBudgetExceededCount,
@@ -327,7 +346,6 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         height: targetHeight,
         difficulty: requestedLevel,
         attemptIndex: candidateIndex,
-        newspaperRng: context.rng,
       );
       layoutScoreWatch.start();
       final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
@@ -398,7 +416,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     } else {
       acceptedLayouts.sort(
         (_KakuroAcceptedLayoutCandidate a, _KakuroAcceptedLayoutCandidate b) =>
-            _compareAcceptedLayoutCandidates(a, b),
+            _compareAcceptedLayoutCandidates(a, b, requestedLevel),
       );
       final _KakuroAcceptedLayoutCandidate top = acceptedLayouts.first;
       layoutScoreMilli = top.scoreMilli;
@@ -443,6 +461,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           'allowDifficultyFallback': allowDifficultyFallback,
           'repairUniqueLayoutHashCount': repairUniqueLayoutHashCount,
           'finalLayoutHash': finalLayoutHash,
+          'layoutNonUniqueRejectCounts': layoutNonUniqueRejectCounts,
+          'nonUniquePatternRejectCounts': nonUniqueSignatureRejectCounts,
+          'repairAttemptLayouts': repairAttemptLayouts,
           'attemptsLog': attemptLog,
         },
       );
@@ -893,6 +914,29 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       layoutScoreMilli = templateCandidate.scoreMilli;
       layoutGateReason = templateCandidate.reason;
       selectedLayoutMetrics = selectedMetrics;
+      final String selectedLayoutHash = selectedMetrics.layoutHash;
+      if ((layoutNonUniqueRejectCounts[selectedLayoutHash] ?? 0) >=
+          _layoutNonUniqueRetryLimit(requestedLevel)) {
+        final bool allAcceptedLayoutsSaturated = acceptedLayouts.every(
+          (_KakuroAcceptedLayoutCandidate candidate) =>
+              (layoutNonUniqueRejectCounts[candidate.metrics.layoutHash] ??
+                  0) >=
+              _layoutNonUniqueRetryLimit(requestedLevel),
+        );
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptWatch.elapsedMilliseconds,
+          outcome: 'rejected',
+          rejectReason: 'layout_non_unique_saturated',
+          mode: 'primary',
+          layoutHash: selectedLayoutHash,
+        );
+        if (allAcceptedLayoutsSaturated) {
+          terminalFailureReason = 'layout_non_unique_saturated';
+          break;
+        }
+        continue;
+      }
       int solverStage = 0;
       SeededRng nextSolverRng() {
         solverStage++;
@@ -903,13 +947,14 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
 
       // Build a fully solved board using the fast solution-first generator.
       final Stopwatch fillWatch = Stopwatch()..start();
-      KakuroSolution? solution = buildSolutionFirst(
+      final List<KakuroSolution> fillCandidates = buildSolutionFirstCandidates(
         selectedTemplate,
         SeededRng(_deriveSolverSeed(context.seed64, attempts, 1001)),
         difficulty: requestedLevel,
+        maxCompletedFills: _fillCandidateBatchSizeFor(requestedLevel),
       );
       fillWatch.stop();
-      if (solution == null) {
+      if (fillCandidates.isEmpty) {
         nullSolutionCount++;
         recordAttempt(
           attempt: attempts,
@@ -920,8 +965,55 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
         continue;
       }
-      Map<String, Object?> constructionTelemetry = solution
-          .constructionTelemetry();
+      KakuroSolution? solution;
+      int constructionCandidateRank = 0;
+      final List<int> passingCandidateIndexes = <int>[];
+      for (int i = 0; i < fillCandidates.length; i++) {
+        final KakuroSolution candidate = fillCandidates[i];
+        if (!_meetsConstructionQualityGate(
+          candidate.constructionMetrics,
+          requestedLevel,
+        )) {
+          continue;
+        }
+        passingCandidateIndexes.add(i);
+      }
+      if (passingCandidateIndexes.isNotEmpty) {
+        final int layoutRejectCount =
+            layoutNonUniqueRejectCounts[selectedLayoutHash] ?? 0;
+        final int selectedPassingIndex =
+            passingCandidateIndexes[math.min(
+              layoutRejectCount,
+              passingCandidateIndexes.length - 1,
+            )];
+        solution = fillCandidates[selectedPassingIndex];
+        constructionCandidateRank = selectedPassingIndex + 1;
+      }
+      if (solution == null) {
+        constructionQualityRejectCount++;
+        final KakuroSolution bestRejected = fillCandidates.first;
+        recordAttempt(
+          attempt: attempts,
+          durationMs: attemptWatch.elapsedMilliseconds,
+          outcome: 'rejected',
+          rejectReason: 'construction_quality_gate',
+          mode: 'primary',
+          constructionCandidateRank: 1,
+          constructionCandidateBatchSize: fillCandidates.length,
+          layoutHash: selectedLayoutHash,
+          constructionTelemetry: <String, Object?>{
+            ...bestRejected.constructionTelemetry(),
+            'constructionQualityGatePassed': false,
+          },
+        );
+        continue;
+      }
+      Map<String, Object?> constructionTelemetry = <String, Object?>{
+        ...solution.constructionTelemetry(),
+        'constructionCandidateRank': constructionCandidateRank,
+        'constructionCandidateBatchSize': fillCandidates.length,
+        'constructionQualityGatePassed': true,
+      };
 
       if (attemptWatch.elapsedMilliseconds > perAttemptBudgetMs) {
         attemptBudgetExceededCount++;
@@ -999,9 +1091,31 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         continue;
       }
       if (uniqueness.solutionStatus != SolverStatus.unique) {
+        final String nonUniqueSignature = _buildNonUniqueSignature(
+          layoutHash: selectedLayoutHash,
+          telemetry: uniqueness.telemetry,
+        );
+        final int signatureRejectCount =
+            (nonUniqueSignatureRejectCounts[nonUniqueSignature] ?? 0) + 1;
+        nonUniqueSignatureRejectCounts[nonUniqueSignature] =
+            signatureRejectCount;
+        layoutNonUniqueRejectCounts[selectedLayoutHash] =
+            (layoutNonUniqueRejectCounts[selectedLayoutHash] ?? 0) + 1;
         _KakuroAcceptedRepairCandidate? repaired;
-        if (uniqueness.solutionStatus == SolverStatus.multiple &&
-            uniqueness.telemetry['disagreementSummary'] != null) {
+        final bool canAttemptRepair =
+            uniqueness.solutionStatus == SolverStatus.multiple &&
+            uniqueness.telemetry['disagreementSummary'] != null &&
+            signatureRejectCount <=
+                _nonUniqueSignatureRetryLimit(requestedLevel) &&
+            (repairAttemptLayouts[selectedLayoutHash] ?? 0) <
+                _repairAttemptLayoutLimit(requestedLevel) &&
+            _shouldAttemptRepairForConstruction(
+              solution.constructionMetrics,
+              requestedLevel,
+            );
+        if (canAttemptRepair) {
+          repairAttemptLayouts[selectedLayoutHash] =
+              (repairAttemptLayouts[selectedLayoutHash] ?? 0) + 1;
           repaired = tryRepairNonUnique(
             attemptNumber: attempts,
             mode: 'primary',
@@ -1009,6 +1123,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             nonUniqueResult: uniqueness,
             attemptWatch: attemptWatch,
           );
+        } else if (uniqueness.solutionStatus == SolverStatus.multiple) {
+          repairOutcome = 'skipped';
+          if (signatureRejectCount >
+              _nonUniqueSignatureRetryLimit(requestedLevel)) {
+            repairReason = 'repeated_non_unique_signature';
+          } else if ((repairAttemptLayouts[selectedLayoutHash] ?? 0) >=
+              _repairAttemptLayoutLimit(requestedLevel)) {
+            repairReason = 'layout_repair_limit';
+          } else {
+            repairReason = 'construction_not_close';
+          }
         }
         if (repaired == null) {
           nonUniqueCount++;
@@ -1033,7 +1158,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                 ? repairReason
                 : null,
             repairedFromNonUnique: false,
-            layoutHash: _computeLayoutHash(selectedTemplate.layout),
+            layoutHash: selectedLayoutHash,
             constructionTelemetry: constructionTelemetry,
           );
           continue;
@@ -1220,6 +1345,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         'hardCapExceeded': false,
         'attemptsLog': attemptLog,
         'repairUniqueLayoutHashCount': repairUniqueLayoutHashCount,
+        'layoutNonUniqueRejectCounts': layoutNonUniqueRejectCounts,
+        'nonUniquePatternRejectCounts': nonUniqueSignatureRejectCounts,
+        'repairAttemptLayouts': repairAttemptLayouts,
         'rejectCounters': buildRejectCounters(),
       };
       break;
@@ -1243,9 +1371,6 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           height: targetHeight,
           difficulty: requestedLevel,
           attemptIndex: maxLayoutCandidates + alt,
-          newspaperRng: SeededRng(
-            _deriveSolverSeed(context.seed64, 1234, alt + 1),
-          ),
         );
         final KakuroLayoutPreScoreResult preScore = layoutPreScorer.score(
           layout: altTemplate,
@@ -1253,17 +1378,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         );
         layoutScoreMilli = preScore.scoreMilli;
         layoutGateReason = preScore.reason;
-        recordLayoutCandidate(
-          candidateIndex: maxLayoutCandidates + alt,
-          source: 'fallback_strict',
-          accepted: preScore.accepted,
-          reason: preScore.reason,
-          score: preScore,
-        );
         if (!preScore.accepted) {
           layoutGateRejectCount++;
           layoutGateReasonCounts[preScore.reason] =
               (layoutGateReasonCounts[preScore.reason] ?? 0) + 1;
+          recordLayoutCandidate(
+            candidateIndex: maxLayoutCandidates + alt,
+            source: 'fallback_strict',
+            accepted: false,
+            reason: preScore.reason,
+            score: preScore,
+          );
           recordAttempt(
             attempt: attemptNumber,
             durationMs: attemptWatch.elapsedMilliseconds,
@@ -1275,12 +1400,56 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
         }
         KakuroLayoutMetrics altMetrics = preScore.metrics;
         KakuroLayout workingTemplate = altTemplate;
-        KakuroSolution? sol = buildSolutionFirst(
-          workingTemplate,
-          SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 1)),
-          difficulty: requestedLevel,
+        final String altLayoutHash = altMetrics.layoutHash;
+        if (!acceptedLayoutHashes.add(altLayoutHash)) {
+          layoutGateRejectCount++;
+          layoutGateReason = 'duplicate_layout_candidate';
+          layoutGateReasonCounts['duplicate_layout_candidate'] =
+              (layoutGateReasonCounts['duplicate_layout_candidate'] ?? 0) + 1;
+          recordLayoutCandidate(
+            candidateIndex: maxLayoutCandidates + alt,
+            source: 'fallback_strict',
+            accepted: false,
+            reason: 'duplicate_layout_candidate',
+            score: preScore,
+          );
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'layout_gate_duplicate_layout_candidate',
+            mode: 'fallback_strict',
+            layoutHash: altLayoutHash,
+          );
+          continue;
+        }
+        recordLayoutCandidate(
+          candidateIndex: maxLayoutCandidates + alt,
+          source: 'fallback_strict',
+          accepted: true,
+          reason: preScore.reason,
+          score: preScore,
         );
-        if (sol == null) {
+        if ((layoutNonUniqueRejectCounts[altLayoutHash] ?? 0) >=
+            _layoutNonUniqueRetryLimit(requestedLevel)) {
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'layout_non_unique_saturated',
+            mode: 'fallback_strict',
+            layoutHash: altLayoutHash,
+          );
+          continue;
+        }
+        final List<KakuroSolution> fillCandidates =
+            buildSolutionFirstCandidates(
+              workingTemplate,
+              SeededRng(_deriveSolverSeed(context.seed64, 2234, alt + 1)),
+              difficulty: requestedLevel,
+              maxCompletedFills: _fillCandidateBatchSizeFor(requestedLevel),
+            );
+        if (fillCandidates.isEmpty) {
           nullSolutionCount++;
           recordAttempt(
             attempt: attemptNumber,
@@ -1291,8 +1460,55 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           );
           continue;
         }
-        Map<String, Object?> constructionTelemetry = sol
-            .constructionTelemetry();
+        KakuroSolution? sol;
+        int constructionCandidateRank = 0;
+        final List<int> passingCandidateIndexes = <int>[];
+        for (int i = 0; i < fillCandidates.length; i++) {
+          final KakuroSolution candidate = fillCandidates[i];
+          if (!_meetsConstructionQualityGate(
+            candidate.constructionMetrics,
+            requestedLevel,
+          )) {
+            continue;
+          }
+          passingCandidateIndexes.add(i);
+        }
+        if (passingCandidateIndexes.isNotEmpty) {
+          final int layoutRejectCount =
+              layoutNonUniqueRejectCounts[altLayoutHash] ?? 0;
+          final int selectedPassingIndex =
+              passingCandidateIndexes[math.min(
+                layoutRejectCount,
+                passingCandidateIndexes.length - 1,
+              )];
+          sol = fillCandidates[selectedPassingIndex];
+          constructionCandidateRank = selectedPassingIndex + 1;
+        }
+        if (sol == null) {
+          constructionQualityRejectCount++;
+          final KakuroSolution bestRejected = fillCandidates.first;
+          recordAttempt(
+            attempt: attemptNumber,
+            durationMs: attemptWatch.elapsedMilliseconds,
+            outcome: 'rejected',
+            rejectReason: 'construction_quality_gate',
+            mode: 'fallback_strict',
+            constructionCandidateRank: 1,
+            constructionCandidateBatchSize: fillCandidates.length,
+            layoutHash: altLayoutHash,
+            constructionTelemetry: <String, Object?>{
+              ...bestRejected.constructionTelemetry(),
+              'constructionQualityGatePassed': false,
+            },
+          );
+          continue;
+        }
+        Map<String, Object?> constructionTelemetry = <String, Object?>{
+          ...sol.constructionTelemetry(),
+          'constructionCandidateRank': constructionCandidateRank,
+          'constructionCandidateBatchSize': fillCandidates.length,
+          'constructionQualityGatePassed': true,
+        };
         KakuroBoard board = workingTemplate.buildBoard(sol.entrySums);
         SolverResult<KakuroBoard> uniqueness = strictSolver.solve(
           board,
@@ -1354,9 +1570,34 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           continue;
         }
         if (uniqueness.solutionStatus != SolverStatus.unique) {
+          final String workingLayoutHash = _computeLayoutHash(
+            workingTemplate.layout,
+          );
+          final String nonUniqueSignature = _buildNonUniqueSignature(
+            layoutHash: workingLayoutHash,
+            telemetry: uniqueness.telemetry,
+          );
+          final int signatureRejectCount =
+              (nonUniqueSignatureRejectCounts[nonUniqueSignature] ?? 0) + 1;
+          nonUniqueSignatureRejectCounts[nonUniqueSignature] =
+              signatureRejectCount;
+          layoutNonUniqueRejectCounts[workingLayoutHash] =
+              (layoutNonUniqueRejectCounts[workingLayoutHash] ?? 0) + 1;
           _KakuroAcceptedRepairCandidate? repaired;
-          if (uniqueness.solutionStatus == SolverStatus.multiple &&
-              uniqueness.telemetry['disagreementSummary'] != null) {
+          final bool canAttemptRepair =
+              uniqueness.solutionStatus == SolverStatus.multiple &&
+              uniqueness.telemetry['disagreementSummary'] != null &&
+              signatureRejectCount <=
+                  _nonUniqueSignatureRetryLimit(requestedLevel) &&
+              (repairAttemptLayouts[workingLayoutHash] ?? 0) <
+                  _repairAttemptLayoutLimit(requestedLevel) &&
+              _shouldAttemptRepairForConstruction(
+                sol.constructionMetrics,
+                requestedLevel,
+              );
+          if (canAttemptRepair) {
+            repairAttemptLayouts[workingLayoutHash] =
+                (repairAttemptLayouts[workingLayoutHash] ?? 0) + 1;
             repaired = tryRepairNonUnique(
               attemptNumber: attemptNumber,
               mode: 'fallback_strict',
@@ -1364,6 +1605,17 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
               nonUniqueResult: uniqueness,
               attemptWatch: attemptWatch,
             );
+          } else if (uniqueness.solutionStatus == SolverStatus.multiple) {
+            repairOutcome = 'skipped';
+            if (signatureRejectCount >
+                _nonUniqueSignatureRetryLimit(requestedLevel)) {
+              repairReason = 'repeated_non_unique_signature';
+            } else if ((repairAttemptLayouts[workingLayoutHash] ?? 0) >=
+                _repairAttemptLayoutLimit(requestedLevel)) {
+              repairReason = 'layout_repair_limit';
+            } else {
+              repairReason = 'construction_not_close';
+            }
           }
           if (repaired == null) {
             nonUniqueCount++;
@@ -1389,7 +1641,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
                   ? repairReason
                   : null,
               repairedFromNonUnique: false,
-              layoutHash: _computeLayoutHash(workingTemplate.layout),
+              layoutHash: workingLayoutHash,
               constructionTelemetry: constructionTelemetry,
             );
             continue;
@@ -1559,6 +1811,9 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
             'hardCapExceeded': false,
             'attemptsLog': attemptLog,
             'repairUniqueLayoutHashCount': repairUniqueLayoutHashCount,
+            'layoutNonUniqueRejectCounts': layoutNonUniqueRejectCounts,
+            'nonUniquePatternRejectCounts': nonUniqueSignatureRejectCounts,
+            'repairAttemptLayouts': repairAttemptLayouts,
             'rejectCounters': buildRejectCounters(),
           };
         }
@@ -1607,12 +1862,38 @@ class _KakuroAcceptedLayoutCandidate {
 int _compareAcceptedLayoutCandidates(
   _KakuroAcceptedLayoutCandidate a,
   _KakuroAcceptedLayoutCandidate b,
+  String difficulty,
 ) {
+  if (difficulty == 'hard' &&
+      a.metrics.width == 8 &&
+      a.metrics.height == 11 &&
+      b.metrics.width == 8 &&
+      b.metrics.height == 11) {
+    final bool aNewspaper =
+        a.layout.layoutFamilyId == _defaultKakuroLayoutFamilyId;
+    final bool bNewspaper =
+        b.layout.layoutFamilyId == _defaultKakuroLayoutFamilyId;
+    if (aNewspaper != bNewspaper) {
+      return aNewspaper ? -1 : 1;
+    }
+  }
   int cmp = b.scoreMilli.compareTo(a.scoreMilli);
   if (cmp != 0) {
     return cmp;
   }
   cmp = b.metrics.totalRunCount.compareTo(a.metrics.totalRunCount);
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = b.metrics.anchorRunEstimateRatioMilli.compareTo(
+    a.metrics.anchorRunEstimateRatioMilli,
+  );
+  if (cmp != 0) {
+    return cmp;
+  }
+  cmp = b.metrics.runGraphAverageDegreeMilli.compareTo(
+    a.metrics.runGraphAverageDegreeMilli,
+  );
   if (cmp != 0) {
     return cmp;
   }
@@ -2005,11 +2286,23 @@ int _layoutCandidateBudgetFor({
   if (width == 7 && height == 7 && difficulty == 'easy') {
     return 12;
   }
+  if (width == 7 && height == 9 && difficulty == 'easy') {
+    return 24;
+  }
+  if (width == 7 && height == 10 && difficulty == 'medium') {
+    return 160;
+  }
+  if (width == 8 && height == 11 && difficulty == 'hard') {
+    return 200;
+  }
+  if (width == 9 && height == 12 && difficulty == 'expert') {
+    return 240;
+  }
   if (area >= 90) {
-    return 16;
+    return 24;
   }
   if (area >= 63) {
-    return 12;
+    return 18;
   }
   if (area >= 49) {
     return 10;
@@ -2030,15 +2323,145 @@ int _layoutEarlyAcceptScoreThreshold({
       (difficulty == 'medium' ||
           difficulty == 'hard' ||
           difficulty == 'expert')) {
-    return 1001;
+    return 3001;
   }
   if ((width == 7 && height == 9 && difficulty == 'easy') ||
       (width == 7 && height == 10 && difficulty == 'medium') ||
       (width == 8 && height == 11 && difficulty == 'hard') ||
       (width == 9 && height == 12 && difficulty == 'expert')) {
-    return 1001;
+    return 3001;
   }
-  return 1000;
+  return 3001;
+}
+
+int _fillCandidateBatchSizeFor(String difficulty) {
+  switch (difficulty) {
+    case 'easy':
+      return 6;
+    case 'medium':
+      return 18;
+    case 'hard':
+      return 24;
+    case 'expert':
+      return 30;
+    default:
+      return 10;
+  }
+}
+
+int _layoutNonUniqueRetryLimit(String difficulty) {
+  switch (difficulty) {
+    case 'easy':
+      return 14;
+    case 'medium':
+      return 12;
+    case 'hard':
+      return 14;
+    case 'expert':
+      return 12;
+    default:
+      return 6;
+  }
+}
+
+int _nonUniqueSignatureRetryLimit(String difficulty) {
+  switch (difficulty) {
+    case 'easy':
+      return 4;
+    case 'medium':
+      return 3;
+    case 'hard':
+      return 3;
+    case 'expert':
+      return 2;
+    default:
+      return 2;
+  }
+}
+
+int _repairAttemptLayoutLimit(String difficulty) {
+  switch (difficulty) {
+    case 'easy':
+      return 6;
+    case 'medium':
+      return 4;
+    case 'hard':
+      return 4;
+    case 'expert':
+      return 2;
+    default:
+      return 2;
+  }
+}
+
+bool _meetsConstructionQualityGate(
+  KakuroConstructionMetrics metrics,
+  String difficulty,
+) {
+  final int cellCount = metrics.valueCellCount == 0
+      ? 1
+      : metrics.valueCellCount;
+  final int nearRatio =
+      (metrics.nearForcedIntersectionCellCount * 1000) ~/ cellCount;
+  final int weakRatio = (metrics.weakIntersectionCellCount * 1000) ~/ cellCount;
+  final int avgIntersection = metrics.averageIntersectionSizeMilli;
+  final int lowRunRatio = metrics.lowCombinationRunRatioMilli;
+  final int singleRunRatio = metrics.singleCombinationRunRatioMilli;
+
+  switch (difficulty) {
+    case 'easy':
+      return nearRatio >= 150 &&
+          weakRatio <= 700 &&
+          avgIntersection <= 6200 &&
+          singleRunRatio >= 40 &&
+          lowRunRatio >= 250;
+    case 'medium':
+      return nearRatio >= 170 &&
+          weakRatio <= 620 &&
+          avgIntersection <= 5400 &&
+          lowRunRatio >= 300 &&
+          singleRunRatio <= 970 &&
+          metrics.averageRunCombinationCountMilli >= 1050 &&
+          metrics.weakRegionCount <= (metrics.runCount * 3) ~/ 5 + 1;
+    case 'hard':
+      return nearRatio >= 110 &&
+          weakRatio <= 720 &&
+          avgIntersection <= 6200 &&
+          lowRunRatio >= 220 &&
+          metrics.weakRegionCount <= (metrics.runCount * 7) ~/ 10 + 1;
+    case 'expert':
+      return nearRatio >= 70 &&
+          weakRatio <= 790 &&
+          avgIntersection <= 6900 &&
+          lowRunRatio >= 150 &&
+          metrics.weakRegionCount <= (metrics.runCount * 4) ~/ 5 + 1;
+    default:
+      return nearRatio >= 120 && weakRatio <= 700;
+  }
+}
+
+bool _shouldAttemptRepairForConstruction(
+  KakuroConstructionMetrics metrics,
+  String difficulty,
+) {
+  final int cellCount = metrics.valueCellCount == 0
+      ? 1
+      : metrics.valueCellCount;
+  final int nearRatio =
+      (metrics.nearForcedIntersectionCellCount * 1000) ~/ cellCount;
+  final int weakRatio = (metrics.weakIntersectionCellCount * 1000) ~/ cellCount;
+  switch (difficulty) {
+    case 'easy':
+      return nearRatio >= 120 && weakRatio <= 740;
+    case 'medium':
+      return nearRatio >= 150 && weakRatio <= 680;
+    case 'hard':
+      return nearRatio >= 100 && weakRatio <= 760;
+    case 'expert':
+      return nearRatio >= 60 && weakRatio <= 820;
+    default:
+      return nearRatio >= 120 && weakRatio <= 720;
+  }
 }
 
 Map<String, int>? _nonUniqueDisagreementMetrics(
