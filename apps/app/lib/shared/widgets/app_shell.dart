@@ -81,7 +81,7 @@ class AppShell extends ConsumerWidget {
     final AppShellTab currentTab = AppShellTab.fromLocation(location);
 
     return Scaffold(
-      appBar: currentTab == AppShellTab.home
+      appBar: currentTab == AppShellTab.home || currentTab == AppShellTab.daily
           ? null
           : AppBar(
               title: Text(currentTab.title),

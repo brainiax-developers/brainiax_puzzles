@@ -14,6 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../helpers/test_puzzle_data.dart';
 
 void main() {
+  const String fireEmoji = '\u{1F525}';
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -67,8 +69,9 @@ void main() {
 
     expect(find.byType(DailyScreen), findsOneWidget);
     expect(find.text('Daily Challenges'), findsWidgets);
-    expect(find.text('Today\'s set · Resets in 8h 42m'), findsOneWidget);
-    expect(find.text('13 day streak'), findsOneWidget);
+    expect(find.textContaining('Resets in 8h 42m'), findsWidgets);
+    expect(find.text('$fireEmoji 13 day streak'), findsOneWidget);
+    expect(find.byKey(const ValueKey('daily-weekly-calendar')), findsOneWidget);
     await _scrollTo(tester, find.text('Today\'s Puzzles'));
     expect(find.text('Today\'s Puzzles'), findsOneWidget);
     expect(find.byType(PlayScreen), findsNothing);
@@ -82,7 +85,7 @@ void main() {
       tester,
       view: _buildView(
         statusCard: const DailyHubStatusCard(
-          title: 'Streak secured for today 🔥',
+          title: 'Streak secured for today \u{1F525}',
           body: '2 puzzles left if you want more. Next set in 8h 42m.',
           ctaLabel: 'Play another',
           isActionEnabled: true,
@@ -102,8 +105,8 @@ void main() {
       find.byKey(const ValueKey('daily-weekday-2026-06-21-future')),
       findsOneWidget,
     );
-    expect(find.text('Streak secured for today 🔥'), findsOneWidget);
-    expect(find.text('Next set in 8h 42m'), findsWidgets);
+    expect(find.text('Streak secured for today $fireEmoji'), findsOneWidget);
+    expect(find.text('Resets in 8h 42m'), findsWidgets);
   });
 
   testWidgets('shows play, resume, completed, and solved time states', (
@@ -123,13 +126,38 @@ void main() {
     expect(find.text('Solved in 4m 5s'), findsOneWidget);
   });
 
-  testWidgets('filters the Today\'s Puzzles list', (WidgetTester tester) async {
+  testWidgets('renders filters and hides old tab or fake social UI', (
+    WidgetTester tester,
+  ) async {
     await pumpDailyRouter(tester, view: _buildView());
 
     await _scrollTo(tester, find.text('Today\'s Puzzles'));
     expect(find.text('All'), findsOneWidget);
     expect(find.text('Unplayed'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Completed'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Classic Sudoku'), findsNothing);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Monochrome Nonogram'),
+      findsNothing,
+    );
+    expect(find.textContaining('Locked streak'), findsNothing);
+    expect(find.textContaining('Leaderboard'), findsNothing);
+    expect(find.textContaining('playing'), findsNothing);
+    expect(find.textContaining('rank'), findsNothing);
+    await _scrollTo(
+      tester,
+      find.text('Today\'s set stays playable offline once opened.'),
+    );
+    expect(
+      find.text('Today\'s set stays playable offline once opened.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('filters the Today\'s Puzzles list', (WidgetTester tester) async {
+    await pumpDailyRouter(tester, view: _buildView());
+
+    await _scrollTo(tester, find.text('Today\'s Puzzles'));
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Unplayed'));
     await tester.pumpAndSettle();
@@ -148,6 +176,46 @@ void main() {
     expect(find.text('Slitherlink Loop'), findsOneWidget);
   });
 
+  testWidgets('empty filter state renders safely', (WidgetTester tester) async {
+    await pumpDailyRouter(
+      tester,
+      view: _buildView(
+        completedCount: 0,
+        totalCount: 2,
+        entries: const <DailyHubPuzzleEntry>[
+          DailyHubPuzzleEntry(
+            puzzleType: PuzzleType.sudokuClassic,
+            cardState: DailyHubCardState.play,
+            solvedDuration: null,
+            difficultyLabel: 'Daily',
+          ),
+          DailyHubPuzzleEntry(
+            puzzleType: PuzzleType.nonogramMono,
+            cardState: DailyHubCardState.resume,
+            solvedDuration: null,
+            difficultyLabel: 'Daily',
+          ),
+        ],
+        uncompletedPuzzleTypes: const <PuzzleType>[
+          PuzzleType.sudokuClassic,
+          PuzzleType.nonogramMono,
+        ],
+      ),
+    );
+
+    await _scrollTo(tester, find.text('Today\'s Puzzles'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Completed'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No puzzles match this filter'), findsOneWidget);
+    expect(
+      find.text(
+        'Try a different filter to see the rest of today\'s daily set.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('completed daily puzzle cards route through the daily gate', (
     WidgetTester tester,
   ) async {
@@ -157,7 +225,7 @@ void main() {
       tester,
       find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
     );
-    final kakuroCard = find.byKey(
+    final Finder kakuroCard = find.byKey(
       const ValueKey('daily-puzzle-kakuro_classic'),
     );
     await tester.tap(
@@ -306,7 +374,7 @@ DailyHubViewData _buildView({
     statusCard:
         statusCard ??
         const DailyHubStatusCard(
-          title: 'Streak secured for today 🔥',
+          title: 'Streak secured for today \u{1F525}',
           body: '2 puzzles left if you want more. Next set in 8h 42m.',
           ctaLabel: 'Play another',
           isActionEnabled: true,
