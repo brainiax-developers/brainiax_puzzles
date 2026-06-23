@@ -132,6 +132,38 @@ void main() {
   }
 
   testWidgets(
+    'route difficulty label does not override generated puzzle difficulty',
+    (tester) async {
+      final engine = TestSudokuEngine();
+      core.EngineRegistry().register(engine);
+
+      final solved = buildSudokuPuzzle(solved: true, difficulty: 'hard');
+      final puzzle = core.GeneratedPuzzle<core.SudokuBoard>(
+        state: solved.state.setCell(0, 0, 0),
+        meta: solved.meta,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: PlayScreen(
+              puzzleType: PuzzleType.sudokuClassic,
+              mode: PuzzleMode.random,
+              puzzleInstance: puzzle,
+              difficulty: 'easy',
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hard'), findsOneWidget);
+      expect(find.text('Easy'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'completed daily opens read-only solved view without regenerating',
     (tester) async {
       core.EngineRegistry().register(TestSudokuEngine());

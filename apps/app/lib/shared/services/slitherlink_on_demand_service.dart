@@ -6,6 +6,11 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 class SlitherlinkOnDemandService {
   SlitherlinkOnDemandService();
 
+  static final core.DifficultyBucketConfig _difficultyConfig =
+      const core.DifficultyConfigLoader().loadSync(
+        'assets/slitherlink_difficulty_thresholds.json',
+      );
+
   Future<core.GeneratedPuzzle<core.SlitherlinkBoard>> nextPuzzle({
     required String difficulty,
     required int width,
@@ -25,13 +30,21 @@ class SlitherlinkOnDemandService {
         );
     final core.SlitherlinkPuzzle puzzle = await core
         .generateSlitherlinkInIsolate(request);
-    return _wrapPuzzle(puzzle, seed: seed, seed64: seed64);
+    return _wrapPuzzle(
+      puzzle,
+      seed: seed,
+      seed64: seed64,
+      requestedDifficulty: resolved,
+      timeBudget: timeBudget,
+    );
   }
 
   core.GeneratedPuzzle<core.SlitherlinkBoard> _wrapPuzzle(
     core.SlitherlinkPuzzle puzzle, {
     required String seed,
     required int seed64,
+    required core.SlitherlinkDifficulty requestedDifficulty,
+    required Duration timeBudget,
   }) {
     final core.SizeOpt size = core.SizeOpt(
       id: '${puzzle.width}x${puzzle.height}',
@@ -39,31 +52,50 @@ class SlitherlinkOnDemandService {
       width: puzzle.width,
       height: puzzle.height,
     );
-    final core.DifficultyScore score = _scoreFromDifficulty(puzzle.difficulty);
+    final core.DifficultyScore requestedScore = _scoreFromDifficulty(
+      requestedDifficulty,
+    );
     final Map<String, Object?> generatorTelemetry = Map<String, Object?>.from(
       puzzle.telemetry,
     );
     final Map<String, num> metrics = _difficultyMetrics(generatorTelemetry);
-    final double rawScore =
-        (generatorTelemetry['difficultyRawScore'] as num?)?.toDouble() ??
-        score.value;
+    final double? measuredRawScore =
+        (generatorTelemetry['difficultyRawScore'] as num?)?.toDouble();
+    final core.DifficultyScore measuredScore = measuredRawScore == null
+        ? requestedScore
+        : core.DifficultyScore(
+            value: measuredRawScore,
+            level: _difficultyConfig.bucketFor(measuredRawScore),
+          );
     final core.PuzzleMetadata meta = core.PuzzleMetadata(
       engineVersion: 'slitherlink_on_demand_1',
       rngId: core.SeededRng.rngId,
       size: size,
-      difficulty: score,
+      difficulty: measuredScore,
       seedStr: seed,
       seed64: seed64,
     );
     final core.GenerationTelemetry telemetry = core.GenerationTelemetry(
       difficulty: core.DifficultyTelemetry(
-        rawScore: rawScore,
-        bucket: score.level,
+        rawScore: measuredRawScore ?? requestedScore.value,
+        bucket: measuredScore.level,
         metrics: metrics,
       ),
       extras: <String, Object?>{
         'generator': generatorTelemetry,
         'variant': puzzle.variant.name,
+        'requestedGenerationProfile': <String, Object?>{
+          'difficulty': requestedScore.level,
+          'size': size.id,
+          'width': size.width,
+          'height': size.height,
+          'variant': puzzle.variant.name,
+          'timeBudgetMs': timeBudget.inMilliseconds,
+        },
+        'difficultyMeasurementSource': measuredRawScore == null
+            ? 'requested_difficulty_fallback'
+            : 'slitherlink_raw_score_bucket',
+        'measuredDifficultyAvailable': measuredRawScore != null,
         'entrances': puzzle.entrances
             .map((core.EdgeHint e) => e.toJson())
             .toList(),

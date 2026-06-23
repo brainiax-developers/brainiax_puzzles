@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/services/puzzle_local_store.dart';
 import '../../shared/services/puzzle_progress_service.dart';
 import '../../shared/services/seed_service.dart';
+import '../../shared/services/generated_puzzle_difficulty.dart';
 import '../daily/daily_providers.dart';
 
 /// Screen for playing a specific puzzle type in a specific mode.
@@ -270,7 +271,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             if (kDebugMode) {
               debugPrint(
                 '[DailyGeneration][Failure] type=$engineId '
-                    'error=$error\n$stackTrace',
+                'error=$error\n$stackTrace',
               );
             }
 
@@ -279,7 +280,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               _dailyGateResolved = true;
               _dailyBlocked = true;
               _dailyBlockedMessage =
-              'Could not generate today’s ${widget.puzzleType.displayName}. Please go back and try again.';
+                  'Could not generate today’s ${widget.puzzleType.displayName}. Please go back and try again.';
             });
           }
         }
@@ -345,10 +346,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         : gameState?.puzzle != null
         ? 'provider'
         : 'none';
+    final String difficultyFields = current == null
+        ? ''
+        : '${generatedPuzzleDifficultyDebugFields(puzzle: current)} ';
     // ignore: avoid_print
     print(
       'PlayScreen: source=$source type=${widget.puzzleType.key} '
       'mode=${widget.mode.key} seed=$seed '
+      '$difficultyFields'
       'state=${gameState?.runtimeType} puzzle=${gameState?.puzzle.runtimeType}',
     );
   }
@@ -1418,7 +1423,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Time $timeText - ${_movesCount} moves - ${_currentDifficultyLabel(next)}',
+                  'Time $timeText - $_movesCount moves - ${_currentDifficultyLabel(next)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colors.onSurface.withOpacity(0.65),
                   ),
@@ -1486,7 +1491,16 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   // Navigation actions (New/Back) removed from UI per UX request.
 
   String _currentDifficultyLabel(GameState? state) {
-    final String difficulty = state?.difficulty.isNotEmpty == true
+    final core.GeneratedPuzzle<dynamic>? routePuzzle =
+        widget.puzzleInstance is core.GeneratedPuzzle<dynamic>
+        ? widget.puzzleInstance as core.GeneratedPuzzle<dynamic>
+        : null;
+    final String difficulty =
+        state?.puzzle.meta.difficulty.level.isNotEmpty == true
+        ? state!.puzzle.meta.difficulty.level
+        : routePuzzle?.meta.difficulty.level.isNotEmpty == true
+        ? routePuzzle!.meta.difficulty.level
+        : state?.difficulty.isNotEmpty == true
         ? state!.difficulty
         : widget.difficulty ?? '';
     if (difficulty.isEmpty) {
@@ -1504,7 +1518,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       modeLabel,
       _currentDifficultyLabel(state),
       'Time $timeText',
-      '${_movesCount} moves',
+      '$_movesCount moves',
       if (_hintsUsed > 0) '$_hintsUsed hints',
     ].join(' - ');
   }

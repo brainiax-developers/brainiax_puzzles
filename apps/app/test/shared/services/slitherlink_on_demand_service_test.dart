@@ -51,8 +51,23 @@ void main() {
         );
         final generatorTelemetry = (first.telemetry!.extras['generator'] as Map)
             .cast<String, Object?>();
+        final requestedProfile =
+            (first.telemetry!.extras['requestedGenerationProfile'] as Map)
+                .cast<String, Object?>();
         expect(generatorTelemetry['solverStatus'], equals('unique'));
         expect(generatorTelemetry['qualityGatePassed'], isTrue);
+        expect(
+          first.meta.difficulty.level,
+          equals(first.telemetry!.difficulty.bucket),
+        );
+        expect(
+          first.meta.difficulty.value,
+          equals(first.telemetry!.difficulty.rawScore),
+        );
+        expect(requestedProfile['difficulty'], equals('medium'));
+        expect(requestedProfile['size'], equals('6x6'));
+        expect(requestedProfile['variant'], equals('classicLoop'));
+        expect(first.telemetry!.extras['measuredDifficultyAvailable'], isTrue);
       },
     );
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart';
 import '../../shared/services/generation_isolate.dart';
@@ -28,18 +29,27 @@ final dailyPuzzleProvider =
       final size = _defaultSizeFor(puzzleTypeKey);
       final difficulty = _defaultDifficultyFor(puzzleTypeKey);
       if (puzzleTypeKey == 'slitherlink_loop') {
-        final generated = await ref.read(slitherlinkOnDemandProvider).nextPuzzle(
-          difficulty: difficulty.level,
-          width: size.width,
-          height: size.height,
-          seed: seed.seedStr,
-          timeBudget: const Duration(milliseconds: 900),
-        );
+        final generated = await ref
+            .read(slitherlinkOnDemandProvider)
+            .nextPuzzle(
+              difficulty: difficulty.level,
+              width: size.width,
+              height: size.height,
+              seed: seed.seedStr,
+              timeBudget: const Duration(milliseconds: 900),
+            );
 
-        return normalizeGeneratedPuzzleDifficulty(
-          puzzle: generated,
+        final GeneratedPuzzle<dynamic> normalized =
+            normalizeGeneratedPuzzleDifficulty(
+              puzzle: generated,
+              requestedDifficulty: difficulty,
+            );
+        _logDailyGenerationSuccess(
+          puzzleTypeKey: puzzleTypeKey,
+          puzzle: normalized,
           requestedDifficulty: difficulty,
         );
+        return normalized;
       }
       if (puzzleTypeKey == 'kakuro_classic') {
         const Duration cap = Duration(seconds: 8);
@@ -69,10 +79,17 @@ final dailyPuzzleProvider =
                   ),
                   timeout: remaining,
                 );
-            return normalizeGeneratedPuzzleDifficulty(
-              puzzle: generated,
+            final GeneratedPuzzle<dynamic> normalized =
+                normalizeGeneratedPuzzleDifficulty(
+                  puzzle: generated,
+                  requestedDifficulty: difficulty,
+                );
+            _logDailyGenerationSuccess(
+              puzzleTypeKey: puzzleTypeKey,
+              puzzle: normalized,
               requestedDifficulty: difficulty,
             );
+            return normalized;
           } catch (error, stackTrace) {
             lastError = error;
             lastStackTrace = stackTrace;
@@ -102,11 +119,33 @@ final dailyPuzzleProvider =
             ),
             timeout: const Duration(seconds: 2),
           );
-      return normalizeGeneratedPuzzleDifficulty(
-        puzzle: generated,
+      final GeneratedPuzzle<dynamic> normalized =
+          normalizeGeneratedPuzzleDifficulty(
+            puzzle: generated,
+            requestedDifficulty: difficulty,
+          );
+      _logDailyGenerationSuccess(
+        puzzleTypeKey: puzzleTypeKey,
+        puzzle: normalized,
         requestedDifficulty: difficulty,
       );
+      return normalized;
     });
+
+void _logDailyGenerationSuccess({
+  required String puzzleTypeKey,
+  required GeneratedPuzzle<dynamic> puzzle,
+  required DifficultyScore requestedDifficulty,
+}) {
+  if (!kDebugMode) {
+    return;
+  }
+  debugPrint(
+    '[DailyGeneration][Success] type=$puzzleTypeKey '
+    '${generatedPuzzleDifficultyDebugFields(puzzle: puzzle, requestedDifficulty: requestedDifficulty)} '
+    'seed=${puzzle.meta.seedStr} size=${puzzle.meta.size.id}',
+  );
+}
 
 SizeOpt _defaultSizeFor(String puzzleTypeKey) {
   final KakuroAppProfileSurface kakuroSurface = AppEnvironment.isProduction

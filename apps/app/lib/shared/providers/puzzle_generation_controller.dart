@@ -91,7 +91,8 @@ class PuzzleGenerationController
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
-            'difficulty=$difficulty size=${resolvedSize.id} '
+            '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+            'size=${resolvedSize.id} '
             'seed=$resolvedSeed elapsedMs=${stopwatch.elapsedMilliseconds}',
           );
         }
@@ -154,17 +155,14 @@ class PuzzleGenerationController
               if (kDebugMode) {
                 debugPrint(
                   '[Generation][RetryDifficulty] type=${puzzleType.key} '
-                  'requested=${difficultyScore.level} '
-                  'generated=${generated.meta.difficulty.level} '
+                  '${generatedPuzzleDifficultyDebugFields(puzzle: generated, requestedDifficulty: difficultyScore)} '
                   'seed=${generated.meta.seedStr} attempt=$attempt',
                 );
               }
               await Future<void>.delayed(const Duration(milliseconds: 10));
               continue;
             }
-            if (puzzleType == app.PuzzleType.kakuroClassic) {
-              break;
-            }
+            break;
           }
           final core.GeneratedPuzzle<dynamic> normalized =
               normalizeGeneratedPuzzleDifficulty(
@@ -177,7 +175,8 @@ class PuzzleGenerationController
           if (kDebugMode) {
             debugPrint(
               '[Generation][Success] type=${puzzleType.key} '
-              'difficulty=$difficulty size=${resolvedSize.id} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+              'size=${resolvedSize.id} '
               'seed=${normalized.meta.seedStr} attempt=$attempt '
               'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );
@@ -215,6 +214,11 @@ class PuzzleGenerationController
           final normalized = normalizeGeneratedPuzzleDifficulty(
             puzzle: lastDifficultyMismatch,
             requestedDifficulty: difficultyScore,
+            telemetryExtras: const <String, Object?>{
+              'difficultyFallback': true,
+              'difficultyFallbackReason':
+                  'controller_best_effort_after_mismatch_retries',
+            },
           );
           if (token == _generationToken) {
             state = AsyncValue.data(normalized);
@@ -222,8 +226,7 @@ class PuzzleGenerationController
           if (kDebugMode) {
             debugPrint(
               '[Generation][DifficultyFallback] type=${puzzleType.key} '
-              'requested=${difficultyScore.level} '
-              'generated=${lastDifficultyMismatch.meta.difficulty.level} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
               'seed=${lastDifficultyMismatch.meta.seedStr} '
               'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );

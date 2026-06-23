@@ -114,16 +114,24 @@ void main() {
       seed64: core.Seed.fromString('second'),
     );
     secondCompleter.complete(secondPuzzle);
-    await expectLater(secondFuture, completion(secondPuzzle));
-    expect(controller.state.value, same(secondPuzzle));
+    final resolvedSecond = await secondFuture;
+    expect(resolvedSecond.meta.seedStr, equals(secondPuzzle.meta.seedStr));
+    expect(
+      controller.state.value?.meta.seedStr,
+      equals(secondPuzzle.meta.seedStr),
+    );
 
     final firstPuzzle = _stubPuzzle(
       seedStr: 'first',
       seed64: core.Seed.fromString('first'),
     );
     firstCompleter.complete(firstPuzzle);
-    await expectLater(firstFuture, completion(firstPuzzle));
-    expect(controller.state.value, same(secondPuzzle));
+    final resolvedFirst = await firstFuture;
+    expect(resolvedFirst.meta.seedStr, equals(firstPuzzle.meta.seedStr));
+    expect(
+      controller.state.value?.meta.seedStr,
+      equals(secondPuzzle.meta.seedStr),
+    );
   });
 
   test('retries mismatched generated difficulty before returning', () async {
@@ -163,11 +171,13 @@ void main() {
     expect(worker.requests, hasLength(2));
     expect(worker.requests.first.difficulty.level, equals('easy'));
     expect(puzzle.meta.difficulty.level, equals('easy'));
+    expect(puzzle.telemetry?.extras['requestedDifficulty'], equals('easy'));
+    expect(puzzle.telemetry?.extras['difficultyMismatch'], isFalse);
     expect(controller.state.value?.meta.difficulty.level, equals('easy'));
   });
 
   test(
-    'normalizes difficulty metadata after bounded mismatch retries',
+    'preserves measured difficulty after bounded mismatch retries',
     () async {
       final worker = _QueuedPuzzleGenerationWorker();
       for (int attempt = 1; attempt <= 3; attempt++) {
@@ -197,8 +207,16 @@ void main() {
       );
 
       expect(worker.requests, hasLength(3));
-      expect(puzzle.meta.difficulty.level, equals('easy'));
-      expect(puzzle.telemetry?.extras['difficultyMetadataNormalized'], isTrue);
+      expect(puzzle.meta.difficulty.level, equals('hard'));
+      expect(puzzle.telemetry?.extras['requestedDifficulty'], equals('easy'));
+      expect(puzzle.telemetry?.extras['measuredDifficulty'], equals('hard'));
+      expect(puzzle.telemetry?.extras['displayedDifficulty'], equals('hard'));
+      expect(puzzle.telemetry?.extras['difficultyMismatch'], isTrue);
+      expect(puzzle.telemetry?.extras['difficultyFallback'], isTrue);
+      expect(
+        puzzle.telemetry?.extras['difficultyFallbackReason'],
+        equals('controller_best_effort_after_mismatch_retries'),
+      );
     },
   );
 
@@ -319,6 +337,9 @@ void main() {
         puzzle.meta.seed64,
         equals(core.Seed.fromString('seed:slitherlink')),
       );
+      expect(puzzle.telemetry?.extras['requestedDifficulty'], equals('hard'));
+      expect(puzzle.telemetry?.extras['displayedDifficulty'], equals('hard'));
+      expect(puzzle.telemetry?.extras['difficultyMismatch'], isFalse);
     },
   );
 

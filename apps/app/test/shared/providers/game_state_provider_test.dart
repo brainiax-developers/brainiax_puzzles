@@ -46,7 +46,7 @@ void main() {
   );
 
   test(
-    'startNewGame keeps requested difficulty when worker metadata differs',
+    'startNewGame preserves measured difficulty when worker metadata differs',
     () async {
       final worker = _SinglePuzzleGenerationWorker(
         buildSudokuPuzzle(difficulty: 'hard'),
@@ -67,8 +67,13 @@ void main() {
 
       final state = container.read(gameStateProvider)!;
       expect(worker.request?.difficulty.level, equals('easy'));
-      expect(state.difficulty, equals('easy'));
-      expect(state.puzzle.meta.difficulty.level, equals('easy'));
+      expect(state.difficulty, equals('hard'));
+      expect(state.puzzle.meta.difficulty.level, equals('hard'));
+      expect(
+        state.puzzle.telemetry?.extras['requestedDifficulty'],
+        equals('easy'),
+      );
+      expect(state.puzzle.telemetry?.extras['difficultyMismatch'], isTrue);
     },
   );
 
