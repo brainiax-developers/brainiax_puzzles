@@ -7,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../shared/models/models.dart';
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
+import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/active_run_card.dart';
+import '../../shared/widgets/brainiax/brainiax_widgets.dart';
 import 'puzzle_launch_actions.dart';
 
 Future<void> showPuzzleDetailSheet({
@@ -46,6 +48,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
   late PuzzleMode _selectedMode;
   late String _selectedDifficulty;
   bool _didApplyPreferredDifficulty = false;
+  bool _hasUserSelectedDifficulty = false;
 
   @override
   void initState() {
@@ -62,6 +65,8 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
+    final AppSpacing spacing =
+        theme.extension<AppSpacing>() ?? const AppSpacing();
     final PuzzleType puzzleType = widget.metadata.type;
     final AsyncValue<bool> isFavouriteAsync = ref.watch(
       isFavouritePuzzleTypeProvider(puzzleType),
@@ -77,7 +82,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     );
 
     preferredDifficultyAsync.whenData((preferred) {
-      if (_didApplyPreferredDifficulty) {
+      if (_didApplyPreferredDifficulty || _hasUserSelectedDifficulty) {
         return;
       }
       final String resolved = _resolveDefaultDifficulty(
@@ -96,243 +101,371 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     });
 
     final bool dailyEligible = puzzleType.isDailyEligible;
+    final bool dailyCompletionResolved = dailyCompletedAsync.asData != null;
     final bool dailyCompleted = dailyCompletedAsync.asData?.value ?? false;
     final ActivePuzzleRun? activeRun = activeRunAsync.asData?.value;
     final bool isFavourite = isFavouriteAsync.asData?.value ?? false;
     final List<String> supportedDifficulties =
         widget.metadata.supportedDifficulties;
+    final String dailyDifficultyLabel =
+        activeRun?.mode == PuzzleMode.daily && activeRun!.difficulty.isNotEmpty
+        ? activeRun.difficulty
+        : 'Daily Set';
 
-    final String ctaLabel;
-    final VoidCallback? ctaAction;
+    final _SheetCallToAction cta;
     if (_selectedMode == PuzzleMode.daily) {
       if (!dailyEligible) {
-        ctaLabel = 'Daily Unavailable';
-        ctaAction = null;
+        cta = const _SheetCallToAction(
+          label: 'Daily Unavailable',
+          icon: Icons.event_busy_outlined,
+        );
+      } else if (!dailyCompletionResolved) {
+        cta = const _SheetCallToAction(
+          label: 'Checking Daily...',
+          icon: Icons.schedule_outlined,
+        );
       } else if (dailyCompleted) {
-        ctaLabel = 'View Daily';
-        ctaAction = _viewDaily;
+        cta = _SheetCallToAction(
+          label: 'View Daily',
+          icon: Icons.visibility_outlined,
+          onPressed: _viewDaily,
+        );
       } else {
-        ctaLabel = 'Start Daily Challenge';
-        ctaAction = _startDaily;
+        cta = _SheetCallToAction(
+          label: 'Start Daily Challenge',
+          icon: Icons.play_arrow_rounded,
+          onPressed: _startDaily,
+        );
       }
+    } else if (_selectedDifficulty.isEmpty) {
+      cta = const _SheetCallToAction(
+        label: 'Random Unavailable',
+        icon: Icons.shuffle_outlined,
+      );
     } else {
-      ctaLabel = 'Start Random Puzzle';
-      ctaAction = () => _startRandom(_selectedDifficulty);
+      cta = _SheetCallToAction(
+        label: 'Start Random Puzzle',
+        icon: Icons.shuffle_rounded,
+        onPressed: () => _startRandom(_selectedDifficulty),
+      );
     }
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final double buttonBottomPadding =
+        MediaQuery.of(context).viewPadding.bottom + spacing.m;
+
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.88,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: widget.metadata.primaryAccentColor.withValues(
-                    alpha: 0.14,
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, spacing.xl + bottomInset),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PuzzleIconBadge(
+                        metadata: widget.metadata,
+                        size: 56,
+                        borderRadius: 18,
+                      ),
+                      SizedBox(width: spacing.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.metadata.displayName,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: spacing.xs),
+                            Text(
+                              _categoryLabelFor(
+                                widget.metadata.type,
+                              ).toUpperCase(),
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                letterSpacing: 0.8,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        tooltip: isFavourite
+                            ? 'Remove favourite'
+                            : 'Add favourite',
+                        onPressed: () => ref
+                            .read(favouritePuzzleControllerProvider)
+                            .toggle(puzzleType),
+                        icon: Icon(
+                          isFavourite ? Icons.star : Icons.star_outline,
+                          color: isFavourite
+                              ? widget.metadata.primaryAccentColor
+                              : null,
+                        ),
+                      ),
+                      SizedBox(width: spacing.xs),
+                      IconButton.filledTonal(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  widget.metadata.icon,
-                  color: widget.metadata.primaryAccentColor,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.metadata.displayName,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                  SizedBox(height: spacing.l),
+                  BrainiaxCard(
+                    emphasized: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Objective',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: spacing.s),
+                        Text(
+                          widget.metadata.description,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: spacing.s),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _showHowToPlayPlaceholder,
+                      icon: const Icon(Icons.menu_book_outlined),
+                      label: const Text('How to Play'),
+                    ),
+                  ),
+                  SizedBox(height: spacing.l),
+                  const SectionHeader(title: 'Choose Mode'),
+                  SizedBox(height: spacing.m),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool useRow = constraints.maxWidth >= 560;
+                      final Widget dailyCard = ModeSelectionCard(
+                        title: 'Daily Challenge',
+                        subtitle: dailyEligible
+                            ? 'Same puzzle for everyone'
+                            : 'Not part of the daily rotation yet',
+                        leading: _buildModeIcon(
+                          context,
+                          icon: Icons.calendar_today_outlined,
+                          accentColor: widget.metadata.primaryAccentColor,
+                          selected:
+                              _selectedMode == PuzzleMode.daily &&
+                              dailyEligible,
+                          useDarkSelectedStyle: true,
+                        ),
+                        badgeLabel: dailyCompleted ? 'Completed Today' : null,
+                        footer: dailyEligible
+                            ? _ResetCountdownFooter(
+                                selected: _selectedMode == PuzzleMode.daily,
+                                accentColor: widget.metadata.primaryAccentColor,
+                              )
+                            : Text(
+                                'Daily unavailable',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                        selected: _selectedMode == PuzzleMode.daily,
+                        enabled: dailyEligible,
+                        showSelectedIndicator: false,
+                        selectedBackgroundColor:
+                            widget.metadata.secondaryAccentColor,
+                        selectedBorderColor:
+                            widget.metadata.secondaryAccentColor,
+                        onTap: () => setState(() {
+                          _selectedMode = PuzzleMode.daily;
+                        }),
+                      );
+                      final Widget randomCard = ModeSelectionCard(
+                        title: 'Random Play',
+                        subtitle: 'Infinite variety',
+                        secondaryLine: 'Unique to you',
+                        leading: _buildModeIcon(
+                          context,
+                          icon: Icons.shuffle_rounded,
+                          accentColor: colorScheme.primary,
+                          selected: _selectedMode == PuzzleMode.random,
+                          useDarkSelectedStyle: false,
+                        ),
+                        selected: _selectedMode == PuzzleMode.random,
+                        showSelectedIndicator: false,
+                        selectedBackgroundColor: colorScheme.primaryContainer
+                            .withValues(alpha: 0.7),
+                        selectedBorderColor: colorScheme.primary.withValues(
+                          alpha: 0.45,
+                        ),
+                        onTap: () => setState(() {
+                          _selectedMode = PuzzleMode.random;
+                        }),
+                      );
+
+                      if (useRow) {
+                        return Row(
+                          children: [
+                            Expanded(child: dailyCard),
+                            SizedBox(width: spacing.m),
+                            Expanded(child: randomCard),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          dailyCard,
+                          SizedBox(height: spacing.m),
+                          randomCard,
+                        ],
+                      );
+                    },
+                  ),
+                  SizedBox(height: spacing.l),
+                  if (_selectedMode == PuzzleMode.daily) ...[
+                    const SectionHeader(
+                      title: 'Daily Difficulty',
+                      subtitle: 'Today\'s daily challenge uses a fixed setup.',
+                    ),
+                    SizedBox(height: spacing.m),
+                    BrainiaxCard(
+                      emphasized: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: spacing.s,
+                            runSpacing: spacing.s,
+                            children: [
+                              DifficultyChip(
+                                label: dailyDifficultyLabel,
+                                selected: true,
+                                readOnly: true,
+                              ),
+                              if (dailyCompleted)
+                                const DifficultyChip(
+                                  label: 'Completed Today',
+                                  readOnly: true,
+                                ),
+                            ],
+                          ),
+                          SizedBox(height: spacing.s),
+                          Text(
+                            dailyCompleted
+                                ? 'Today\'s daily is already complete. Use View Daily to reopen the solved puzzle safely.'
+                                : 'Difficulty is set by the daily challenge and cannot be changed here.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _categoryLabelFor(widget.metadata.type),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                  ] else ...[
+                    const SectionHeader(
+                      title: 'Difficulty',
+                      subtitle:
+                          'Pick the challenge level for your next random puzzle.',
+                    ),
+                    SizedBox(height: spacing.m),
+                    if (supportedDifficulties.isEmpty)
+                      BrainiaxCard(
+                        emphasized: true,
+                        child: Text(
+                          'Difficulty selection is unavailable for this puzzle type.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: spacing.s,
+                        runSpacing: spacing.s,
+                        children: supportedDifficulties
+                            .map((difficulty) {
+                              return DifficultyChip(
+                                label: difficulty,
+                                selected: _selectedDifficulty == difficulty,
+                                onTap: () => _selectRandomDifficulty(
+                                  puzzleType,
+                                  difficulty,
+                                ),
+                              );
+                            })
+                            .toList(growable: false),
                       ),
+                  ],
+                  if (activeRun != null) ...[
+                    SizedBox(height: spacing.l),
+                    ActiveRunCard(
+                      run: activeRun,
+                      title: 'Saved Game',
+                      subtitle: widget.metadata.displayName,
+                      onResume: _resumeActiveRun,
                     ),
                   ],
-                ),
+                ],
               ),
-              IconButton(
-                tooltip: isFavourite ? 'Remove favourite' : 'Add favourite',
-                onPressed: () => ref
-                    .read(favouritePuzzleControllerProvider)
-                    .toggle(puzzleType),
-                icon: Icon(
-                  isFavourite ? Icons.star : Icons.star_outline,
-                  color: isFavourite ? Colors.amber[700] : null,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Close',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Objective',
-                  style: theme.textTheme.titleSmall?.copyWith(
+          ),
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              spacing.m,
+              20,
+              buttonBottomPadding,
+            ),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(
+                top: BorderSide(color: colorScheme.outlineVariant),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: cta.onPressed,
+                icon: Icon(cta.icon),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  textStyle: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(widget.metadata.description),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(widget.hostContext).showSnackBar(
-                const SnackBar(content: Text('Tutorial coming soon.')),
-              );
-            },
-            icon: const Icon(Icons.menu_book_outlined),
-            label: const Text('How to Play'),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Choose mode',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final Axis axis = constraints.maxWidth >= 560
-                  ? Axis.horizontal
-                  : Axis.vertical;
-              final List<Widget> cards = [
-                if (dailyEligible)
-                  _ModeCard(
-                    title: 'Daily Challenge',
-                    subtitle: 'Same puzzle for everyone',
-                    detailBuilder: (_) =>
-                        const _ResetCountdownLabel(prefix: 'Resets in '),
-                    selected: _selectedMode == PuzzleMode.daily,
-                    enabled: true,
-                    badge: dailyCompleted ? 'Completed Today' : null,
-                    onTap: () => setState(() {
-                      _selectedMode = PuzzleMode.daily;
-                    }),
-                  )
-                else
-                  _ModeCard(
-                    title: 'Daily Challenge',
-                    subtitle: 'Not part of the daily rotation yet',
-                    detailBuilder: (_) => const SizedBox.shrink(),
-                    selected: false,
-                    enabled: false,
-                    onTap: null,
+                  backgroundColor: widget.metadata.primaryAccentColor,
+                  foregroundColor:
+                      ThemeData.estimateBrightnessForColor(
+                            widget.metadata.primaryAccentColor,
+                          ) ==
+                          Brightness.dark
+                      ? Colors.white
+                      : Colors.black,
+                  disabledBackgroundColor: colorScheme.surfaceContainerHighest,
+                  disabledForegroundColor: colorScheme.onSurfaceVariant,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                _ModeCard(
-                  title: 'Random Play',
-                  subtitle: 'Infinite variety',
-                  secondaryLine: 'Unique to you',
-                  detailBuilder: (_) => const SizedBox.shrink(),
-                  selected: _selectedMode == PuzzleMode.random,
-                  enabled: true,
-                  onTap: () => setState(() {
-                    _selectedMode = PuzzleMode.random;
-                  }),
                 ),
-              ];
-
-              if (axis == Axis.horizontal) {
-                return Row(
-                  children: [
-                    Expanded(child: cards[0]),
-                    const SizedBox(width: 12),
-                    Expanded(child: cards[1]),
-                  ],
-                );
-              }
-              return Column(
-                children: [cards[0], const SizedBox(height: 10), cards[1]],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          if (_selectedMode == PuzzleMode.daily)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colorScheme.outlineVariant),
-              ),
-              child: const Text('Daily difficulty set for today'),
-            )
-          else ...[
-            Text(
-              'Difficulty',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+                label: Text(cta.label),
               ),
             ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: supportedDifficulties.map((difficulty) {
-                return ChoiceChip(
-                  label: Text(difficulty),
-                  selected: _selectedDifficulty == difficulty,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedDifficulty = difficulty;
-                    });
-                    ref
-                        .read(difficultyPreferenceControllerProvider)
-                        .setPreferredDifficulty(puzzleType, difficulty);
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-          if (activeRun != null) ...[
-            const SizedBox(height: 12),
-            ActiveRunCard(
-              run: activeRun,
-              title: 'Saved Game',
-              subtitle: widget.metadata.displayName,
-              onResume: _resumeActiveRun,
-            ),
-          ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(onPressed: ctaAction, child: Text(ctaLabel)),
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -342,6 +475,9 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     List<String> supportedDifficulties, {
     String? preferred,
   }) {
+    if (supportedDifficulties.isEmpty) {
+      return '';
+    }
     if (preferred != null && supportedDifficulties.contains(preferred)) {
       return preferred;
     }
@@ -351,8 +487,56 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     return supportedDifficulties.first;
   }
 
+  Widget _buildModeIcon(
+    BuildContext context, {
+    required IconData icon,
+    required Color accentColor,
+    required bool selected,
+    required bool useDarkSelectedStyle,
+  }) {
+    final Color iconColor = selected && useDarkSelectedStyle
+        ? Colors.white
+        : accentColor;
+    final Color backgroundColor = selected
+        ? (useDarkSelectedStyle
+              ? Colors.white.withValues(alpha: 0.12)
+              : accentColor.withValues(alpha: 0.12))
+        : accentColor.withValues(alpha: 0.1);
+    final Color borderColor = selected && useDarkSelectedStyle
+        ? Colors.white.withValues(alpha: 0.22)
+        : accentColor.withValues(alpha: 0.18);
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Icon(icon, color: iconColor, size: 22),
+    );
+  }
+
+  void _selectRandomDifficulty(PuzzleType puzzleType, String difficulty) {
+    setState(() {
+      _selectedMode = PuzzleMode.random;
+      _selectedDifficulty = difficulty;
+      _hasUserSelectedDifficulty = true;
+    });
+    ref
+        .read(difficultyPreferenceControllerProvider)
+        .setPreferredDifficulty(puzzleType, difficulty);
+  }
+
+  void _showHowToPlayPlaceholder() {
+    ScaffoldMessenger.of(
+      widget.hostContext,
+    ).showSnackBar(const SnackBar(content: Text('Tutorial coming soon.')));
+  }
+
   Future<void> _resumeActiveRun() async {
-    Navigator.of(context).pop();
+    _closeSheet();
     await resumePuzzleRun(
       context: widget.hostContext,
       ref: ref,
@@ -361,19 +545,19 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
   }
 
   void _startDaily() {
-    Navigator.of(context).pop();
+    _closeSheet();
     widget.hostContext.push(
       AppRoutes.play(widget.metadata.type.key, PuzzleMode.daily.key),
     );
   }
 
   void _viewDaily() {
-    Navigator.of(context).pop();
+    _closeSheet();
     widget.hostContext.go(AppRoutes.daily);
   }
 
   Future<void> _startRandom(String difficulty) async {
-    Navigator.of(context).pop();
+    _closeSheet();
     await startRandomPuzzleFlow(
       context: widget.hostContext,
       ref: ref,
@@ -381,92 +565,55 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
       difficulty: difficulty,
     );
   }
+
+  void _closeSheet() {
+    final NavigatorState navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
+  }
 }
 
-class _ModeCard extends StatelessWidget {
-  const _ModeCard({
-    required this.title,
-    required this.subtitle,
-    required this.detailBuilder,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-    this.secondaryLine,
-    this.badge,
+class _SheetCallToAction {
+  const _SheetCallToAction({
+    required this.label,
+    required this.icon,
+    this.onPressed,
   });
 
-  final String title;
-  final String subtitle;
-  final String? secondaryLine;
-  final String? badge;
-  final WidgetBuilder detailBuilder;
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+}
+
+class _ResetCountdownFooter extends StatelessWidget {
+  const _ResetCountdownFooter({
+    required this.selected,
+    required this.accentColor,
+  });
+
   final bool selected;
-  final bool enabled;
-  final VoidCallback? onTap;
+  final Color accentColor;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
+    final Color footerColor = selected ? Colors.white : accentColor;
 
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(20),
-      child: Ink(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: selected
-              ? colorScheme.primaryContainer
-              : colorScheme.surfaceContainerHighest,
-          border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
+    return Row(
+      children: [
+        Icon(Icons.schedule_outlined, size: 16, color: footerColor),
+        const SizedBox(width: 6),
+        Flexible(
+          child: DefaultTextStyle(
+            style: theme.textTheme.labelMedium!.copyWith(
+              color: footerColor,
+              fontWeight: FontWeight.w700,
+            ),
+            child: const _ResetCountdownLabel(prefix: 'Resets in '),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (badge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(badge!, style: theme.textTheme.labelSmall),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(subtitle),
-            if (secondaryLine != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                secondaryLine!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            detailBuilder(context),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
