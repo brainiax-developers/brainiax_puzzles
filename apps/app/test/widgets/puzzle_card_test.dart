@@ -44,7 +44,7 @@ void main() {
     await tester.pumpWidget(buildCard());
 
     expect(find.text('Classic Sudoku'), findsOneWidget);
-    expect(find.text('Numbers'), findsOneWidget);
+    expect(find.text('Number puzzle'), findsOneWidget);
     expect(find.text('Easy'), findsOneWidget);
     expect(find.text('Medium'), findsOneWidget);
     expect(find.text('Hard'), findsOneWidget);

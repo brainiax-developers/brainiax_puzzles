@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../shared/models/models.dart';
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/services/puzzle_registry.dart';
+import '../../shared/widgets/brainiax/brainiax_widgets.dart';
 import 'daily_hub_provider.dart';
 
 enum DailyPuzzleFilter { all, unplayed, completed }
@@ -127,26 +128,23 @@ class _DailyHubContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: DailyPuzzleFilter.values
-              .map((value) {
-                return ChoiceChip(
-                  label: Text(_filterLabel(value)),
-                  selected: filter == value,
-                  onSelected: (_) => onFilterChanged(value),
-                );
-              })
+        FilterChipRow<DailyPuzzleFilter>(
+          selectedValue: filter,
+          onSelected: onFilterChanged,
+          options: DailyPuzzleFilter.values
+              .map(
+                (value) =>
+                    FilterChipOption(value: value, label: _filterLabel(value)),
+              )
               .toList(growable: false),
         ),
         const SizedBox(height: 12),
         if (visibleEntries.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No puzzles match this filter right now.'),
-            ),
+          const EmptyStateCard(
+            title: 'No puzzles match this filter',
+            body:
+                'Try a different daily filter to see the rest of today\'s set.',
+            icon: Icons.filter_list_off,
           )
         else
           ...visibleEntries.map((entry) {

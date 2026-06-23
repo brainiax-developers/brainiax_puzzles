@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../models/models.dart';
+import 'brainiax/brainiax_widgets.dart';
 
 class ActiveRunCard extends StatelessWidget {
   const ActiveRunCard({
@@ -19,72 +20,36 @@ class ActiveRunCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
     final _ActiveRunProgress? progress = _computeProgress(run);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(subtitle!, style: theme.textTheme.bodyMedium),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _Pill(
-                  icon: run.mode == PuzzleMode.daily
-                      ? Icons.calendar_today_outlined
-                      : Icons.casino_outlined,
-                  label: run.mode == PuzzleMode.daily
-                      ? 'Daily Challenge'
-                      : 'Random Play',
-                ),
-                _Pill(icon: Icons.speed_outlined, label: run.difficulty),
-                _Pill(
-                  icon: Icons.timer_outlined,
-                  label: _formatElapsed(Duration(milliseconds: run.elapsedMs)),
-                ),
-                if (progress != null)
-                  _Pill(
-                    icon: Icons.bar_chart_outlined,
-                    label: '${progress.percentage}% progress',
-                  ),
-              ],
-            ),
-            if (progress != null) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress.fraction,
-                  minHeight: 8,
-                  backgroundColor: colorScheme.surfaceContainerHighest,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onResume,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Resume'),
-              ),
-            ),
-          ],
+    return ProgressSummaryCard(
+      title: title,
+      subtitle: subtitle,
+      progressValue: progress?.fraction,
+      progressLabel: progress == null
+          ? null
+          : '${progress.percentage}% progress',
+      metadata: [
+        _Pill(
+          icon: run.mode == PuzzleMode.daily
+              ? Icons.calendar_today_outlined
+              : Icons.casino_outlined,
+          label: run.mode == PuzzleMode.daily
+              ? 'Daily Challenge'
+              : 'Random Play',
+        ),
+        _Pill(icon: Icons.speed_outlined, label: run.difficulty),
+        _Pill(
+          icon: Icons.timer_outlined,
+          label: _formatElapsed(Duration(milliseconds: run.elapsedMs)),
+        ),
+      ],
+      action: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: onResume,
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Resume'),
         ),
       ),
     );

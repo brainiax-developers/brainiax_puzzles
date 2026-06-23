@@ -99,7 +99,8 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     final bool dailyCompleted = dailyCompletedAsync.asData?.value ?? false;
     final ActivePuzzleRun? activeRun = activeRunAsync.asData?.value;
     final bool isFavourite = isFavouriteAsync.asData?.value ?? false;
-    final List<String> supportedDifficulties = widget.metadata.supportedDifficulties;
+    final List<String> supportedDifficulties =
+        widget.metadata.supportedDifficulties;
 
     final String ctaLabel;
     final VoidCallback? ctaAction;
@@ -136,7 +137,9 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: widget.metadata.primaryAccentColor.withValues(alpha: 0.14),
+                  color: widget.metadata.primaryAccentColor.withValues(
+                    alpha: 0.14,
+                  ),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
@@ -182,10 +185,10 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(20),
@@ -204,7 +207,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () {
               ScaffoldMessenger.of(widget.hostContext).showSnackBar(
@@ -214,14 +217,14 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
             icon: const Icon(Icons.menu_book_outlined),
             label: const Text('How to Play'),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(
             'Choose mode',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
               final Axis axis = constraints.maxWidth >= 560
@@ -232,9 +235,8 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                   _ModeCard(
                     title: 'Daily Challenge',
                     subtitle: 'Same puzzle for everyone',
-                    detailBuilder: (_) => const _ResetCountdownLabel(
-                      prefix: 'Resets in ',
-                    ),
+                    detailBuilder: (_) =>
+                        const _ResetCountdownLabel(prefix: 'Resets in '),
                     selected: _selectedMode == PuzzleMode.daily,
                     enabled: true,
                     badge: dailyCompleted ? 'Completed Today' : null,
@@ -274,19 +276,15 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                 );
               }
               return Column(
-                children: [
-                  cards[0],
-                  const SizedBox(height: 12),
-                  cards[1],
-                ],
+                children: [cards[0], const SizedBox(height: 10), cards[1]],
               );
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           if (_selectedMode == PuzzleMode.daily)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: colorScheme.outlineVariant),
@@ -300,7 +298,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -321,7 +319,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
             ),
           ],
           if (activeRun != null) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             ActiveRunCard(
               run: activeRun,
               title: 'Saved Game',
@@ -329,14 +327,12 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
               onResume: _resumeActiveRun,
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: ctaAction,
-              child: Text(ctaLabel),
-            ),
+            child: ElevatedButton(onPressed: ctaAction, child: Text(ctaLabel)),
           ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -451,10 +447,7 @@ class _ModeCard extends StatelessWidget {
                       color: colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(
-                      badge!,
-                      style: theme.textTheme.labelSmall,
-                    ),
+                    child: Text(badge!, style: theme.textTheme.labelSmall),
                   ),
               ],
             ),
@@ -520,10 +513,10 @@ String _categoryLabelFor(PuzzleType puzzleType) {
     case PuzzleType.kakuroClassic:
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
-      return 'Numbers';
+      return 'Number puzzle';
     case PuzzleType.nonogramMono:
     case PuzzleType.slitherlinkLoop:
     case PuzzleType.killerQueens:
-      return 'Visual';
+      return 'Visual puzzle';
   }
 }

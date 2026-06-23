@@ -8,6 +8,7 @@ import '../../shared/models/models.dart';
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/services/puzzle_registry.dart';
+import '../../shared/widgets/brainiax/brainiax_widgets.dart';
 import '../../shared/widgets/active_run_card.dart';
 import '../select/puzzle_detail_sheet.dart';
 import '../select/puzzle_launch_actions.dart';
@@ -28,13 +29,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _registry.initialize();
     _metadataByType = <PuzzleType, PuzzleMetadata>{
-      for (final metadata in _registry.getAllPuzzleMetadata()) metadata.type: metadata,
+      for (final metadata in _registry.getAllPuzzleMetadata())
+        metadata.type: metadata,
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     final AsyncValue<ActivePuzzleRun?> latestActiveRunAsync = ref.watch(
       latestActiveRunProvider,
     );
@@ -95,12 +96,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Quick Play',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                const SectionHeader(title: 'Quick Play'),
                 const SizedBox(height: 12),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -155,29 +151,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Your Stats',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    const SectionHeader(title: 'Your Stats'),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _StatTile(
+                          child: StatTile(
                             label: 'Total Solved',
                             value: stats.totalSolved.toString(),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Expanded(
-                          child: _StatTile(
+                          child: StatTile(
                             label: 'Today Completed',
                             value: stats.todayCompleted.toString(),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Expanded(
-                          child: _StatTile(
+                          child: StatTile(
                             label: 'Completed This Week',
                             value: stats.completedThisWeek.toString(),
                           ),
@@ -208,7 +201,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (favourites.isEmpty) {
       context.go(AppRoutes.puzzles);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Star a puzzle to add a favourite first.')),
+        const SnackBar(
+          content: Text('Star a puzzle to add a favourite first.'),
+        ),
       );
       return;
     }
@@ -252,18 +247,7 @@ class _TodayChallengeCard extends ConsumerWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: metadata.primaryAccentColor.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    metadata.icon,
-                    color: metadata.primaryAccentColor,
-                  ),
-                ),
+                PuzzleIconBadge(metadata: metadata, size: 44, borderRadius: 14),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -366,41 +350,6 @@ class _QuickPlayButton extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ),
     );
   }

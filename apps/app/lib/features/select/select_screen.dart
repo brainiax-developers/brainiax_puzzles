@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/models/models.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/services/puzzle_registry.dart';
+import '../../shared/widgets/brainiax/brainiax_widgets.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/puzzle_card.dart';
 import '../../shared/widgets/shimmer_widget.dart';
@@ -44,9 +45,8 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
     final AsyncValue<List<PuzzleType>> favouriteTypesAsync = ref.watch(
       favouritePuzzleTypesProvider,
     );
-    final Set<PuzzleType> favouriteTypes = favouriteTypesAsync.asData?.value
-            .toSet() ??
-        const <PuzzleType>{};
+    final Set<PuzzleType> favouriteTypes =
+        favouriteTypesAsync.asData?.value.toSet() ?? const <PuzzleType>{};
     final List<PuzzleMetadata> filtered = _applyFilter(
       _metadata,
       favouriteTypes,
@@ -98,51 +98,45 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _FilterChip(
+        FilterChipRow<PuzzleLibraryFilter>(
+          selectedValue: _filter,
+          onSelected: (filter) => setState(() => _filter = filter),
+          options: <FilterChipOption<PuzzleLibraryFilter>>[
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.all,
               label: 'All',
-              selected: _filter == PuzzleLibraryFilter.all,
-              onTap: () => setState(() => _filter = PuzzleLibraryFilter.all),
             ),
-            _FilterChip(
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.numbers,
               label: 'Numbers',
-              selected: _filter == PuzzleLibraryFilter.numbers,
-              onTap: () =>
-                  setState(() => _filter = PuzzleLibraryFilter.numbers),
             ),
-            _FilterChip(
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.visual,
               label: 'Visual',
-              selected: _filter == PuzzleLibraryFilter.visual,
-              onTap: () => setState(() => _filter = PuzzleLibraryFilter.visual),
             ),
             if (showWordFilter)
-              _FilterChip(
+              const FilterChipOption(
+                value: PuzzleLibraryFilter.word,
                 label: 'Word',
-                selected: _filter == PuzzleLibraryFilter.word,
-                onTap: () => setState(() => _filter = PuzzleLibraryFilter.word),
               ),
-            _FilterChip(
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.favourites,
               label: 'Favourites',
-              selected: _filter == PuzzleLibraryFilter.favourites,
-              onTap: () =>
-                  setState(() => _filter = PuzzleLibraryFilter.favourites),
             ),
           ],
         ),
         const SizedBox(height: 16),
         if (filtered.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                _filter == PuzzleLibraryFilter.favourites
-                    ? 'Star a puzzle to build your favourites list.'
-                    : 'No puzzles match this filter yet.',
-              ),
-            ),
+          EmptyStateCard(
+            title: _filter == PuzzleLibraryFilter.favourites
+                ? 'No favourite puzzles yet'
+                : 'No puzzles match this filter',
+            body: _filter == PuzzleLibraryFilter.favourites
+                ? 'Star a puzzle to build your favourites list.'
+                : 'Try a different category or come back once more puzzle types are enabled.',
+            icon: _filter == PuzzleLibraryFilter.favourites
+                ? Icons.star_outline
+                : Icons.filter_list_off,
           )
         else
           ...filtered.map(
@@ -163,29 +157,28 @@ class _PuzzleLibraryCardItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bool isFavourite = ref.watch(
-          isFavouritePuzzleTypeProvider(metadata.type),
-        ).asData?.value ??
+    final bool isFavourite =
+        ref.watch(isFavouritePuzzleTypeProvider(metadata.type)).asData?.value ??
         false;
-    final ActivePuzzleRun? activeRun = ref.watch(
-      activeRunForPuzzleTypeProvider(metadata.type),
-    ).asData?.value;
+    final ActivePuzzleRun? activeRun = ref
+        .watch(activeRunForPuzzleTypeProvider(metadata.type))
+        .asData
+        ?.value;
 
     return PuzzleCard(
       metadata: metadata,
       isFavourite: isFavourite,
       isInProgress: activeRun != null,
       onTap: () => showPuzzleDetailSheet(context: context, metadata: metadata),
-      onToggleFavourite: () => ref
-          .read(favouritePuzzleControllerProvider)
-          .toggle(metadata.type),
+      onToggleFavourite: () =>
+          ref.read(favouritePuzzleControllerProvider).toggle(metadata.type),
       onResume: activeRun == null
           ? null
           : () => resumePuzzleRun(
-                context: context,
-                ref: ref,
-                puzzleType: metadata.type,
-              ),
+              context: context,
+              ref: ref,
+              puzzleType: metadata.type,
+            ),
     );
   }
 }
@@ -238,26 +231,5 @@ bool _isVisualPuzzle(PuzzleType type) {
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return false;
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-    );
   }
 }
