@@ -34,14 +34,15 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
     _registry.initialize();
     setState(() {
       _metadata = _registry.getAllPuzzleMetadata()
-        ..sort((a, b) => a.displayName.compareTo(b.displayName));
+        ..sort(
+          (a, b) => _librarySortKey(a.type).compareTo(_librarySortKey(b.type)),
+        );
       _isLoading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     final AsyncValue<List<PuzzleType>> favouriteTypesAsync = ref.watch(
       favouritePuzzleTypesProvider,
     );
@@ -84,20 +85,14 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       children: [
-        Text(
-          'Puzzle Library',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+        const SectionHeader(
+          title: 'Puzzle Library',
+          subtitle:
+              'Choose a puzzle type, then pick Daily Challenge or Random Play.',
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Choose a puzzle type, then pick Daily Challenge or Random Play.',
-          style: theme.textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         FilterChipRow<PuzzleLibraryFilter>(
           selectedValue: _filter,
           onSelected: (filter) => setState(() => _filter = filter),
@@ -114,26 +109,26 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
               value: PuzzleLibraryFilter.visual,
               label: 'Visual',
             ),
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.favourites,
+              label: 'Favourites',
+            ),
             if (showWordFilter)
               const FilterChipOption(
                 value: PuzzleLibraryFilter.word,
                 label: 'Word',
               ),
-            const FilterChipOption(
-              value: PuzzleLibraryFilter.favourites,
-              label: 'Favourites',
-            ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         if (filtered.isEmpty)
           EmptyStateCard(
             title: _filter == PuzzleLibraryFilter.favourites
                 ? 'No favourite puzzles yet'
-                : 'No puzzles match this filter',
+                : 'No puzzle types match this filter',
             body: _filter == PuzzleLibraryFilter.favourites
-                ? 'Star a puzzle to build your favourites list.'
-                : 'Try a different category or come back once more puzzle types are enabled.',
+                ? 'Star a puzzle card to save that puzzle type here.'
+                : 'Try All, Numbers, or Visual to browse the available puzzle types.',
             icon: _filter == PuzzleLibraryFilter.favourites
                 ? Icons.star_outline
                 : Icons.filter_list_off,
@@ -231,5 +226,24 @@ bool _isVisualPuzzle(PuzzleType type) {
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return false;
+  }
+}
+
+int _librarySortKey(PuzzleType type) {
+  switch (type) {
+    case PuzzleType.sudokuClassic:
+      return 0;
+    case PuzzleType.kakuroClassic:
+      return 1;
+    case PuzzleType.mathdokuClassic:
+      return 2;
+    case PuzzleType.takuzuBinary:
+      return 3;
+    case PuzzleType.nonogramMono:
+      return 10;
+    case PuzzleType.slitherlinkLoop:
+      return 11;
+    case PuzzleType.killerQueens:
+      return 12;
   }
 }

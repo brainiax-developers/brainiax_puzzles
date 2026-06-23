@@ -44,13 +44,22 @@ void main() {
     await tester.pumpWidget(buildCard());
 
     expect(find.text('Classic Sudoku'), findsOneWidget);
-    expect(find.text('Number puzzle'), findsOneWidget);
+    expect(find.text('Numbers'), findsOneWidget);
+    expect(
+      find.text(
+        'Fill the grid so every row, column, and box contains each number once.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Easy'), findsOneWidget);
     expect(find.text('Medium'), findsOneWidget);
     expect(find.text('Hard'), findsOneWidget);
     expect(find.text('Expert'), findsOneWidget);
     expect(find.text('In Progress'), findsNothing);
     expect(find.text('Continue'), findsNothing);
+    expect(find.text('Best Time'), findsNothing);
+    expect(find.text('Solved Count'), findsNothing);
+    expect(find.text('Rank'), findsNothing);
   });
 
   testWidgets('shows in-progress affordances when a run exists', (
