@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/models.dart';
 import '../navigation/app_routes.dart';
-import '../providers/puzzle_local_store_providers.dart';
 
 enum AppShellTab {
   home(
@@ -68,7 +66,7 @@ enum AppShellTab {
   }
 }
 
-class AppShell extends ConsumerStatefulWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({
     super.key,
     required this.navigationShell,
@@ -79,52 +77,30 @@ class AppShell extends ConsumerStatefulWidget {
   final String location;
 
   @override
-  ConsumerState<AppShell> createState() => _AppShellState();
-}
-
-class _AppShellState extends ConsumerState<AppShell> {
-  int _homeTitleTapCount = 0;
-  DateTime? _lastHomeTitleTapAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppShellTab currentTab = AppShellTab.fromLocation(widget.location);
-    final AsyncValue<DailyStreakStatus> streakAsync = ref.watch(
-      dailyStreakStatusProvider,
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppShellTab currentTab = AppShellTab.fromLocation(location);
 
     return Scaffold(
-      appBar: AppBar(
-        title: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: currentTab == AppShellTab.home ? _handleHomeTitleTap : null,
-          child: Text(currentTab.title),
-        ),
-        actions: [
-          if (currentTab == AppShellTab.home)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: _StreakChip(
-                  streak: streakAsync.asData?.value.currentStreak,
+      appBar: currentTab == AppShellTab.home
+          ? null
+          : AppBar(
+              title: Text(currentTab.title),
+              actions: [
+                IconButton(
+                  onPressed: () => context.push(AppRoutes.settings),
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Settings',
                 ),
-              ),
+              ],
             ),
-          IconButton(
-            onPressed: () => context.push(AppRoutes.settings),
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-          ),
-        ],
-      ),
-      body: widget.navigationShell,
+      body: navigationShell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentTab.index,
         onDestinationSelected: (index) {
           if (index == currentTab.index) {
             return;
           }
-          widget.navigationShell.goBranch(index);
+          navigationShell.goBranch(index);
         },
         destinations: [
           for (final tab in AppShellTab.values)
@@ -133,56 +109,6 @@ class _AppShellState extends ConsumerState<AppShell> {
               selectedIcon: Icon(tab.selectedIcon),
               label: tab.label,
             ),
-        ],
-      ),
-    );
-  }
-
-  void _handleHomeTitleTap() {
-    final DateTime now = DateTime.now();
-    if (_lastHomeTitleTapAt != null &&
-        now.difference(_lastHomeTitleTapAt!).inSeconds < 2) {
-      _homeTitleTapCount += 1;
-    } else {
-      _homeTitleTapCount = 1;
-    }
-    _lastHomeTitleTapAt = now;
-
-    if (_homeTitleTapCount >= 5) {
-      _homeTitleTapCount = 0;
-      context.push(AppRoutes.bench);
-    }
-  }
-}
-
-class _StreakChip extends StatelessWidget {
-  const _StreakChip({this.streak});
-
-  final int? streak;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
-    final String label = streak == null ? '--' : '$streak';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.local_fire_department_outlined, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
