@@ -31,14 +31,17 @@ void main() {
         (
           difficulty: 'medium',
           size: SizeOpt(
-            id: 'template9x9',
-            description: 'Template 9x9',
-            width: 9,
-            height: 9,
+            id: '7x10',
+            description: '7x10',
+            width: 7,
+            height: 10,
           ),
               seedStrs: <String>[
-                'kakuro_smoke_9x9_medium_seed_4',
+                'kakuro_smoke_7x10_medium_seed_0',
                 'bench:kakuro_classic:0',
+                'kakuro_det_seed_0',
+                'kakuro_engine_seed',
+                'kakuro_v1_regression_seed_0',
               ],
         ),
         (

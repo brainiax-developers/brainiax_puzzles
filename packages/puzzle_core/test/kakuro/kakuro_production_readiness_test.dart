@@ -55,7 +55,7 @@ void main() {
           () => engine.generate(
             seedStr: 'kakuro_multi_fixture',
             seed64: Seed.fromString('kakuro_multi_fixture'),
-            size: _size9x9,
+            size: _size5x5,
             difficulty: const DifficultyScore(value: 0.3, level: 'easy'),
           ),
           throwsA(
@@ -197,8 +197,7 @@ void main() {
     test('same seed + difficulty + size yields same board signature', () {
       const List<({String level, SizeOpt size})> cases =
           <({String level, SizeOpt size})>[
-            (level: 'medium', size: _size9x9),
-            (level: 'hard', size: _size9x9),
+            (level: 'medium', size: _size7x10),
             (level: 'easy', size: _size5x5),
           ];
 
@@ -232,17 +231,17 @@ void main() {
     });
 
     test(
-      'regression: kakuro_det_seed_0 hard yields unique 9x9 with matching meta size',
+      'regression: kakuro_det_seed_0 medium yields unique 7x10 with matching meta size',
       () {
         final GeneratedPuzzle<KakuroBoard> generated = engine.generate(
           seedStr: seedStr,
           seed64: seed64,
-          size: _size9x9,
-          difficulty: _difficulty('hard'),
+          size: _size7x10,
+          difficulty: _difficulty('medium'),
         );
 
-        expect(generated.state.width, equals(9));
-        expect(generated.state.height, equals(9));
+        expect(generated.state.width, equals(7));
+        expect(generated.state.height, equals(10));
         expect(generated.meta.size.width, equals(generated.state.width));
         expect(generated.meta.size.height, equals(generated.state.height));
 
@@ -262,8 +261,8 @@ void main() {
         const List<({String level, SizeOpt size})> cases =
             <({String level, SizeOpt size})>[
               (level: 'easy', size: _size7x9),
-              (level: 'medium', size: _size9x9),
-              (level: 'hard', size: _size9x9),
+              (level: 'medium', size: _size7x10),
+              (level: 'hard', size: _size8x11),
               (level: 'easy', size: _size5x5),
             ];
         const List<String> deterministicVariants = <String>[
@@ -379,11 +378,20 @@ const SizeOpt _size7x9 = SizeOpt(
   height: 9,
 );
 
-const SizeOpt _size9x9 = SizeOpt(
-  id: 'template9x9',
-  description: 'Template 9x9',
-  width: 9,
-  height: 9,
+// Shipping medium size.
+const SizeOpt _size7x10 = SizeOpt(
+  id: '7x10',
+  description: '7x10',
+  width: 7,
+  height: 10,
+);
+
+// Shipping hard size.
+const SizeOpt _size8x11 = SizeOpt(
+  id: '8x11',
+  description: '8x11',
+  width: 8,
+  height: 11,
 );
 
 DifficultyScore _difficulty(String level) {

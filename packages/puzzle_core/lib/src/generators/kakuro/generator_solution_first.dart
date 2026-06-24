@@ -183,19 +183,23 @@ class _KakuroConstructionSearchConfig {
         orderingDepth = 18;
         break;
       case 'medium':
-        nodeBudget = valueCellCount <= 36 ? 880 : 1180;
-        completedBudget = valueCellCount <= 36 ? 6 : 8;
-        orderingDepth = 24;
+        // 7×10 has 24 cells (below threshold) but needs more search room.
+        // Threshold lowered to 28 so 7×10 (24 cells) gets the larger budget.
+        nodeBudget = valueCellCount <= 28 ? 1100 : 1400;
+        completedBudget = valueCellCount <= 28 ? 8 : 10;
+        orderingDepth = 28;
         break;
       case 'hard':
-        nodeBudget = valueCellCount <= 36 ? 1100 : 1450;
-        completedBudget = valueCellCount <= 36 ? 8 : 10;
-        orderingDepth = 20;
+        // 8×11 has 33 cells — raised above old small-grid budget.
+        nodeBudget = valueCellCount <= 28 ? 1350 : 1650;
+        completedBudget = valueCellCount <= 28 ? 10 : 12;
+        orderingDepth = 24;
         break;
       case 'expert':
-        nodeBudget = valueCellCount <= 36 ? 1300 : 1700;
-        completedBudget = valueCellCount <= 36 ? 9 : 12;
-        orderingDepth = 22;
+        // 9×12 has 40+ cells — needs the highest budget.
+        nodeBudget = valueCellCount <= 28 ? 1600 : 2000;
+        completedBudget = valueCellCount <= 28 ? 11 : 14;
+        orderingDepth = 26;
         break;
       default:
         nodeBudget = valueCellCount <= 36 ? 900 : 1200;

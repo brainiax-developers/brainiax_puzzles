@@ -234,11 +234,10 @@ KakuroLayout _buildLayoutCandidateForAttempt({
       ((width == 7 && height == 10 && difficulty == 'medium') ||
           (width == 8 && height == 11 && difficulty == 'hard') ||
           (width == 9 && height == 12 && difficulty == 'expert')) &&
-      (difficulty == 'medium'
-          ? attemptIndex % 3 == 2
-          : difficulty == 'hard'
-          ? attemptIndex % 8 != 0
-          : attemptIndex % 4 == 3);
+      // Use the newspaper generator ~25% of the time to maintain diversity;
+      // portrait layout families get the remaining 75% to maximise quality.
+      // Previously hard was using newspaper 87.5% of the time (% 8 != 0).
+      attemptIndex % 4 == 0;
   if (usePhoneNewspaperProbe) {
     return KakuroLayout.buildNewspaper(
       rng: SeededRng(
