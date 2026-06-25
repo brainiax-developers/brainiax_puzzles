@@ -708,16 +708,17 @@ void main() {
   });
 
   test('difficulty defaults map deterministically to fixed portrait sizes', () {
+    expect(KakuroSupportedProfiles.shippingDifficulties, <String>[
+      'easy',
+      'medium',
+      'hard',
+    ]);
     expect(KakuroSupportedProfiles.generatorSizeForDifficulty('easy'), '7x9');
     expect(
       KakuroSupportedProfiles.generatorSizeForDifficulty('medium'),
       '7x10',
     );
     expect(KakuroSupportedProfiles.generatorSizeForDifficulty('hard'), '8x11');
-    expect(
-      KakuroSupportedProfiles.generatorSizeForDifficulty('expert'),
-      '9x12',
-    );
   });
 
   test('generator emits portrait family telemetry for 7x9', () {

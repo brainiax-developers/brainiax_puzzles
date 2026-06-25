@@ -21,7 +21,6 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '7x9', difficulty: 'easy'),
     KakuroProfile(sizeId: '7x10', difficulty: 'medium'),
     KakuroProfile(sizeId: '8x11', difficulty: 'hard'),
-    KakuroProfile(sizeId: '9x12', difficulty: 'expert'),
   ];
 
   // Bench calibration profiles that are not shown in production app UX.
@@ -29,6 +28,7 @@ class KakuroSupportedProfiles {
     KakuroProfile(sizeId: '9x9', difficulty: 'medium'),
     KakuroProfile(sizeId: '9x9', difficulty: 'hard'),
     KakuroProfile(sizeId: '9x9', difficulty: 'expert'),
+    KakuroProfile(sizeId: '9x12', difficulty: 'expert'),
   ];
 
   // Experimental profiles are available for local verification only.

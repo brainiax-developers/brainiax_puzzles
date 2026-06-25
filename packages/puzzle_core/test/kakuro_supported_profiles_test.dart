@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('KakuroSupportedProfiles', () {
-    test('marks fixed portrait profiles as shipping-safe', () {
+    test('marks production portrait profiles as shipping-safe', () {
       expect(
         KakuroSupportedProfiles.isShippingSafe(
           sizeId: '7x9',
@@ -30,7 +30,7 @@ void main() {
           sizeId: '9x12',
           difficulty: 'expert',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         KakuroSupportedProfiles.isShippingSafe(
@@ -41,7 +41,7 @@ void main() {
       );
     });
 
-    test('keeps 9x9 medium/hard/expert benchmark-eligible', () {
+    test('keeps benchmark-only Kakuro profiles benchmark-eligible', () {
       expect(
         KakuroSupportedProfiles.tierFor(sizeId: '9x9', difficulty: 'medium'),
         KakuroProfileTier.benchmarkOnly,
@@ -52,6 +52,10 @@ void main() {
       );
       expect(
         KakuroSupportedProfiles.tierFor(sizeId: '9x9', difficulty: 'expert'),
+        KakuroProfileTier.benchmarkOnly,
+      );
+      expect(
+        KakuroSupportedProfiles.tierFor(sizeId: '9x12', difficulty: 'expert'),
         KakuroProfileTier.benchmarkOnly,
       );
     });
@@ -78,12 +82,12 @@ void main() {
           KakuroSupportedProfiles.appDifficultiesForSurface(
             KakuroAppProfileSurface.nonProduction,
           );
-      expect(difficulties, <String>['easy', 'medium', 'hard', 'expert']);
+      expect(difficulties, <String>['easy', 'medium', 'hard']);
       expect(
         KakuroSupportedProfiles.appSizesForSurface(
           KakuroAppProfileSurface.nonProduction,
         ),
-        <String>['7x9', '7x10', '8x11', '9x12'],
+        <String>['7x9', '7x10', '8x11'],
       );
 
       expect(
@@ -96,7 +100,7 @@ void main() {
       );
       expect(
         KakuroSupportedProfiles.isAppProfileAllowed(
-          sizeId: '9x9',
+          sizeId: '9x12',
           difficulty: 'expert',
           surface: KakuroAppProfileSurface.nonProduction,
         ),
