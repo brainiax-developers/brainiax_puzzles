@@ -136,6 +136,19 @@ void main() {
       expect(puzzle.telemetry?.extras['displayedDifficulty'], equals('hard'));
       expect(puzzle.telemetry?.extras['difficultyMismatch'], isTrue);
     });
+
+    test(
+      'rejects Kakuro daily generation while Kakuro is unavailable',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        expect(
+          container.read(dailyPuzzleProvider('kakuro_classic').future),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
   });
 }
 

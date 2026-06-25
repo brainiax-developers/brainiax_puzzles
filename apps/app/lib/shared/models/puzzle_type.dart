@@ -29,11 +29,12 @@ enum PuzzleType {
     return fromKey(key) != null;
   }
 
+  static const List<PuzzleType> comingSoonTypes = [kakuroClassic];
+
   /// Ordered list of puzzle types that participate in Daily Challenges.
   static const List<PuzzleType> dailyChallengeTypes = [
     sudokuClassic,
     nonogramMono,
-    kakuroClassic,
     slitherlinkLoop,
     mathdokuClassic,
     killerQueens,
@@ -42,6 +43,17 @@ enum PuzzleType {
 
   /// Whether this puzzle type is eligible for Daily Challenges.
   bool get isDailyEligible => dailyChallengeTypes.contains(this);
+
+  /// Whether this puzzle type is visible but not currently playable.
+  bool get isComingSoon => comingSoonTypes.contains(this);
+
+  /// Whether this puzzle type can currently be started.
+  bool get isPlayable => !isComingSoon;
+
+  String? get availabilityBadgeLabel => isComingSoon ? 'Coming Soon' : null;
+
+  String? get unavailableMessage =>
+      isComingSoon ? 'Kakuro is coming soon.' : null;
 
   @override
   String toString() => key;

@@ -17,7 +17,24 @@ void main() {
     category: PuzzleCategory.logic,
   );
 
+  const PuzzleMetadata unavailableMetadata = PuzzleMetadata(
+    type: PuzzleType.kakuroClassic,
+    displayName: 'Classic Kakuro',
+    description:
+        'Place digits so each clue group adds correctly without repeats.',
+    icon: Icons.add_box,
+    accentColors: [Color(0xFFFF9800), Color(0xFFF57C00)],
+    supportedSizes: ['7x9'],
+    supportedDifficulties: ['Easy'],
+    supportsHints: true,
+    category: PuzzleCategory.logic,
+    isAvailable: false,
+    availabilityBadgeLabel: 'Coming Soon',
+    unavailableMessage: 'Kakuro is coming soon.',
+  );
+
   Widget buildCard({
+    PuzzleMetadata cardMetadata = metadata,
     bool isFavourite = false,
     bool isInProgress = false,
     VoidCallback? onTap,
@@ -25,9 +42,10 @@ void main() {
     VoidCallback? onResume,
   }) {
     return MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
       home: Scaffold(
         body: PuzzleCard(
-          metadata: metadata,
+          metadata: cardMetadata,
           isFavourite: isFavourite,
           isInProgress: isInProgress,
           onTap: onTap ?? () {},
@@ -89,5 +107,21 @@ void main() {
 
     expect(starTaps, 1);
     expect(cardTaps, 0);
+  });
+
+  testWidgets('coming soon cards show badge and hide continue action', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      buildCard(
+        cardMetadata: unavailableMetadata,
+        isInProgress: true,
+        onResume: () {},
+      ),
+    );
+
+    expect(find.text('Coming Soon'), findsOneWidget);
+    expect(find.text('Kakuro is coming soon.'), findsOneWidget);
+    expect(find.text('Continue'), findsNothing);
   });
 }

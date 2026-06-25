@@ -164,10 +164,12 @@ class _PuzzleLibraryCardItem extends ConsumerWidget {
       metadata: metadata,
       isFavourite: isFavourite,
       isInProgress: activeRun != null,
-      onTap: () => showPuzzleDetailSheet(context: context, metadata: metadata),
+      onTap: metadata.isAvailable
+          ? () => showPuzzleDetailSheet(context: context, metadata: metadata)
+          : null,
       onToggleFavourite: () =>
           ref.read(favouritePuzzleControllerProvider).toggle(metadata.type),
-      onResume: activeRun == null
+      onResume: activeRun == null || !metadata.isAvailable
           ? null
           : () => resumePuzzleRun(
               context: context,
@@ -233,17 +235,17 @@ int _librarySortKey(PuzzleType type) {
   switch (type) {
     case PuzzleType.sudokuClassic:
       return 0;
-    case PuzzleType.kakuroClassic:
-      return 1;
     case PuzzleType.mathdokuClassic:
-      return 2;
+      return 1;
     case PuzzleType.takuzuBinary:
-      return 3;
+      return 2;
     case PuzzleType.nonogramMono:
       return 10;
     case PuzzleType.slitherlinkLoop:
       return 11;
     case PuzzleType.killerQueens:
       return 12;
+    case PuzzleType.kakuroClassic:
+      return 99;
   }
 }

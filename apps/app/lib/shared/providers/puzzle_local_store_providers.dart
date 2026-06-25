@@ -181,6 +181,9 @@ final activeRunsProvider = FutureProvider<List<ActivePuzzleRun>>((ref) async {
   final List<ActivePuzzleRun> runs = <ActivePuzzleRun>[];
 
   for (final puzzleType in PuzzleType.values) {
+    if (!puzzleType.isPlayable) {
+      continue;
+    }
     final List<ActivePuzzleRun> puzzleRuns = await progress
         .loadActiveRunsForType(puzzleType);
     for (final run in puzzleRuns) {

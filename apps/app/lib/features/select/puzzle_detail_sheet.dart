@@ -105,6 +105,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
     final bool dailyCompleted = dailyCompletedAsync.asData?.value ?? false;
     final ActivePuzzleRun? activeRun = activeRunAsync.asData?.value;
     final bool isFavourite = isFavouriteAsync.asData?.value ?? false;
+    final bool isAvailable = widget.metadata.isAvailable;
     final List<String> supportedDifficulties =
         widget.metadata.supportedDifficulties;
     final String dailyDifficultyLabel =
@@ -113,7 +114,12 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
         : 'Daily Set';
 
     final _SheetCallToAction cta;
-    if (_selectedMode == PuzzleMode.daily) {
+    if (!isAvailable) {
+      cta = _SheetCallToAction(
+        label: widget.metadata.availabilityBadgeLabel ?? 'Coming Soon',
+        icon: Icons.hourglass_top_rounded,
+      );
+    } else if (_selectedMode == PuzzleMode.daily) {
       if (!dailyEligible) {
         cta = const _SheetCallToAction(
           label: 'Daily Unavailable',
@@ -251,168 +257,196 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                     ),
                   ),
                   SizedBox(height: spacing.l),
-                  const SectionHeader(title: 'Choose Mode'),
-                  SizedBox(height: spacing.m),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final bool useRow = constraints.maxWidth >= 560;
-                      final Widget dailyCard = ModeSelectionCard(
-                        title: 'Daily Challenge',
-                        subtitle: dailyEligible
-                            ? 'Same puzzle for everyone'
-                            : 'Not part of the daily rotation yet',
-                        leading: _buildModeIcon(
-                          context,
-                          icon: Icons.calendar_today_outlined,
-                          accentColor: widget.metadata.primaryAccentColor,
-                          selected:
-                              _selectedMode == PuzzleMode.daily &&
-                              dailyEligible,
-                          useDarkSelectedStyle: true,
-                        ),
-                        badgeLabel: dailyCompleted ? 'Completed Today' : null,
-                        footer: dailyEligible
-                            ? _ResetCountdownFooter(
-                                selected: _selectedMode == PuzzleMode.daily,
-                                accentColor: widget.metadata.primaryAccentColor,
-                              )
-                            : Text(
-                                'Daily unavailable',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                        selected: _selectedMode == PuzzleMode.daily,
-                        enabled: dailyEligible,
-                        showSelectedIndicator: false,
-                        selectedBackgroundColor:
-                            widget.metadata.secondaryAccentColor,
-                        selectedBorderColor:
-                            widget.metadata.secondaryAccentColor,
-                        onTap: () => setState(() {
-                          _selectedMode = PuzzleMode.daily;
-                        }),
-                      );
-                      final Widget randomCard = ModeSelectionCard(
-                        title: 'Random Play',
-                        subtitle: 'Infinite variety',
-                        secondaryLine: 'Unique to you',
-                        leading: _buildModeIcon(
-                          context,
-                          icon: Icons.shuffle_rounded,
-                          accentColor: colorScheme.primary,
-                          selected: _selectedMode == PuzzleMode.random,
-                          useDarkSelectedStyle: false,
-                        ),
-                        selected: _selectedMode == PuzzleMode.random,
-                        showSelectedIndicator: false,
-                        selectedBackgroundColor: colorScheme.primaryContainer
-                            .withValues(alpha: 0.7),
-                        selectedBorderColor: colorScheme.primary.withValues(
-                          alpha: 0.45,
-                        ),
-                        onTap: () => setState(() {
-                          _selectedMode = PuzzleMode.random;
-                        }),
-                      );
-
-                      if (useRow) {
-                        return Row(
-                          children: [
-                            Expanded(child: dailyCard),
-                            SizedBox(width: spacing.m),
-                            Expanded(child: randomCard),
-                          ],
-                        );
-                      }
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          dailyCard,
-                          SizedBox(height: spacing.m),
-                          randomCard,
-                        ],
-                      );
-                    },
-                  ),
-                  SizedBox(height: spacing.l),
-                  if (_selectedMode == PuzzleMode.daily) ...[
-                    const SectionHeader(
-                      title: 'Daily Difficulty',
-                      subtitle: 'Today\'s daily challenge uses a fixed setup.',
-                    ),
-                    SizedBox(height: spacing.m),
+                  if (!isAvailable)
                     BrainiaxCard(
                       emphasized: true,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Wrap(
-                            spacing: spacing.s,
-                            runSpacing: spacing.s,
-                            children: [
-                              DifficultyChip(
-                                label: dailyDifficultyLabel,
-                                selected: true,
-                                readOnly: true,
-                              ),
-                              if (dailyCompleted)
-                                const DifficultyChip(
-                                  label: 'Completed Today',
-                                  readOnly: true,
-                                ),
-                            ],
+                          Text(
+                            widget.metadata.availabilityBadgeLabel ??
+                                'Coming Soon',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           SizedBox(height: spacing.s),
                           Text(
-                            dailyCompleted
-                                ? 'Today\'s daily is already complete. Use View Daily to reopen the solved puzzle safely.'
-                                : 'Difficulty is set by the daily challenge and cannot be changed here.',
+                            widget.metadata.unavailableMessage ??
+                                'Kakuro is coming soon.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ] else ...[
-                    const SectionHeader(
-                      title: 'Difficulty',
-                      subtitle:
-                          'Pick the challenge level for your next random puzzle.',
-                    ),
+                    )
+                  else ...[
+                    const SectionHeader(title: 'Choose Mode'),
                     SizedBox(height: spacing.m),
-                    if (supportedDifficulties.isEmpty)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final bool useRow = constraints.maxWidth >= 560;
+                        final Widget dailyCard = ModeSelectionCard(
+                          title: 'Daily Challenge',
+                          subtitle: dailyEligible
+                              ? 'Same puzzle for everyone'
+                              : 'Not part of the daily rotation yet',
+                          leading: _buildModeIcon(
+                            context,
+                            icon: Icons.calendar_today_outlined,
+                            accentColor: widget.metadata.primaryAccentColor,
+                            selected:
+                                _selectedMode == PuzzleMode.daily &&
+                                dailyEligible,
+                            useDarkSelectedStyle: true,
+                          ),
+                          badgeLabel: dailyCompleted ? 'Completed Today' : null,
+                          footer: dailyEligible
+                              ? _ResetCountdownFooter(
+                                  selected: _selectedMode == PuzzleMode.daily,
+                                  accentColor:
+                                      widget.metadata.primaryAccentColor,
+                                )
+                              : Text(
+                                  'Daily unavailable',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                          selected: _selectedMode == PuzzleMode.daily,
+                          enabled: dailyEligible,
+                          showSelectedIndicator: false,
+                          selectedBackgroundColor:
+                              widget.metadata.secondaryAccentColor,
+                          selectedBorderColor:
+                              widget.metadata.secondaryAccentColor,
+                          onTap: () => setState(() {
+                            _selectedMode = PuzzleMode.daily;
+                          }),
+                        );
+                        final Widget randomCard = ModeSelectionCard(
+                          title: 'Random Play',
+                          subtitle: 'Infinite variety',
+                          secondaryLine: 'Unique to you',
+                          leading: _buildModeIcon(
+                            context,
+                            icon: Icons.shuffle_rounded,
+                            accentColor: colorScheme.primary,
+                            selected: _selectedMode == PuzzleMode.random,
+                            useDarkSelectedStyle: false,
+                          ),
+                          selected: _selectedMode == PuzzleMode.random,
+                          showSelectedIndicator: false,
+                          selectedBackgroundColor: colorScheme.primaryContainer
+                              .withValues(alpha: 0.7),
+                          selectedBorderColor: colorScheme.primary.withValues(
+                            alpha: 0.45,
+                          ),
+                          onTap: () => setState(() {
+                            _selectedMode = PuzzleMode.random;
+                          }),
+                        );
+
+                        if (useRow) {
+                          return Row(
+                            children: [
+                              Expanded(child: dailyCard),
+                              SizedBox(width: spacing.m),
+                              Expanded(child: randomCard),
+                            ],
+                          );
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            dailyCard,
+                            SizedBox(height: spacing.m),
+                            randomCard,
+                          ],
+                        );
+                      },
+                    ),
+                    SizedBox(height: spacing.l),
+                    if (_selectedMode == PuzzleMode.daily) ...[
+                      const SectionHeader(
+                        title: 'Daily Difficulty',
+                        subtitle:
+                            'Today\'s daily challenge uses a fixed setup.',
+                      ),
+                      SizedBox(height: spacing.m),
                       BrainiaxCard(
                         emphasized: true,
-                        child: Text(
-                          'Difficulty selection is unavailable for this puzzle type.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      )
-                    else
-                      Wrap(
-                        spacing: spacing.s,
-                        runSpacing: spacing.s,
-                        children: supportedDifficulties
-                            .map((difficulty) {
-                              return DifficultyChip(
-                                label: difficulty,
-                                selected: _selectedDifficulty == difficulty,
-                                onTap: () => _selectRandomDifficulty(
-                                  puzzleType,
-                                  difficulty,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: spacing.s,
+                              runSpacing: spacing.s,
+                              children: [
+                                DifficultyChip(
+                                  label: dailyDifficultyLabel,
+                                  selected: true,
+                                  readOnly: true,
                                 ),
-                              );
-                            })
-                            .toList(growable: false),
+                                if (dailyCompleted)
+                                  const DifficultyChip(
+                                    label: 'Completed Today',
+                                    readOnly: true,
+                                  ),
+                              ],
+                            ),
+                            SizedBox(height: spacing.s),
+                            Text(
+                              dailyCompleted
+                                  ? 'Today\'s daily is already complete. Use View Daily to reopen the solved puzzle safely.'
+                                  : 'Difficulty is set by the daily challenge and cannot be changed here.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ] else ...[
+                      const SectionHeader(
+                        title: 'Difficulty',
+                        subtitle:
+                            'Pick the challenge level for your next random puzzle.',
+                      ),
+                      SizedBox(height: spacing.m),
+                      if (supportedDifficulties.isEmpty)
+                        BrainiaxCard(
+                          emphasized: true,
+                          child: Text(
+                            'Difficulty selection is unavailable for this puzzle type.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      else
+                        Wrap(
+                          spacing: spacing.s,
+                          runSpacing: spacing.s,
+                          children: supportedDifficulties
+                              .map((difficulty) {
+                                return DifficultyChip(
+                                  label: difficulty,
+                                  selected: _selectedDifficulty == difficulty,
+                                  onTap: () => _selectRandomDifficulty(
+                                    puzzleType,
+                                    difficulty,
+                                  ),
+                                );
+                              })
+                              .toList(growable: false),
+                        ),
+                    ],
                   ],
-                  if (activeRun != null) ...[
+                  if (activeRun != null && isAvailable) ...[
                     SizedBox(height: spacing.l),
                     ActiveRunCard(
                       run: activeRun,

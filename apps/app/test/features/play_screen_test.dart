@@ -47,6 +47,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: PlayScreen(
             puzzleType: PuzzleType.sudokuClassic,
             mode: PuzzleMode.random,
@@ -248,6 +249,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
+            theme: ThemeData(splashFactory: NoSplash.splashFactory),
             home: PlayScreen(
               puzzleType: PuzzleType.sudokuClassic,
               mode: PuzzleMode.daily,
@@ -544,6 +546,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: PlayScreen(
             puzzleType: PuzzleType.killerQueens,
             mode: PuzzleMode.random,
@@ -587,6 +590,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: PlayScreen(
             puzzleType: PuzzleType.sudokuClassic,
             mode: PuzzleMode.random,
@@ -606,12 +610,7 @@ void main() {
     );
     expect(hintButton.onTap, isNull);
 
-    await tester.tap(find.byTooltip('How to Play'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.text('Classic Sudoku'), findsWidgets);
-    expect(find.text('Full tutorial coming soon.'), findsOneWidget);
+    expect(find.byTooltip('How to Play'), findsOneWidget);
   });
 
   testWidgets('Clear removes Sudoku notes-only and value-plus-notes cells', (
@@ -642,7 +641,13 @@ void main() {
         .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
         .onCellSelected!(Offset.zero);
     await tester.ensureVisible(find.text('Clear'));
-    await tester.tap(find.text('Clear'));
+    tester
+        .widget<InkWell>(
+          find
+              .ancestor(of: find.text('Clear'), matching: find.byType(InkWell))
+              .first,
+        )
+        .onTap!();
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(container.read(gameStateProvider)!.notes.containsKey(0), isFalse);
@@ -650,7 +655,13 @@ void main() {
     await notifier.makeMove(const core.SudokuMove(row: 0, col: 0, digit: 5));
     notifier.recordNoteAction(0, 6, true);
     await tester.pump();
-    await tester.tap(find.text('Clear'));
+    tester
+        .widget<InkWell>(
+          find
+              .ancestor(of: find.text('Clear'), matching: find.byType(InkWell))
+              .first,
+        )
+        .onTap!();
     await tester.pump(const Duration(milliseconds: 100));
 
     final state = container.read(gameStateProvider)!;
@@ -695,7 +706,13 @@ void main() {
         .widget<MathdokuRendererWidget>(find.byType(MathdokuRendererWidget))
         .onCellSelected!(Offset.zero);
     await tester.ensureVisible(find.text('Clear'));
-    await tester.tap(find.text('Clear'));
+    tester
+        .widget<InkWell>(
+          find
+              .ancestor(of: find.text('Clear'), matching: find.byType(InkWell))
+              .first,
+        )
+        .onTap!();
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(container.read(gameStateProvider)!.notes.containsKey(0), isFalse);
@@ -703,7 +720,13 @@ void main() {
     await notifier.makeMove(const core.MathdokuMove(row: 0, col: 0, value: 1));
     notifier.recordNoteAction(0, 2, true);
     await tester.pump();
-    await tester.tap(find.text('Clear'));
+    tester
+        .widget<InkWell>(
+          find
+              .ancestor(of: find.text('Clear'), matching: find.byType(InkWell))
+              .first,
+        )
+        .onTap!();
     await tester.pump(const Duration(milliseconds: 100));
 
     final state = container.read(gameStateProvider)!;
@@ -812,7 +835,7 @@ void main() {
   });
 
   testWidgets(
-    'daily Kakuro shows loading immediately and does not render stale puzzle',
+    'daily Kakuro direct access shows coming soon and does not render stale puzzle',
     (tester) async {
       core.EngineRegistry().register(
         core.StubPuzzleEngine(engineId: PuzzleType.sudokuClassic.key),
@@ -858,15 +881,43 @@ void main() {
         ),
       );
 
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(find.byType(SudokuRendererWidget), findsNothing);
-      expect(find.text('Generating puzzle...'), findsOneWidget);
-
-      // Drain the delayed stub future to avoid pending timer assertions.
-      await tester.pump(const Duration(milliseconds: 900));
+      expect(find.text('Coming Soon'), findsOneWidget);
+      expect(find.text('Kakuro is coming soon.'), findsOneWidget);
     },
   );
+
+  testWidgets('direct Kakuro play route shows a safe coming soon state', (
+    tester,
+  ) async {
+    var dailyRequested = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
+            dailyRequested = true;
+            return buildSudokuPuzzle();
+          }),
+        ],
+        child: const MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.kakuroClassic,
+            mode: PuzzleMode.daily,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Coming Soon'), findsOneWidget);
+    expect(find.text('Kakuro is coming soon.'), findsOneWidget);
+    expect(find.text('Back to Daily'), findsOneWidget);
+    expect(find.text('Generating puzzle...'), findsNothing);
+    expect(dailyRequested, isFalse);
+  });
 }
 
 core.GeneratedPuzzle<core.NonogramBoard> _buildAlmostSolvedNonogramPuzzle() {

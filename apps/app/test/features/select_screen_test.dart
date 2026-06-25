@@ -82,6 +82,7 @@ void main() {
       ProviderScope(
         overrides: overrides.cast(),
         child: MaterialApp.router(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           routeInformationProvider: router.routeInformationProvider,
           routeInformationParser: router.routeInformationParser,
           routerDelegate: router.routerDelegate,
@@ -164,7 +165,7 @@ void main() {
     await tester.tap(find.text('Classic Sudoku'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose mode'), findsOneWidget);
+    expect(find.text('Choose Mode'), findsOneWidget);
     expect(find.text('How to Play'), findsOneWidget);
     expect(router.routeInformationProvider.value.uri.path, '/');
   });
@@ -209,17 +210,57 @@ void main() {
     await tester.tap(find.text('Numbers').first);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Classic Mathdoku'),
+      find.text('Classic Kakuro'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(find.text('Classic Sudoku'), findsOneWidget);
-    expect(find.text('Classic Kakuro'), findsOneWidget);
-    expect(find.text('Classic Mathdoku'), findsOneWidget);
+    expect(find.text('Classic Sudoku', skipOffstage: false), findsOneWidget);
+    expect(find.text('Classic Kakuro', skipOffstage: false), findsOneWidget);
+    expect(find.text('Classic Mathdoku', skipOffstage: false), findsOneWidget);
     expect(find.text('Monochrome Nonogram'), findsNothing);
     expect(find.text('Slitherlink Loop'), findsNothing);
     expect(find.text('Killer Queens'), findsNothing);
+  });
+
+  testWidgets('Kakuro stays visible but disabled with a coming soon badge', (
+    WidgetTester tester,
+  ) async {
+    final GoRouter router = await pumpSelectScreen(tester);
+
+    await tester.scrollUntilVisible(
+      find.text('Classic Kakuro'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Coming Soon'), findsOneWidget);
+    expect(find.text('Kakuro is coming soon.'), findsOneWidget);
+
+    await tester.tap(find.text('Classic Kakuro'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose Mode'), findsNothing);
+    expect(router.routeInformationProvider.value.uri.path, '/');
+  });
+
+  testWidgets('Kakuro is ordered at the bottom of the puzzle library', (
+    WidgetTester tester,
+  ) async {
+    await pumpSelectScreen(tester);
+
+    await tester.scrollUntilVisible(
+      find.text('Classic Kakuro'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final double kakuroY = tester.getTopLeft(find.text('Classic Kakuro')).dy;
+    final double killerQueensY = tester
+        .getTopLeft(find.text('Killer Queens'))
+        .dy;
+
+    expect(kakuroY, greaterThan(killerQueensY));
   });
 
   testWidgets('visual filter includes Nonogram Slitherlink and Killer Queens', (

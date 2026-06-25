@@ -32,7 +32,6 @@ void main() {
           dailyHubProvider.overrideWith((ref) async => view),
           dailyPuzzleProvider.overrideWith((ref, puzzleTypeKey) async {
             return switch (puzzleTypeKey) {
-              'kakuro_classic' => buildKakuroPuzzle(),
               'slitherlink_loop' => buildSlitherlinkPuzzle(),
               'mathdoku_classic' => buildMathdokuPuzzle(),
               'nonogram_mono' => buildNonogramPuzzle(),
@@ -41,6 +40,7 @@ void main() {
           }),
         ],
         child: MaterialApp.router(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           routeInformationProvider: router.routeInformationProvider,
           routeInformationParser: router.routeInformationParser,
           routerDelegate: router.routerDelegate,
@@ -115,15 +115,18 @@ void main() {
     await pumpDailyRouter(tester, view: _buildView());
 
     await _scrollTo(tester, find.text('Today\'s Puzzles'));
-    expect(find.text('3/5 done'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'Play'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'Resume'), findsOneWidget);
-    await _scrollTo(
-      tester,
-      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
+    expect(find.text('2/4 done'), findsOneWidget);
+    expect(
+      find.widgetWithText(ElevatedButton, 'Play'),
+      findsAtLeastNWidgets(1),
     );
+    expect(find.widgetWithText(ElevatedButton, 'Resume'), findsOneWidget);
     expect(find.widgetWithText(ElevatedButton, 'View'), findsWidgets);
-    expect(find.text('Solved in 4m 5s'), findsOneWidget);
+    expect(find.text('Solved in 7m 12s'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
+      findsNothing,
+    );
   });
 
   testWidgets('renders filters and hides old tab or fake social UI', (
@@ -172,8 +175,9 @@ void main() {
 
     expect(find.text('Classic Sudoku'), findsNothing);
     expect(find.text('Monochrome Nonogram'), findsNothing);
-    expect(find.text('Classic Kakuro'), findsOneWidget);
     expect(find.text('Slitherlink Loop'), findsOneWidget);
+    expect(find.text('Classic Mathdoku'), findsNothing);
+    expect(find.text('Classic Kakuro'), findsNothing);
   });
 
   testWidgets('empty filter state renders safely', (WidgetTester tester) async {
@@ -223,14 +227,14 @@ void main() {
 
     await _scrollTo(
       tester,
-      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
+      find.byKey(const ValueKey('daily-puzzle-slitherlink_loop')),
     );
-    final Finder kakuroCard = find.byKey(
-      const ValueKey('daily-puzzle-kakuro_classic'),
+    final Finder completedCard = find.byKey(
+      const ValueKey('daily-puzzle-slitherlink_loop'),
     );
     await tester.tap(
       find.descendant(
-        of: kakuroCard,
+        of: completedCard,
         matching: find.widgetWithText(ElevatedButton, 'View'),
       ),
     );
@@ -239,7 +243,7 @@ void main() {
 
     expect(find.byType(PlayScreen), findsOneWidget);
     final PlayScreen playScreen = tester.widget(find.byType(PlayScreen));
-    expect(playScreen.puzzleType, PuzzleType.kakuroClassic);
+    expect(playScreen.puzzleType, PuzzleType.slitherlinkLoop);
     expect(playScreen.mode, PuzzleMode.daily);
   });
 
@@ -280,8 +284,8 @@ void main() {
 
 DailyHubViewData _buildView({
   int streakCount = 7,
-  int completedCount = 3,
-  int totalCount = 5,
+  int completedCount = 2,
+  int totalCount = 4,
   List<DailyHubPuzzleEntry>? entries,
   List<PuzzleType>? uncompletedPuzzleTypes,
   DailyHubStatusCard? statusCard,
@@ -302,12 +306,6 @@ DailyHubViewData _buildView({
           difficultyLabel: 'Daily',
         ),
         DailyHubPuzzleEntry(
-          puzzleType: PuzzleType.kakuroClassic,
-          cardState: DailyHubCardState.completed,
-          solvedDuration: Duration(minutes: 4, seconds: 5),
-          difficultyLabel: 'easy',
-        ),
-        DailyHubPuzzleEntry(
           puzzleType: PuzzleType.slitherlinkLoop,
           cardState: DailyHubCardState.completed,
           solvedDuration: Duration(minutes: 7, seconds: 12),
@@ -315,8 +313,8 @@ DailyHubViewData _buildView({
         ),
         DailyHubPuzzleEntry(
           puzzleType: PuzzleType.mathdokuClassic,
-          cardState: DailyHubCardState.completed,
-          solvedDuration: Duration(minutes: 9),
+          cardState: DailyHubCardState.play,
+          solvedDuration: null,
           difficultyLabel: 'Daily',
         ),
       ];
@@ -381,7 +379,11 @@ DailyHubViewData _buildView({
         ),
     uncompletedPuzzleTypes:
         uncompletedPuzzleTypes ??
-        const <PuzzleType>[PuzzleType.sudokuClassic, PuzzleType.nonogramMono],
+        const <PuzzleType>[
+          PuzzleType.sudokuClassic,
+          PuzzleType.nonogramMono,
+          PuzzleType.mathdokuClassic,
+        ],
   );
 }
 
