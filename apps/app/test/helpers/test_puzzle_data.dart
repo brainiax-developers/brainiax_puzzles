@@ -24,8 +24,8 @@ core.PuzzleMetadata _metadataFor({
 }
 
 List<int> _flatten(List<List<int>> matrix) => [
-      for (final row in matrix) ...row,
-    ];
+  for (final row in matrix) ...row,
+];
 
 core.SudokuBoard _sudokuBoardFromMatrix(List<List<int>> matrix) {
   final cells = _flatten(matrix);
@@ -48,8 +48,9 @@ final List<List<int>> _sudokuSolutionMatrix = <List<int>>[
   <int>[3, 4, 5, 2, 8, 6, 1, 7, 9],
 ];
 
-final core.SudokuBoard _sudokuSolutionBoard =
-    _sudokuBoardFromMatrix(_sudokuSolutionMatrix);
+final core.SudokuBoard _sudokuSolutionBoard = _sudokuBoardFromMatrix(
+  _sudokuSolutionMatrix,
+);
 
 core.SudokuBoard buildSudokuPuzzleBoard() {
   final cleared = <Offset>[
@@ -65,27 +66,26 @@ core.SudokuBoard buildSudokuPuzzleBoard() {
   ];
   core.SudokuBoard board = _sudokuSolutionBoard;
   for (final position in cleared) {
-    board = board.setCell(
-      position.dy.toInt(),
-      position.dx.toInt(),
-      0,
-    );
+    board = board.setCell(position.dy.toInt(), position.dx.toInt(), 0);
   }
   return board;
 }
 
-core.GeneratedPuzzle<core.SudokuBoard> buildSudokuPuzzle({bool solved = false}) {
+core.GeneratedPuzzle<core.SudokuBoard> buildSudokuPuzzle({
+  bool solved = false,
+  String difficulty = 'easy',
+}) {
   final board = solved ? _sudokuSolutionBoard : buildSudokuPuzzleBoard();
   return core.GeneratedPuzzle<core.SudokuBoard>(
     state: board,
-    meta: _metadataFor(size: '9x9', difficulty: 'easy'),
+    meta: _metadataFor(size: '9x9', difficulty: difficulty),
   );
 }
 
 class TestSudokuEngine
     implements core.PuzzleEngine<core.SudokuBoard, core.SudokuMove> {
   TestSudokuEngine({this.engineId = 'sudoku_classic'})
-      : _fixedCells = _deriveFixedCells(buildSudokuPuzzleBoard());
+    : _fixedCells = _deriveFixedCells(buildSudokuPuzzleBoard());
 
   final String engineId;
   final Set<int> _fixedCells;
@@ -119,6 +119,14 @@ class TestSudokuEngine
       const core.PuzzleCapabilities(supportsHints: false);
 
   @override
+  core.PuzzleHint? requestHint({
+    required core.SudokuBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+
+  @override
   core.GeneratedPuzzle<core.SudokuBoard> generate({
     required String seedStr,
     required int seed64,
@@ -127,7 +135,10 @@ class TestSudokuEngine
   }) {
     return core.GeneratedPuzzle<core.SudokuBoard>(
       state: _puzzle,
-      meta: _metadataFor(size: '${size.width}x${size.height}', difficulty: difficulty.level),
+      meta: _metadataFor(
+        size: '${size.width}x${size.height}',
+        difficulty: difficulty.level,
+      ),
     );
   }
 
@@ -150,7 +161,14 @@ class TestSudokuEngine
   }
 
   @override
-  bool isSolved(core.SudokuBoard state) => state == _solution;
+  bool isSolved(core.SudokuBoard state) {
+    for (int i = 0; i < state.cells.length; i++) {
+      if (state.cells[i] != _solution.cells[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 core.GeneratedPuzzle<core.NonogramBoard> buildNonogramPuzzle() {
@@ -309,23 +327,26 @@ core.GeneratedPuzzle<core.KillerQueensBoard> buildKillerQueensPuzzle() {
 
 core.GeneratedPuzzle<core.TakuzuBoard> buildTakuzuPuzzle() {
   const size = 4;
-  final solution = <int>[
-    0, 0, 1, 1,
-    1, 1, 0, 0,
-    0, 1, 1, 0,
-    1, 0, 0, 1,
-  ];
+  final solution = <int>[0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1];
   final fixed = <bool>[
-    true, true, true, true,
-    true, false, false, false,
-    false, false, true, true,
-    true, true, false, false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
   ];
-  final board = core.TakuzuBoard(
-    size: size,
-    cells: solution,
-    fixed: fixed,
-  );
+  final board = core.TakuzuBoard(size: size, cells: solution, fixed: fixed);
   return core.GeneratedPuzzle<core.TakuzuBoard>(
     state: board,
     meta: _metadataFor(size: '4x4', difficulty: 'easy'),

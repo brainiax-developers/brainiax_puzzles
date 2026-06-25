@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:puzzle_core/puzzle_core.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('Killer Queens engine pipeline', () {
     final KillerQueensEngine engine = KillerQueensEngine();
+    const KillerQueensSolver solver = KillerQueensSolver();
     const SizeOpt size = SizeOpt(
       id: '8x8',
       description: '8x8',
@@ -37,7 +40,160 @@ void main() {
       expect(first.meta.seedStr, equals(second.meta.seedStr));
     });
 
-    test('puzzles are solvable (but not necessarily unique)', () {
+    test('fixed seeds are deterministic across all difficulties', () {
+      for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+        final String seedStr = 'killer_queens_fixed_${spec.level}';
+        final int seed64 = Seed.fromString(seedStr);
+
+        final GeneratedPuzzle<KillerQueensBoard> first = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: spec.size,
+          difficulty: spec.difficulty,
+        );
+        final GeneratedPuzzle<KillerQueensBoard> second = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: spec.size,
+          difficulty: spec.difficulty,
+        );
+
+        expect(first.state, equals(second.state), reason: spec.level);
+        expect(first.meta, equals(second.meta), reason: spec.level);
+        expect(
+          first.telemetry!.difficulty.toJson(),
+          equals(second.telemetry!.difficulty.toJson()),
+          reason: spec.level,
+        );
+        expect(
+          _stableGeneratorTelemetry(first),
+          equals(_stableGeneratorTelemetry(second)),
+          reason: spec.level,
+        );
+        expect(
+          first.telemetry!.extras['solver'],
+          equals(second.telemetry!.extras['solver']),
+          reason: spec.level,
+        );
+        expect(
+          first.telemetry!.extras['solutionStatus'],
+          equals(second.telemetry!.extras['solutionStatus']),
+          reason: spec.level,
+        );
+        expect(
+          first.telemetry!.extras['solutionCount'],
+          equals(second.telemetry!.extras['solutionCount']),
+          reason: spec.level,
+        );
+        expect(first.state.size, equals(spec.boardSize), reason: spec.level);
+        expect(
+          first.meta.size.width,
+          equals(spec.boardSize),
+          reason: spec.level,
+        );
+        expect(
+          first.meta.size.height,
+          equals(spec.boardSize),
+          reason: spec.level,
+        );
+      }
+    });
+
+    test(
+      'generated puzzles survive GeneratedPuzzle serialization round-trip',
+      () {
+        for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+          final String seedStr = 'killer_queens_round_trip_${spec.level}';
+          final int seed64 = Seed.fromString(seedStr);
+          final GeneratedPuzzle<KillerQueensBoard> original = engine.generate(
+            seedStr: seedStr,
+            seed64: seed64,
+            size: spec.size,
+            difficulty: spec.difficulty,
+          );
+
+          final Map<String, dynamic> encoded = original.toJson();
+          final GeneratedPuzzle<KillerQueensBoard> decoded =
+              GeneratedPuzzle<KillerQueensBoard>.fromJson(
+                encoded,
+                KillerQueensBoard.fromJson,
+              );
+
+          expect(decoded.state, equals(original.state), reason: spec.level);
+          expect(decoded.meta, equals(original.meta), reason: spec.level);
+          expect(
+            jsonEncode(decoded.toJson()),
+            equals(jsonEncode(encoded)),
+            reason: spec.level,
+          );
+        }
+      },
+    );
+
+    test(
+      'generated puzzles imply exactly one solution across difficulties',
+      () {
+        for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+          final String seedStr = 'killer_queens_unique_${spec.level}';
+          final int seed64 = Seed.fromString(seedStr);
+          final GeneratedPuzzle<KillerQueensBoard> puzzle = engine.generate(
+            seedStr: seedStr,
+            seed64: seed64,
+            size: spec.size,
+            difficulty: spec.difficulty,
+          );
+
+          final SolverResult<KillerQueensBoard> result = solver.solve(
+            puzzle.state,
+            SolverContext(rng: SeededRng(seed64 ^ 0x34fb81d7), maxSolutions: 2),
+          );
+
+          expect(
+            result.solutionStatus,
+            equals(SolverStatus.unique),
+            reason: seedStr,
+          );
+          expect(result.solutions, hasLength(1), reason: seedStr);
+          final ValidationSummary validation = engine.validator
+              .validateSolution(puzzle.state, result.solutions.first);
+          expect(
+            validation.isValid,
+            isTrue,
+            reason: validation.issues.join(','),
+          );
+        }
+      },
+    );
+
+    test('generated puzzles start with no queens or fixed cells', () {
+      for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+        final String seedStr = 'killer_queens_empty_start_${spec.level}';
+        final int seed64 = Seed.fromString(seedStr);
+        final GeneratedPuzzle<KillerQueensBoard> puzzle = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: spec.size,
+          difficulty: spec.difficulty,
+        );
+
+        expect(
+          puzzle.state.cells.where((int value) => value == 1),
+          isEmpty,
+          reason: '${spec.level} should not reveal solution queens',
+        );
+        expect(
+          puzzle.state.fixed.where((bool value) => value),
+          isEmpty,
+          reason: '${spec.level} should not mark normal cells fixed',
+        );
+
+        final Map<String, Object?> generatorTelemetry =
+            puzzle.telemetry!.extras['generator'] as Map<String, Object?>;
+        expect(generatorTelemetry['givens'], equals(0), reason: spec.level);
+      }
+    });
+
+    test('generated puzzles are unique for fixed seeds', () {
       const List<String> seeds = <String>[
         'killer_queens_seed_0',
         'killer_queens_seed_1',
@@ -54,19 +210,30 @@ void main() {
           difficulty: difficulty,
         );
 
+        final GenerationTelemetry telemetry = puzzle.telemetry!;
         final SolverResult<KillerQueensBoard> result = solver.solve(
           puzzle.state,
           SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
         );
+        final solverTelemetry =
+            telemetry.extras['solver'] as Map<String, Object?>;
+        final generatorTelemetry =
+            telemetry.extras['generator'] as Map<String, Object?>;
 
         expect(
-          result.hasSolution,
-          isTrue,
-          reason: 'Seed $seedStr should be solvable',
+          telemetry.extras['solutionStatus'],
+          equals(SolverStatus.unique.name),
+          reason: 'Seed $seedStr should pass production uniqueness',
+        );
+        expect(telemetry.extras['solutionCount'], equals(1));
+        expect(solverTelemetry['maxSolutions'], equals(2));
+        expect(generatorTelemetry['uniquenessChecks'], greaterThan(0));
+        expect(
+          result.solutionStatus,
+          equals(SolverStatus.unique),
+          reason: 'Seed $seedStr should have exactly one solution',
         );
 
-        // With no givens, multiple solutions exist - this is expected
-        // Just verify that at least one valid solution exists
         final KillerQueensBoard solution = result.solutions.first;
         final ValidationSummary summary = engine.validator.validateSolution(
           puzzle.state,
@@ -75,6 +242,266 @@ void main() {
         expect(summary.isValid, isTrue, reason: summary.issues.join(','));
       }
     });
+
+    test('solver returns multiple for a crafted count-to-2 fixture', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _multiSolutionBoard(size: 6);
+
+      final SolverResult<KillerQueensBoard> result = solver.solve(
+        puzzle,
+        SolverContext(rng: SeededRng(404), maxSolutions: 2),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.multiple));
+      expect(result.solutions.length, equals(2));
+      expect(result.solutions.length, lessThanOrEqualTo(2));
+      expect(result.telemetry['maxSolutions'], equals(2));
+      expect(result.telemetry['nodes'], isA<int>());
+      expect(result.telemetry['branches'], isA<int>());
+      expect(result.telemetry['backtracks'], isA<int>());
+      expect(result.telemetry['maxDepth'], isA<int>());
+      expect(result.telemetry['candidateCounts'], isA<List<int>>());
+      expect(result.telemetry['averageBranchingFactor'], isA<double>());
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.multiple.name),
+      );
+    });
+
+    test('solver returns unique for a known fixed fixture', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _fixedUniqueBoard();
+
+      final SolverResult<KillerQueensBoard> result = solver.solve(
+        puzzle,
+        SolverContext(rng: SeededRng(202), maxSolutions: 2),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.unique));
+      expect(result.solutions.length, equals(1));
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.unique.name),
+      );
+    });
+
+    test('solver returns noSolution for inconsistent givens', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _impossibleBoard();
+
+      final SolverResult<KillerQueensBoard> result = solver.solve(
+        puzzle,
+        SolverContext(rng: SeededRng(303), maxSolutions: 2),
+      );
+
+      expect(result.solutionStatus, equals(SolverStatus.noSolution));
+      expect(result.solutions, isEmpty);
+      expect(result.telemetry['inconsistent'], isTrue);
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.noSolution.name),
+      );
+    });
+
+    test('solver returns unknown when branch budget expires before proof', () {
+      const KillerQueensSolver solver = KillerQueensSolver();
+      final KillerQueensBoard puzzle = _multiSolutionBoard(size: 6);
+      SolverResult<KillerQueensBoard>? capped;
+
+      for (int budget = 1; budget <= 64; budget++) {
+        final SolverResult<KillerQueensBoard> result = solver.solve(
+          puzzle,
+          SolverContext(
+            rng: SeededRng(404),
+            maxSolutions: 2,
+            speculativeStepBudget: budget,
+          ),
+        );
+        if (result.solutions.length == 1 &&
+            result.solutionStatus == SolverStatus.unknown) {
+          capped = result;
+          break;
+        }
+      }
+
+      expect(capped, isNotNull);
+      final SolverResult<KillerQueensBoard> result = capped!;
+      expect(result.solutionStatus, equals(SolverStatus.unknown));
+      expect(result.isUnique, isFalse);
+      expect(result.solutions.length, equals(1));
+      expect(result.solutions.length, lessThanOrEqualTo(2));
+      expect(result.telemetry['speculativeStepBudgetHit'], isTrue);
+      expect(result.telemetry['proofIncomplete'], isTrue);
+      expect(
+        result.telemetry['solutionStatus'],
+        equals(SolverStatus.unknown.name),
+      );
+    });
+
+    test(
+      'pipeline rejects generated Killer Queens boards with multiple solutions',
+      () {
+        final _NonUniqueKillerQueensEngine nonUniqueEngine =
+            _NonUniqueKillerQueensEngine();
+
+        expect(
+          () => nonUniqueEngine.generate(
+            seedStr: 'killer_queens_non_unique_rejection',
+            seed64: Seed.fromString('killer_queens_non_unique_rejection'),
+            size: const SizeOpt(
+              id: '6x6',
+              description: '6x6',
+              width: 6,
+              height: 6,
+            ),
+            difficulty: const DifficultyScore(value: 0.3, level: 'easy'),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (StateError error) => error.message,
+              'message',
+              contains('not unique'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('invalid board fixtures fail validation', () {
+      final Map<String, ({KillerQueensBoard board, String issueCode})>
+      fixtures = <String, ({KillerQueensBoard board, String issueCode})>{
+        'wrong_region_count': (
+          board: KillerQueensBoard(
+            size: 4,
+            cells: List<int>.filled(16, 0),
+            fixed: List<bool>.filled(16, false),
+            cages: const <KillerQueensCage>[
+              KillerQueensCage(cells: <int>[0, 1, 2, 3]),
+              KillerQueensCage(cells: <int>[4, 5, 6, 7]),
+              KillerQueensCage(cells: <int>[8, 9, 10, 11, 12, 13, 14, 15]),
+            ],
+          ),
+          issueCode: 'region_count_mismatch',
+        ),
+        'disconnected_region': (
+          board: KillerQueensBoard(
+            size: 4,
+            cells: List<int>.filled(16, 0),
+            fixed: List<bool>.filled(16, false),
+            cages: const <KillerQueensCage>[
+              KillerQueensCage(cells: <int>[0, 15]),
+              KillerQueensCage(cells: <int>[1, 2, 3, 7]),
+              KillerQueensCage(cells: <int>[4, 5, 6]),
+              KillerQueensCage(cells: <int>[8, 9, 10, 11, 12, 13, 14]),
+            ],
+          ),
+          issueCode: 'region_disconnected',
+        ),
+        'overlapping_region': (
+          board: KillerQueensBoard(
+            size: 4,
+            cells: List<int>.filled(16, 0),
+            fixed: List<bool>.filled(16, false),
+            cages: const <KillerQueensCage>[
+              KillerQueensCage(cells: <int>[0, 1, 2, 3]),
+              KillerQueensCage(cells: <int>[0, 4, 5, 6, 7]),
+              KillerQueensCage(cells: <int>[8, 9, 10, 11]),
+              KillerQueensCage(cells: <int>[12, 13, 14, 15]),
+            ],
+          ),
+          issueCode: 'cell_multiple_regions',
+        ),
+        'missing_region_cell': (
+          board: KillerQueensBoard(
+            size: 4,
+            cells: List<int>.filled(16, 0),
+            fixed: List<bool>.filled(16, false),
+            cages: const <KillerQueensCage>[
+              KillerQueensCage(cells: <int>[1, 2, 3]),
+              KillerQueensCage(cells: <int>[4, 5, 6, 7]),
+              KillerQueensCage(cells: <int>[8, 9, 10, 11]),
+              KillerQueensCage(cells: <int>[12, 13, 14, 15]),
+            ],
+          ),
+          issueCode: 'cell_missing_region',
+        ),
+      };
+
+      for (final MapEntry<String, ({KillerQueensBoard board, String issueCode})>
+          entry
+          in fixtures.entries) {
+        final ValidationSummary summary = engine.validator.validatePuzzle(
+          entry.value.board,
+        );
+        expect(summary.isValid, isFalse, reason: entry.key);
+        expect(
+          summary.issues.any(
+            (String issue) => issue.startsWith(entry.value.issueCode),
+          ),
+          isTrue,
+          reason: '${entry.key}: ${summary.issues.join(',')}',
+        );
+      }
+    });
+
+    test(
+      'fuzz seeds stay valid, serializable, and unique across all difficulties',
+      () {
+        const int seedsPerDifficulty = 5;
+
+        for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+          for (int i = 0; i < seedsPerDifficulty; i++) {
+            final String seedStr = 'killer_queens_fuzz_${spec.level}_$i';
+            final int seed64 = Seed.fromString(seedStr);
+            final GeneratedPuzzle<KillerQueensBoard> puzzle = engine.generate(
+              seedStr: seedStr,
+              seed64: seed64,
+              size: spec.size,
+              difficulty: spec.difficulty,
+            );
+
+            final ValidationSummary puzzleValidation = engine.validator
+                .validatePuzzle(puzzle.state);
+            expect(
+              puzzleValidation.isValid,
+              isTrue,
+              reason: '$seedStr: ${puzzleValidation.issues.join(',')}',
+            );
+
+            final GeneratedPuzzle<KillerQueensBoard> decoded =
+                GeneratedPuzzle<KillerQueensBoard>.fromJson(
+                  puzzle.toJson(),
+                  KillerQueensBoard.fromJson,
+                );
+            expect(decoded.state, equals(puzzle.state), reason: seedStr);
+
+            final SolverResult<KillerQueensBoard> result = solver.solve(
+              puzzle.state,
+              SolverContext(
+                rng: SeededRng(seed64 ^ 0x2e13f0bb),
+                maxSolutions: 2,
+              ),
+            );
+            expect(
+              result.solutionStatus,
+              equals(SolverStatus.unique),
+              reason:
+                  '$seedStr generated a ${result.solutionStatus.name} puzzle',
+            );
+            expect(result.solutions, hasLength(1), reason: seedStr);
+
+            final ValidationSummary solutionValidation = engine.validator
+                .validateSolution(puzzle.state, result.solutions.first);
+            expect(
+              solutionValidation.isValid,
+              isTrue,
+              reason: '$seedStr: ${solutionValidation.issues.join(',')}',
+            );
+          }
+        }
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
 
     test('cage count matches the board size', () {
       const List<String> seeds = <String>[
@@ -123,5 +550,182 @@ void main() {
       }
       expect(cageSignatures.length, greaterThan(1));
     });
+
+    test('difficulty metrics do not use fixed queen counts as a driver', () {
+      for (final _KillerQueensDifficultyCase spec in _difficultyCases) {
+        final String seedStr = 'killer_queens_score_${spec.level}';
+        final int seed64 = Seed.fromString(seedStr);
+        final GeneratedPuzzle<KillerQueensBoard> puzzle = engine.generate(
+          seedStr: seedStr,
+          seed64: seed64,
+          size: spec.size,
+          difficulty: spec.difficulty,
+        );
+        final DifficultyTelemetry difficultyTelemetry =
+            puzzle.telemetry!.difficulty;
+        final Map<String, num> metrics = difficultyTelemetry.metrics;
+
+        expect(metrics['rawScore'], equals(difficultyTelemetry.rawScore));
+        expect(metrics['boardSize'], equals(spec.boardSize));
+        expect(metrics['regionCount'], equals(spec.boardSize));
+        expect(metrics['givens'], equals(0), reason: spec.level);
+        expect(metrics['acceptedGenerationAttempts'], greaterThan(0));
+        expect(metrics['solverNodes'], greaterThan(0));
+        expect(metrics['branches'], greaterThan(0));
+        expect(metrics, isNot(containsPair('sizeScore', anything)));
+        expect(metrics, isNot(containsPair('givensAdjustment', anything)));
+      }
+    });
   });
+}
+
+Map<String, Object?> _stableGeneratorTelemetry(
+  GeneratedPuzzle<KillerQueensBoard> puzzle,
+) {
+  final Map<String, Object?> telemetry = Map<String, Object?>.from(
+    puzzle.telemetry!.extras['generator'] as Map,
+  );
+  telemetry.remove('elapsedMs');
+  telemetry.remove('solverElapsedMs');
+  return telemetry;
+}
+
+class _KillerQueensDifficultyCase {
+  const _KillerQueensDifficultyCase({
+    required this.level,
+    required this.boardSize,
+    required this.difficulty,
+  });
+
+  final String level;
+  final int boardSize;
+  final DifficultyScore difficulty;
+
+  SizeOpt get size => SizeOpt(
+    id: '${boardSize}x$boardSize',
+    description: '${boardSize}x$boardSize',
+    width: boardSize,
+    height: boardSize,
+  );
+}
+
+const List<_KillerQueensDifficultyCase> _difficultyCases =
+    <_KillerQueensDifficultyCase>[
+      _KillerQueensDifficultyCase(
+        level: 'easy',
+        boardSize: 6,
+        difficulty: DifficultyScore(value: 0.3, level: 'easy'),
+      ),
+      _KillerQueensDifficultyCase(
+        level: 'medium',
+        boardSize: 8,
+        difficulty: DifficultyScore(value: 0.6, level: 'medium'),
+      ),
+      _KillerQueensDifficultyCase(
+        level: 'hard',
+        boardSize: 10,
+        difficulty: DifficultyScore(value: 0.9, level: 'hard'),
+      ),
+      _KillerQueensDifficultyCase(
+        level: 'expert',
+        boardSize: 12,
+        difficulty: DifficultyScore(value: 1.0, level: 'expert'),
+      ),
+    ];
+
+KillerQueensBoard _multiSolutionBoard({required int size}) {
+  final int cellCount = size * size;
+  return KillerQueensBoard(
+    size: size,
+    cells: List<int>.filled(cellCount, 0),
+    fixed: List<bool>.filled(cellCount, false),
+    cages: <KillerQueensCage>[
+      for (int row = 0; row < size; row++)
+        KillerQueensCage(
+          cells: <int>[for (int col = 0; col < size; col++) row * size + col],
+        ),
+    ],
+  );
+}
+
+KillerQueensBoard _fixedUniqueBoard() {
+  return _boardWithFixedQueens(
+    size: 6,
+    queenCols: const <int>[1, 3, 5, 0, 2, 4],
+    fixedRows: const <int>{0, 1, 2, 3, 4, 5},
+  );
+}
+
+KillerQueensBoard _impossibleBoard() {
+  return _boardWithFixedQueens(
+    size: 6,
+    queenCols: const <int>[1, 1, 5, 0, 2, 4],
+    fixedRows: const <int>{0, 1},
+  );
+}
+
+KillerQueensBoard _boardWithFixedQueens({
+  required int size,
+  required List<int> queenCols,
+  required Set<int> fixedRows,
+}) {
+  final int cellCount = size * size;
+  final List<int> cells = List<int>.filled(cellCount, 0);
+  final List<bool> fixed = List<bool>.filled(cellCount, false);
+  for (final int row in fixedRows) {
+    final int index = row * size + queenCols[row];
+    cells[index] = 1;
+    fixed[index] = true;
+  }
+  return KillerQueensBoard(
+    size: size,
+    cells: cells,
+    fixed: fixed,
+    cages: <KillerQueensCage>[
+      for (int row = 0; row < size; row++)
+        KillerQueensCage(
+          cells: <int>[for (int col = 0; col < size; col++) row * size + col],
+        ),
+    ],
+  );
+}
+
+class _MultiSolutionGenerator extends PuzzleGenerator<KillerQueensBoard> {
+  const _MultiSolutionGenerator();
+
+  @override
+  PuzzleGenerationResult<KillerQueensBoard> generate(GeneratorContext context) {
+    return PuzzleGenerationResult<KillerQueensBoard>(
+      board: _multiSolutionBoard(size: context.size.width),
+      snapshot: const GenerationSnapshot(
+        telemetry: <String, Object?>{'fixture': 'multi_solution'},
+      ),
+    );
+  }
+}
+
+class _NonUniqueKillerQueensEngine
+    extends PipelinePuzzleEngine<KillerQueensBoard, KillerQueensMove> {
+  _NonUniqueKillerQueensEngine()
+    : super(
+        engineId: 'killer_queens_non_unique_fixture',
+        engineName: 'Killer Queens Non-Unique Fixture',
+        engineVersion: 'test',
+        generator: const _MultiSolutionGenerator(),
+        solver: const KillerQueensSolver(),
+        validator: const KillerQueensValidator(),
+        difficultyScorer: _baseEngine.difficultyScorer,
+        difficultyConfig: _baseEngine.difficultyConfig,
+        enforceDifficulty: false,
+      );
+
+  static final KillerQueensEngine _baseEngine = KillerQueensEngine();
+
+  @override
+  MoveResult<KillerQueensBoard> validateMove({
+    required KillerQueensBoard currentState,
+    required KillerQueensMove move,
+  }) {
+    return _baseEngine.validateMove(currentState: currentState, move: move);
+  }
 }

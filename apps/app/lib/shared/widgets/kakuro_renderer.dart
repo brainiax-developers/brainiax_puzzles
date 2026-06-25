@@ -139,14 +139,25 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
   }
 
   @override
-  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) {
+  Widget buildCellContent(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
     // Values are painted by content painter
     return const SizedBox.shrink();
   }
 
   @override
-  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildSelectionHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: selectionAnimation,
       builder: (context, _) => CustomPaint(
@@ -161,8 +172,15 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
   }
 
   @override
-  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildErrorHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: errorAnimation,
       builder: (context, _) => CustomPaint(
@@ -177,14 +195,27 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
   }
 
   @override
-  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildHintHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     final animVal = (widget.hintAnimationValue).clamp(0.0, 1.0);
     final paint = Paint()
-      ..color = _hintPaint.color.withOpacity(_hintPaint.color.opacity * (0.4 + 0.6 * animVal))
+      ..color = _hintPaint.color.withOpacity(
+        _hintPaint.color.opacity * (0.4 + 0.6 * animVal),
+      )
       ..style = PaintingStyle.fill;
     return CustomPaint(
-      painter: CellBackgroundPainter(cellRect: rect, backgroundPaint: paint, borderRadius: 3),
+      painter: CellBackgroundPainter(
+        cellRect: rect,
+        backgroundPaint: paint,
+        borderRadius: 3,
+      ),
     );
   }
 
@@ -267,6 +298,14 @@ class _KakuroContentPainter extends CustomPainter {
       color: theme.colorScheme.onSurface.withOpacity(0.7),
       fontSize: 10,
     );
+    final completedClueStyle = clueStyle?.copyWith(
+      color: theme.colorScheme.onSurface.withOpacity(0.35),
+      fontWeight: FontWeight.w700,
+    );
+    final incorrectClueStyle = clueStyle?.copyWith(
+      color: theme.colorScheme.error,
+      fontWeight: FontWeight.w700,
+    );
     for (int row = 0; row < board.height; row++) {
       for (int col = 0; col < board.width; col++) {
         final rect = PainterUtils.getCellRect(
@@ -289,15 +328,39 @@ class _KakuroContentPainter extends CustomPainter {
             ..strokeWidth = 1;
           canvas.drawLine(rect.topLeft, rect.bottomRight, diagPaint);
           if (across != null && clueStyle != null) {
+            final KakuroRunState acrossState = KakuroRunInspector.forClue(
+              board: board,
+              row: row,
+              col: col,
+              direction: KakuroDirection.across,
+            );
+            final TextStyle resolvedStyle =
+                acrossState == KakuroRunState.completeCorrect
+                ? completedClueStyle!
+                : acrossState == KakuroRunState.completeIncorrect
+                ? incorrectClueStyle!
+                : clueStyle;
             final tp = TextPainter(
-              text: TextSpan(text: across.toString(), style: clueStyle),
+              text: TextSpan(text: across.toString(), style: resolvedStyle),
               textDirection: TextDirection.ltr,
             )..layout(maxWidth: rect.width / 2 - 2);
             tp.paint(canvas, Offset(rect.center.dx + 2, rect.top + 2));
           }
           if (down != null && clueStyle != null) {
+            final KakuroRunState downState = KakuroRunInspector.forClue(
+              board: board,
+              row: row,
+              col: col,
+              direction: KakuroDirection.down,
+            );
+            final TextStyle resolvedStyle =
+                downState == KakuroRunState.completeCorrect
+                ? completedClueStyle!
+                : downState == KakuroRunState.completeIncorrect
+                ? incorrectClueStyle!
+                : clueStyle;
             final tp = TextPainter(
-              text: TextSpan(text: down.toString(), style: clueStyle),
+              text: TextSpan(text: down.toString(), style: resolvedStyle),
               textDirection: TextDirection.ltr,
             )..layout(maxWidth: rect.width / 2 - 2);
             tp.paint(canvas, Offset(rect.left + 2, rect.center.dy));
@@ -325,21 +388,34 @@ class _KakuroContentPainter extends CustomPainter {
               final List<int> sortedNotes = cellNotes.toList()..sort();
               final noteStyle = theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
-                fontSize: 8,
+                fontSize: (rect.shortestSide * 0.18).clamp(7.0, 10.0),
+                fontWeight: FontWeight.w500,
               );
               if (noteStyle != null) {
-                // Position notes in a 3x3 grid
-                for (int i = 0; i < sortedNotes.length; i++) {
-                  final int note = sortedNotes[i];
-                  final int gridX = i % 3;
-                  final int gridY = i ~/ 3;
-                  final double x = rect.left + gridX * (rect.width / 3) + 2;
-                  final double y = rect.top + gridY * (rect.height / 3) + 2;
-                  final TextPainter tp = TextPainter(
-                    text: TextSpan(text: note.toString(), style: noteStyle),
-                    textDirection: TextDirection.ltr,
-                  )..layout(maxWidth: rect.width / 3 - 4);
-                  tp.paint(canvas, Offset(x, y));
+                const int noteGridSize = 3;
+                final Rect noteGridRect = rect.deflate(
+                  (rect.shortestSide * 0.08).clamp(2.0, 4.0),
+                );
+                final double noteWidth = noteGridRect.width / noteGridSize;
+                final double noteHeight = noteGridRect.height / noteGridSize;
+                for (final int note in sortedNotes) {
+                  if (note < 1 || note > 9) {
+                    continue;
+                  }
+                  final int noteRow = (note - 1) ~/ noteGridSize;
+                  final int noteCol = (note - 1) % noteGridSize;
+                  final Rect noteRect = Rect.fromLTWH(
+                    noteGridRect.left + noteCol * noteWidth,
+                    noteGridRect.top + noteRow * noteHeight,
+                    noteWidth,
+                    noteHeight,
+                  );
+                  PainterUtils.paintCellText(
+                    canvas: canvas,
+                    cellRect: noteRect,
+                    text: note.toString(),
+                    textStyle: noteStyle,
+                  );
                 }
               }
             }
@@ -351,7 +427,10 @@ class _KakuroContentPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _KakuroContentPainter oldDelegate) {
-    return oldDelegate.board != board || oldDelegate.metrics != metrics || oldDelegate.theme != theme || !_notesEqual(notes, oldDelegate.notes);
+    return oldDelegate.board != board ||
+        oldDelegate.metrics != metrics ||
+        oldDelegate.theme != theme ||
+        !_notesEqual(notes, oldDelegate.notes);
   }
 
   bool _notesEqual(Map<int, Set<int>> a, Map<int, Set<int>> b) {
@@ -371,6 +450,78 @@ class _KakuroContentPainter extends CustomPainter {
       if (!b.contains(value)) return false;
     }
     return true;
+  }
+}
+
+@visibleForTesting
+enum KakuroRunState { incomplete, completeCorrect, completeIncorrect }
+
+@visibleForTesting
+class KakuroRunInspector {
+  const KakuroRunInspector._();
+
+  static KakuroRunState forClue({
+    required KakuroBoard board,
+    required int row,
+    required int col,
+    required KakuroDirection direction,
+  }) {
+    final int entryId = _entryIdAfterClue(
+      board: board,
+      row: row,
+      col: col,
+      direction: direction,
+    );
+    if (entryId < 0 || entryId >= board.entries.length) {
+      return KakuroRunState.incomplete;
+    }
+    return forEntry(board, board.entries[entryId]);
+  }
+
+  static KakuroRunState forEntry(KakuroBoard board, KakuroEntry entry) {
+    int sum = 0;
+    final Set<int> seen = <int>{};
+    for (final int index in entry.cells) {
+      if (index < 0 ||
+          index >= board.cellCount ||
+          !board.isPlayableIndex(index)) {
+        return KakuroRunState.incomplete;
+      }
+      final int value = board.values[index];
+      if (value == 0) {
+        return KakuroRunState.incomplete;
+      }
+      if (value < 1 || value > 9 || !seen.add(value)) {
+        return KakuroRunState.completeIncorrect;
+      }
+      sum += value;
+    }
+    return sum == entry.sum
+        ? KakuroRunState.completeCorrect
+        : KakuroRunState.completeIncorrect;
+  }
+
+  static int _entryIdAfterClue({
+    required KakuroBoard board,
+    required int row,
+    required int col,
+    required KakuroDirection direction,
+  }) {
+    final int runRow = direction == KakuroDirection.across ? row : row + 1;
+    final int runCol = direction == KakuroDirection.across ? col + 1 : col;
+    if (runRow < 0 ||
+        runRow >= board.height ||
+        runCol < 0 ||
+        runCol >= board.width) {
+      return -1;
+    }
+    final int runIndex = board.indexOf(runRow, runCol);
+    if (!board.isPlayableIndex(runIndex)) {
+      return -1;
+    }
+    return direction == KakuroDirection.across
+        ? board.acrossEntryForCell[runIndex]
+        : board.downEntryForCell[runIndex];
   }
 }
 

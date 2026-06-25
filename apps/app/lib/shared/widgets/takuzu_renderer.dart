@@ -16,7 +16,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   late Paint _cellBgPaint;
   late Paint _selectionPaint;
   late Paint _errorPaint;
-  
+
   // Error tracking for delayed visual feedback
   final Set<Offset> _violatingCells = {};
   Timer? _errorDisplayTimer;
@@ -85,12 +85,12 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
       _board = TakuzuBoard.empty(6);
     }
   }
-  
+
   /// Schedule delayed validation to detect rule violations
   void _scheduleValidation() {
     // Cancel any pending timer
     _errorDisplayTimer?.cancel();
-    
+
     // Immediately check if board is now valid
     final violations = _detectViolations();
     if (violations.isEmpty && _showErrors) {
@@ -101,7 +101,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
       });
       return;
     }
-    
+
     // If there are violations, schedule delayed display
     if (violations.isNotEmpty) {
       _errorDisplayTimer = Timer(_errorDisplayDelay, () {
@@ -115,13 +115,13 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
       });
     }
   }
-  
+
   /// Detect all cells that violate Takuzu rules
   Set<Offset> _detectViolations() {
     final violations = <Offset>{};
     final size = _board.size;
     final limit = size ~/ 2;
-    
+
     // Check rows for violations
     for (int row = 0; row < size; row++) {
       // Count 0s and 1s
@@ -131,7 +131,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         if (value == 0) zeros++;
         if (value == 1) ones++;
       }
-      
+
       // Mark cells if count violations
       if (zeros > limit) {
         for (int col = 0; col < size; col++) {
@@ -147,7 +147,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
           }
         }
       }
-      
+
       // Check for three consecutive identical values
       for (int col = 0; col <= size - 3; col++) {
         final a = _board.cellAt(row, col);
@@ -160,7 +160,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         }
       }
     }
-    
+
     // Check columns for violations
     for (int col = 0; col < size; col++) {
       // Count 0s and 1s
@@ -170,7 +170,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         if (value == 0) zeros++;
         if (value == 1) ones++;
       }
-      
+
       // Mark cells if count violations
       if (zeros > limit) {
         for (int row = 0; row < size; row++) {
@@ -186,7 +186,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
           }
         }
       }
-      
+
       // Check for three consecutive identical values
       for (int row = 0; row <= size - 3; row++) {
         final a = _board.cellAt(row, col);
@@ -199,7 +199,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         }
       }
     }
-    
+
     // Check for duplicate rows (when fully filled)
     final Map<String, List<int>> rowSignatures = {};
     for (int row = 0; row < size; row++) {
@@ -227,7 +227,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         }
       }
     }
-    
+
     // Check for duplicate columns (when fully filled)
     final Map<String, List<int>> colSignatures = {};
     for (int col = 0; col < size; col++) {
@@ -255,22 +255,39 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
         }
       }
     }
-    
+
     return violations;
   }
 
   Offset? _hitTest(Offset position) =>
       PainterUtils.hitTestGrid(position: position, metrics: _gridMetrics);
 
-  @override
-  Widget buildPuzzleContent(BuildContext context, Size size) {
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
+  GridMetrics _calculateGridMetrics(Size size) {
+    final TakuzuCounterLayout layout = TakuzuCounterLayout.forSize(size);
+    final GridMetrics base = PainterUtils.calculateGridMetrics(
+      availableSize: Size(
+        size.width - layout.rowCounterWidth,
+        size.height - layout.columnCounterHeight,
+      ),
       rows: _board.size,
       columns: _board.size,
       padding: 16,
       cellSpacing: 1,
     );
+    return GridMetrics(
+      cellSize: base.cellSize,
+      gridSize: base.gridSize,
+      gridOffset: base.gridOffset + Offset(0, layout.columnCounterHeight),
+      padding: base.padding,
+      cellSpacing: base.cellSpacing,
+      rows: base.rows,
+      columns: base.columns,
+    );
+  }
+
+  @override
+  Widget buildPuzzleContent(BuildContext context, Size size) {
+    _gridMetrics = _calculateGridMetrics(size);
     return CustomPaint(
       painter: _TakuzuContentPainter(
         board: _board,
@@ -286,13 +303,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   @override
   Widget buildGridBackground(BuildContext context, Size size) {
     // Initialize metrics before painting background
-    _gridMetrics = PainterUtils.calculateGridMetrics(
-      availableSize: size,
-      rows: _board.size,
-      columns: _board.size,
-      padding: 16,
-      cellSpacing: 1,
-    );
+    _gridMetrics = _calculateGridMetrics(size);
     return CustomPaint(
       painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
       size: size,
@@ -300,12 +311,22 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   }
 
   @override
-  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) =>
-      const SizedBox.shrink();
+  Widget buildCellContent(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) => const SizedBox.shrink();
 
   @override
-  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildSelectionHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: selectionAnimation,
       builder: (context, _) => CustomPaint(
@@ -320,8 +341,15 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   }
 
   @override
-  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildErrorHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: errorAnimation,
       builder: (context, _) => CustomPaint(
@@ -339,18 +367,18 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
   void onTap(Offset position) {
     final gp = _hitTest(position);
     if (gp == null) return;
-    
+
     // Call parent to handle selection state
     super.onTap(position);
-    
+
     final row = gp.dy.toInt();
     final col = gp.dx.toInt();
-    
+
     // Check if cell is fixed (a given clue)
     if (_board.isFixed(row, col)) {
       return;
     }
-    
+
     final current = _board.cellAt(row, col);
     int next;
     // Cycle: empty → 0 → 1 → empty
@@ -361,7 +389,7 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
     } else {
       next = TakuzuBoard.emptyValue;
     }
-    
+
     widget.onMove?.call(TakuzuMove(row: row, col: col, value: next));
   }
 
@@ -374,7 +402,9 @@ class TakuzuRenderer extends PuzzleRenderer<TakuzuRendererWidget>
 
     if (event.logicalKey == LogicalKeyboardKey.backspace ||
         event.logicalKey == LogicalKeyboardKey.delete) {
-      widget.onMove?.call(TakuzuMove(row: row, col: col, value: TakuzuBoard.emptyValue));
+      widget.onMove?.call(
+        TakuzuMove(row: row, col: col, value: TakuzuBoard.emptyValue),
+      );
       return;
     }
     final digit = int.tryParse(event.logicalKey.keyLabel);
@@ -419,12 +449,22 @@ class _TakuzuContentPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final baseStyle = theme.textTheme.titleSmall;
     final ColorScheme colorScheme = theme.colorScheme;
-    
+    final TextStyle counterStyle =
+        (theme.textTheme.labelSmall ?? const TextStyle()).copyWith(
+          color: colorScheme.onSurfaceVariant,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        );
+    final TextStyle warningCounterStyle = counterStyle.copyWith(
+      color: colorScheme.error,
+      fontWeight: FontWeight.w800,
+    );
+
     final errorPaint = Paint()
       ..color = theme.colorScheme.error
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
-    
+
     for (int row = 0; row < board.size; row++) {
       for (int col = 0; col < board.size; col++) {
         final rect = PainterUtils.getCellRect(
@@ -451,7 +491,7 @@ class _TakuzuContentPainter extends CustomPainter {
             textStyle: textStyle,
           );
         }
-        
+
         // Draw red X on violating cells
         final cellPos = Offset(col.toDouble(), row.toDouble());
         if (violatingCells.contains(cellPos)) {
@@ -460,21 +500,170 @@ class _TakuzuContentPainter extends CustomPainter {
           final y1 = rect.top + padding;
           final x2 = rect.right - padding;
           final y2 = rect.bottom - padding;
-          
+
           // Draw X
           canvas.drawLine(Offset(x1, y1), Offset(x2, y2), errorPaint);
           canvas.drawLine(Offset(x2, y1), Offset(x1, y2), errorPaint);
         }
       }
     }
+
+    _paintCounters(
+      canvas: canvas,
+      normalStyle: counterStyle,
+      warningStyle: warningCounterStyle,
+    );
+  }
+
+  void _paintCounters({
+    required Canvas canvas,
+    required TextStyle normalStyle,
+    required TextStyle warningStyle,
+  }) {
+    final TakuzuCounts counts = TakuzuCounts.fromBoard(board);
+    final int allowed = board.size ~/ 2;
+
+    for (int row = 0; row < board.size; row++) {
+      final TakuzuLineCount count = counts.rows[row];
+      final Rect rowRect = Rect.fromLTWH(
+        metrics.gridRect.right + 6,
+        metrics.gridOffset.dy +
+            row * (metrics.cellSize.height + metrics.cellSpacing),
+        58,
+        metrics.cellSize.height,
+      );
+      _paintCounterText(
+        canvas: canvas,
+        rect: rowRect,
+        text: count.compactLabel,
+        style: count.exceeds(allowed) ? warningStyle : normalStyle,
+        align: TextAlign.left,
+      );
+    }
+
+    for (int col = 0; col < board.size; col++) {
+      final TakuzuLineCount count = counts.columns[col];
+      final Rect colRect = Rect.fromLTWH(
+        metrics.gridOffset.dx +
+            col * (metrics.cellSize.width + metrics.cellSpacing),
+        metrics.gridRect.top - 28,
+        metrics.cellSize.width,
+        24,
+      );
+      _paintCounterText(
+        canvas: canvas,
+        rect: colRect,
+        text: count.stackedLabel,
+        style: count.exceeds(allowed) ? warningStyle : normalStyle,
+        align: TextAlign.center,
+      );
+    }
+  }
+
+  void _paintCounterText({
+    required Canvas canvas,
+    required Rect rect,
+    required String text,
+    required TextStyle style,
+    required TextAlign align,
+  }) {
+    final TextPainter textPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textAlign: align,
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+    )..layout(maxWidth: rect.width);
+
+    final double dx = align == TextAlign.center
+        ? rect.left + (rect.width - textPainter.width) / 2
+        : rect.left;
+    final Offset offset = Offset(
+      dx,
+      rect.top + (rect.height - textPainter.height) / 2,
+    );
+    textPainter.paint(canvas, offset);
   }
 
   @override
   bool shouldRepaint(covariant _TakuzuContentPainter oldDelegate) {
-    return oldDelegate.board != board || 
-           oldDelegate.metrics != metrics || 
-           oldDelegate.theme != theme ||
-           oldDelegate.violatingCells != violatingCells;
+    return oldDelegate.board != board ||
+        oldDelegate.metrics != metrics ||
+        oldDelegate.theme != theme ||
+        oldDelegate.violatingCells != violatingCells;
+  }
+}
+
+@visibleForTesting
+class TakuzuCounterLayout {
+  const TakuzuCounterLayout({
+    required this.rowCounterWidth,
+    required this.columnCounterHeight,
+  });
+
+  final double rowCounterWidth;
+  final double columnCounterHeight;
+
+  static TakuzuCounterLayout forSize(Size size) {
+    if (size.width < 280 || size.height < 280) {
+      return const TakuzuCounterLayout(
+        rowCounterWidth: 46,
+        columnCounterHeight: 24,
+      );
+    }
+    return const TakuzuCounterLayout(
+      rowCounterWidth: 64,
+      columnCounterHeight: 30,
+    );
+  }
+}
+
+@visibleForTesting
+class TakuzuLineCount {
+  const TakuzuLineCount({required this.zeros, required this.ones});
+
+  final int zeros;
+  final int ones;
+
+  String get compactLabel => '0:$zeros 1:$ones';
+  String get stackedLabel => '0:$zeros\n1:$ones';
+
+  bool exceeds(int allowed) => zeros > allowed || ones > allowed;
+}
+
+@visibleForTesting
+class TakuzuCounts {
+  const TakuzuCounts({required this.rows, required this.columns});
+
+  final List<TakuzuLineCount> rows;
+  final List<TakuzuLineCount> columns;
+
+  static TakuzuCounts fromBoard(TakuzuBoard board) {
+    final List<TakuzuLineCount> rows = <TakuzuLineCount>[];
+    final List<TakuzuLineCount> columns = <TakuzuLineCount>[];
+
+    for (int row = 0; row < board.size; row++) {
+      int zeros = 0;
+      int ones = 0;
+      for (int col = 0; col < board.size; col++) {
+        final int value = board.cellAt(row, col);
+        if (value == 0) zeros++;
+        if (value == 1) ones++;
+      }
+      rows.add(TakuzuLineCount(zeros: zeros, ones: ones));
+    }
+
+    for (int col = 0; col < board.size; col++) {
+      int zeros = 0;
+      int ones = 0;
+      for (int row = 0; row < board.size; row++) {
+        final int value = board.cellAt(row, col);
+        if (value == 0) zeros++;
+        if (value == 1) ones++;
+      }
+      columns.add(TakuzuLineCount(zeros: zeros, ones: ones));
+    }
+
+    return TakuzuCounts(rows: rows, columns: columns);
   }
 }
 

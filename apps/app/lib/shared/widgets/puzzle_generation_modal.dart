@@ -21,7 +21,8 @@ class PuzzleGenerationModal extends ConsumerStatefulWidget {
   final VoidCallback onCancel;
 
   @override
-  ConsumerState<PuzzleGenerationModal> createState() => _PuzzleGenerationModalState();
+  ConsumerState<PuzzleGenerationModal> createState() =>
+      _PuzzleGenerationModalState();
 }
 
 class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
@@ -29,7 +30,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
   late AnimationController _progressController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
+
   bool _isGenerating = true;
   bool _hasError = false;
   String? _errorMessage;
@@ -43,22 +44,18 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat();
-    
+
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    
-    _pulseAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
-    
+
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
     _pulseController.repeat(reverse: true);
-    
+
     // Start puzzle generation after first frame to avoid provider mutation during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _generatePuzzle();
@@ -85,7 +82,10 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
       try {
         final prefs = await SharedPreferences.getInstance();
         final progress = PuzzleProgressService(prefs);
-        await progress.clear(widget.puzzleType);
+        await progress.clearRun(
+          type: widget.puzzleType,
+          mode: PuzzleMode.random,
+        );
       } catch (_) {}
 
       // Use the real puzzle generation controller
@@ -119,11 +119,11 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
   void _handleCancel() {
     _progressController.stop();
     _pulseController.stop();
-    
+
     // Cancel the generation in the controller
     final controller = ref.read(puzzleGenerationControllerProvider.notifier);
     controller.cancelGeneration();
-    
+
     widget.onCancel();
   }
 
@@ -131,7 +131,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return WillPopScope(
       onWillPop: () async {
         // Allow back navigation without blocking
@@ -139,9 +139,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
         return true;
       },
       child: Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 400),
           child: SingleChildScrollView(
@@ -149,58 +147,58 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.extension,
+                        color: colorScheme.primary,
+                        size: 24,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.extension,
-                      color: colorScheme.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Generating ${widget.puzzleType.displayName}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Generating ${widget.puzzleType.displayName}',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Difficulty: ${widget.difficulty}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withOpacity(0.7),
+                          Text(
+                            'Difficulty: ${widget.difficulty}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withOpacity(0.7),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  if (!_isGenerating)
-                    IconButton(
-                      onPressed: _handleCancel,
-                      icon: const Icon(Icons.close),
-                      iconSize: 20,
-                    ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Content based on state
-              if (_isGenerating) _buildGeneratingContent(theme, colorScheme),
-              if (_hasError) _buildErrorContent(theme, colorScheme),
-              
-              const SizedBox(height: 24),
-              
+                    if (!_isGenerating)
+                      IconButton(
+                        onPressed: _handleCancel,
+                        icon: const Icon(Icons.close),
+                        iconSize: 20,
+                      ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Content based on state
+                if (_isGenerating) _buildGeneratingContent(theme, colorScheme),
+                if (_hasError) _buildErrorContent(theme, colorScheme),
+
+                const SizedBox(height: 24),
+
                 // Action buttons
                 _buildActionButtons(theme, colorScheme),
               ],
@@ -236,9 +234,9 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             );
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Progress indicator
         SizedBox(
           width: 200,
@@ -247,9 +245,9 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Status text
         Text(
           'Creating your puzzle...',
@@ -257,7 +255,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             color: colorScheme.onSurface.withOpacity(0.8),
           ),
         ),
-        
+
         if (_retryCount > 0) ...[
           const SizedBox(height: 8),
           Text(
@@ -281,15 +279,11 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             color: colorScheme.error.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.error_outline,
-            size: 40,
-            color: colorScheme.error,
-          ),
+          child: Icon(Icons.error_outline, size: 40, color: colorScheme.error),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Text(
           'Generation Failed',
           style: theme.textTheme.titleMedium?.copyWith(
@@ -297,9 +291,9 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             fontWeight: FontWeight.w600,
           ),
         ),
-        
+
         const SizedBox(height: 8),
-        
+
         Text(
           _errorMessage ?? 'An unexpected error occurred',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -307,7 +301,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
           ),
           textAlign: TextAlign.center,
         ),
-        
+
         if (_retryCount >= _maxRetries) ...[
           const SizedBox(height: 8),
           Text(
@@ -335,7 +329,7 @@ class _PuzzleGenerationModalState extends ConsumerState<PuzzleGenerationModal>
             child: const Text('Cancel'),
           ),
         ),
-        
+
         if (_hasError) ...[
           const SizedBox(width: 12),
           // Retry button

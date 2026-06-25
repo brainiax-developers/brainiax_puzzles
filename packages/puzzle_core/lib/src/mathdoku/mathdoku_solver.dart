@@ -216,6 +216,7 @@ class _SearchState {
       for (int cageIndex = 0; cageIndex < cages.length; cageIndex++) {
         final MathdokuCage cage = cages[cageIndex];
         final List<int> allowedMasks = List<int>.filled(cage.cells.length, 0);
+        bool hasFittingCombo = false;
         for (final List<int> combo in cageCombos[cageIndex]) {
           bool fits = true;
           for (int i = 0; i < cage.cells.length; i++) {
@@ -243,9 +244,13 @@ class _SearchState {
           if (!fits) {
             continue;
           }
+          hasFittingCombo = true;
           for (int i = 0; i < cage.cells.length; i++) {
             allowedMasks[i] |= _bitFor(combo[i]);
           }
+        }
+        if (!hasFittingCombo) {
+          return -1;
         }
         for (int i = 0; i < cage.cells.length; i++) {
           final int cell = cage.cells[i];

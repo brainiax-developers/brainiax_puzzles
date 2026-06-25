@@ -4,47 +4,55 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 import 'package:args/args.dart';
-import 'package:path/path.dart' as path;
 
 /// Local/CI benchmark runner for puzzle engines.
-/// 
+///
 /// This script runs selected engines N times and prints p95 performance metrics.
 /// It's designed to be used in CI to detect performance regressions without
 /// blocking release gates.
 void main(List<String> arguments) async {
   final parser = ArgParser()
-    ..addOption('engines', 
-        abbr: 'e', 
-        help: 'Comma-separated list of engine IDs to benchmark',
-        defaultsTo: 'stub,stub_sudoku')
-    ..addOption('count', 
-        abbr: 'c', 
-        help: 'Number of iterations per engine',
-        defaultsTo: '100')
-    ..addOption('difficulty', 
-        abbr: 'd', 
-        help: 'Difficulty level (easy, medium, hard)',
-        defaultsTo: 'medium')
-    ..addOption('size', 
-        abbr: 's', 
-        help: 'Puzzle size (e.g., 9x9, 6x6)',
-        defaultsTo: '9x9')
-    ..addOption('output', 
-        abbr: 'o', 
-        help: 'Output file for results (JSON format)',
-        defaultsTo: 'benchmark_results.json')
-    ..addOption('baseline', 
-        abbr: 'b', 
-        help: 'Baseline file to compare against')
-    ..addFlag('ci', 
-        help: 'Run in CI mode (exit with error code on regression)')
-    ..addOption('threshold', 
-        help: 'Regression threshold percentage (default: 20)',
-        defaultsTo: '20')
+    ..addOption(
+      'engines',
+      abbr: 'e',
+      help: 'Comma-separated list of engine IDs to benchmark (e.g., kakuro_classic, kakuro_profiles, killer_queens)',
+      defaultsTo: 'stub,stub_sudoku',
+    )
+    ..addOption(
+      'count',
+      abbr: 'c',
+      help: 'Number of iterations per engine',
+      defaultsTo: '100',
+    )
+    ..addOption(
+      'difficulty',
+      abbr: 'd',
+      help: 'Difficulty level (easy, medium, hard, expert, all)',
+      defaultsTo: 'medium',
+    )
+    ..addOption(
+      'size',
+      abbr: 's',
+      help: 'Puzzle size (e.g., 9x9, 6x6)',
+      defaultsTo: '9x9',
+    )
+    ..addOption(
+      'output',
+      abbr: 'o',
+      help: 'Output file for results (JSON format)',
+      defaultsTo: 'benchmark_results.json',
+    )
+    ..addOption('baseline', abbr: 'b', help: 'Baseline file to compare against')
+    ..addFlag('ci', help: 'Run in CI mode (exit with error code on regression)')
+    ..addOption(
+      'threshold',
+      help: 'Regression threshold percentage (default: 20)',
+      defaultsTo: '20',
+    )
     ..addFlag('help', abbr: 'h', help: 'Show this help message');
 
   final results = parser.parse(arguments);
-  
+
   if (results['help'] as bool) {
     print('Puzzle Engine Benchmark Runner');
     print('');
@@ -54,7 +62,10 @@ void main(List<String> arguments) async {
     exit(0);
   }
 
-  final engines = (results['engines'] as String).split(',').map((e) => e.trim()).toList();
+  final engines = (results['engines'] as String)
+      .split(',')
+      .map((e) => e.trim())
+      .toList();
   final count = int.parse(results['count'] as String);
   final difficulty = results['difficulty'] as String;
   final size = results['size'] as String;
@@ -93,10 +104,16 @@ void main(List<String> arguments) async {
 
     // CI mode: compare with baseline
     if (ciMode && baselineFile != null) {
-      final regression = await _checkRegression(benchmarkResults, baselineFile, threshold);
+      final regression = await _checkRegression(
+        benchmarkResults,
+        baselineFile,
+        threshold,
+      );
       if (regression.hasRegression) {
         print('❌ Performance regression detected!');
-        print('Regression: ${regression.regressionPercent.toStringAsFixed(1)}%');
+        print(
+          'Regression: ${regression.regressionPercent.toStringAsFixed(1)}%',
+        );
         print('Threshold: ${threshold}%');
         exit(1);
       } else {
@@ -122,7 +139,7 @@ Future<Map<String, EngineBenchmarkResult>> _runBenchmarks({
 
   for (final engineId in engines) {
     print('🔧 Benchmarking $engineId...');
-    
+
     try {
       final result = await _benchmarkEngine(
         engineId: engineId,
@@ -131,7 +148,8 @@ Future<Map<String, EngineBenchmarkResult>> _runBenchmarks({
         size: size,
       );
       results[engineId] = result;
-      
+
+      print('  P50: ${result.p50Ms.toStringAsFixed(2)}ms');
       print('  P95: ${result.p95Ms.toStringAsFixed(2)}ms');
       print('  P99: ${result.p99Ms.toStringAsFixed(2)}ms');
       print('  Total: ${result.totalTimeMs.toStringAsFixed(2)}ms');
@@ -141,6 +159,7 @@ Future<Map<String, EngineBenchmarkResult>> _runBenchmarks({
         engineId: engineId,
         success: false,
         error: e.toString(),
+        p50Ms: 0,
         p95Ms: 0,
         p99Ms: 0,
         totalTimeMs: 0,
@@ -160,24 +179,35 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   required String difficulty,
   required String size,
 }) async {
-  final process = await Process.start(
-    'dart',
-    [
-      'run',
-      'packages/puzzle_core/bin/benchmark_runner.dart',
-      engineId,
-      count.toString(),
-      difficulty,
-      size,
-    ],
-  );
+  final process = await Process.start('dart', [
+    'run',
+    'packages/puzzle_core/bin/benchmark_runner.dart',
+    engineId,
+    count.toString(),
+    difficulty,
+    size,
+  ]);
 
+  final Future<String> stdoutFuture = process.stdout
+      .transform(utf8.decoder)
+      .join();
+  final Future<String> stderrFuture = process.stderr
+      .transform(utf8.decoder)
+      .join();
   final exitCode = await process.exitCode;
-  final stdout = await process.stdout.transform(utf8.decoder).join();
-  final stderr = await process.stderr.transform(utf8.decoder).join();
+  final stdout = await stdoutFuture;
+  final stderr = await stderrFuture;
 
   if (exitCode != 0) {
-    throw Exception('Benchmark runner failed: $stderr');
+    if (stdout.trim().isNotEmpty) {
+      try {
+        final json = jsonDecode(stdout);
+        return EngineBenchmarkResult.fromJson(json);
+      } catch (_) {
+        // Fall back to throwing if stdout isn't valid JSON
+      }
+    }
+    throw Exception('Benchmark runner failed: ${stderr.isNotEmpty ? stderr : 'exit code $exitCode'}');
   }
 
   try {
@@ -188,16 +218,9 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   }
 }
 
-/// Calculate percentile from sorted list.
-int _percentile(List<int> sortedList, double percentile) {
-  if (sortedList.isEmpty) return 0;
-  final index = (percentile * (sortedList.length - 1)).round();
-  return sortedList[index.clamp(0, sortedList.length - 1)];
-}
-
 /// Save benchmark results to file.
 Future<void> _saveResults(
-  Map<String, EngineBenchmarkResult> results, 
+  Map<String, EngineBenchmarkResult> results,
   String outputFile,
 ) async {
   final json = {
@@ -210,10 +233,13 @@ Future<void> _saveResults(
       'totalEngines': results.length,
       'successfulEngines': results.values.where((r) => r.success).length,
       'failedEngines': results.values.where((r) => !r.success).length,
-      'averageP95Ms': results.values
-          .where((r) => r.success)
-          .map((r) => r.p95Ms)
-          .fold(0.0, (a, b) => a + b) / results.values.where((r) => r.success).length,
+      'averageP95Ms': results.values.where((r) => r.success).isEmpty
+          ? 0.0
+          : results.values
+                  .where((r) => r.success)
+                  .map((r) => r.p95Ms)
+                  .fold(0.0, (a, b) => a + b) /
+              results.values.where((r) => r.success).length,
     },
   };
 
@@ -223,15 +249,15 @@ Future<void> _saveResults(
 
 /// Save p95-only artifact for CI consumption.
 Future<void> _saveP95Artifact(
-  Map<String, EngineBenchmarkResult> results, 
+  Map<String, EngineBenchmarkResult> results,
   String outputFile,
 ) async {
   final p95Data = <String, double>{};
-  
+
   for (final entry in results.entries) {
     final engineId = entry.key;
     final result = entry.value;
-    
+
     if (result.success) {
       p95Data[engineId] = result.p95Ms;
     }
@@ -252,13 +278,14 @@ Future<void> _saveP95Artifact(
 void _printSummary(Map<String, EngineBenchmarkResult> results) {
   print('📈 Benchmark Summary');
   print('==================');
-  
+
   for (final entry in results.entries) {
     final engineId = entry.key;
     final result = entry.value;
-    
+
     if (result.success) {
       print('$engineId:');
+      print('  P50: ${result.p50Ms.toStringAsFixed(2)}ms');
       print('  P95: ${result.p95Ms.toStringAsFixed(2)}ms');
       print('  P99: ${result.p99Ms.toStringAsFixed(2)}ms');
       print('  Total: ${result.totalTimeMs.toStringAsFixed(2)}ms');
@@ -282,8 +309,9 @@ Future<RegressionCheck> _checkRegression(
   }
 
   final baselineJson = jsonDecode(await baselineFileObj.readAsString());
-  final baselineResults = (baselineJson['results'] as Map<String, dynamic>)
-      .map((key, value) => MapEntry(key, EngineBenchmarkResult.fromJson(value)));
+  final baselineResults = (baselineJson['results'] as Map<String, dynamic>).map(
+    (key, value) => MapEntry(key, EngineBenchmarkResult.fromJson(value)),
+  );
 
   double maxRegression = 0;
   bool hasRegression = false;
@@ -293,11 +321,15 @@ Future<RegressionCheck> _checkRegression(
     final currentResult = entry.value;
     final baselineResult = baselineResults[engineId];
 
-    if (baselineResult == null || !currentResult.success || !baselineResult.success) {
+    if (baselineResult == null ||
+        !currentResult.success ||
+        !baselineResult.success) {
       continue;
     }
 
-    final regression = ((currentResult.p95Ms - baselineResult.p95Ms) / baselineResult.p95Ms) * 100;
+    final regression =
+        ((currentResult.p95Ms - baselineResult.p95Ms) / baselineResult.p95Ms) *
+        100;
     maxRegression = max(maxRegression, regression);
 
     if (regression > threshold) {
@@ -317,29 +349,35 @@ class EngineBenchmarkResult {
   final String engineId;
   final bool success;
   final String? error;
+  final double p50Ms;
   final double p95Ms;
   final double p99Ms;
   final double totalTimeMs;
   final int iterations;
+  final Map<String, Object?> extras;
 
   EngineBenchmarkResult({
     required this.engineId,
     required this.success,
     required this.error,
+    required this.p50Ms,
     required this.p95Ms,
     required this.p99Ms,
     required this.totalTimeMs,
     required this.iterations,
+    this.extras = const <String, Object?>{},
   });
 
   Map<String, dynamic> toJson() => {
     'engineId': engineId,
     'success': success,
     'error': error,
+    'p50Ms': p50Ms,
     'p95Ms': p95Ms,
     'p99Ms': p99Ms,
     'totalTimeMs': totalTimeMs,
     'iterations': iterations,
+    if (extras.isNotEmpty) 'extras': extras,
   };
 
   factory EngineBenchmarkResult.fromJson(Map<String, dynamic> json) =>
@@ -347,10 +385,12 @@ class EngineBenchmarkResult {
         engineId: json['engineId'] as String,
         success: json['success'] as bool,
         error: json['error'] as String?,
+        p50Ms: (json['p50Ms'] as num?)?.toDouble() ?? 0,
         p95Ms: (json['p95Ms'] as num).toDouble(),
         p99Ms: (json['p99Ms'] as num).toDouble(),
         totalTimeMs: (json['totalTimeMs'] as num).toDouble(),
         iterations: json['iterations'] as int,
+        extras: Map<String, Object?>.from(json['extras'] as Map? ?? const {}),
       );
 }
 

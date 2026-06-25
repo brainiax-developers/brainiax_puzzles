@@ -8,6 +8,8 @@ import 'painter_utils.dart';
 import 'performance_optimizations.dart';
 import 'puzzle_renderer.dart';
 
+enum KillerQueensInputMode { queen, cross, clear }
+
 class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     with PerformanceOptimizedRendering {
   late core.KillerQueensBoard _board;
@@ -18,25 +20,23 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
   late Paint _fixedPaint;
   late Paint _selectionPaint;
   late Paint _hintPaint;
-
-  Offset? _lastDragPosition;
-  
   late AnimationController _vibrationController;
 
   @override
   void initState() {
     super.initState();
     _updateBoard();
-    
+
     // Initialize vibration animation
-    _vibrationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    )..addListener(() {
-      setState(() {}); // Rebuild during animation
-    });
+    _vibrationController =
+        AnimationController(
+          duration: const Duration(milliseconds: 400),
+          vsync: this,
+        )..addListener(() {
+          setState(() {}); // Rebuild during animation
+        });
   }
-  
+
   @override
   void dispose() {
     _vibrationController.dispose();
@@ -49,7 +49,7 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     if (widget.puzzle?.state != oldWidget.puzzle?.state) {
       _updateBoard();
     }
-    
+
     // Start vibration animation when conflicts appear
     if (widget.isShowingConflicts && !oldWidget.isShowingConflicts) {
       _vibrationController.forward(from: 0.0);
@@ -104,6 +104,9 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
   }
 
   @override
+  Offset? hitTest(Offset position) => _hitTest(position);
+
+  @override
   Widget buildPuzzleContent(BuildContext context, Size size) {
     _metrics = PainterUtils.calculateGridMetrics(
       availableSize: size,
@@ -114,13 +117,14 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     );
 
     // Calculate vibration offset (oscillates horizontally)
-    final vibrationOffset = _vibrationController.isAnimating 
-      ? Tween<double>(begin: 0.0, end: 1.0)
-          .chain(CurveTween(curve: Curves.easeInOut))
-          .animate(_vibrationController)
-          .value * 8.0 * // Max offset
-          sin(_vibrationController.value * 8 * pi) // Oscillate
-      : 0.0;
+    final vibrationOffset = _vibrationController.isAnimating
+        ? Tween<double>(begin: 0.0, end: 1.0)
+                  .chain(CurveTween(curve: Curves.easeInOut))
+                  .animate(_vibrationController)
+                  .value *
+              8.0 * // Max offset
+              sin(_vibrationController.value * 8 * pi) // Oscillate
+        : 0.0;
 
     return CustomPaint(
       painter: _KillerQueensContentPainter(
@@ -161,7 +165,10 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     Offset position,
     Size cellSize,
   ) {
-    final Rect rect = PainterUtils.getCellRect(gridPosition: position, metrics: _metrics);
+    final Rect rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _metrics,
+    );
     return AnimatedBuilder(
       animation: selectionAnimation,
       builder: (BuildContext context, _) => CustomPaint(
@@ -182,7 +189,11 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
   ) => const SizedBox.shrink();
 
   @override
-  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) {
+  Widget buildCellContent(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
     return const SizedBox.shrink();
   }
 
@@ -198,7 +209,20 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
       return;
     }
     final int currentValue = _board.cells[index];
-    final int nextValue = currentValue == 0 ? 2 : currentValue == 2 ? 1 : 0;
+    final int? nextValue = switch (widget.inputMode) {
+      KillerQueensInputMode.queen => currentValue == 1 ? null : 1,
+      KillerQueensInputMode.cross =>
+        currentValue == 1
+            ? null
+            : currentValue == 2
+            ? 0
+            : 2,
+      KillerQueensInputMode.clear => currentValue == 0 ? null : 0,
+    };
+    if (nextValue == null) {
+      super.onTap(position);
+      return;
+    }
     widget.onMove?.call(
       core.KillerQueensMove(row: row, col: col, value: nextValue),
     );
@@ -218,54 +242,31 @@ class KillerQueensRenderer extends PuzzleRenderer<KillerQueensRendererWidget>
     if (event.logicalKey == LogicalKeyboardKey.space ||
         event.logicalKey == LogicalKeyboardKey.enter) {
       final int currentValue = _board.cells[index];
-      final int nextValue = currentValue == 0 ? 2 : currentValue == 2 ? 1 : 0;
-      widget.onMove?.call(
-        core.KillerQueensMove(row: row, col: col, value: nextValue),
-      );
+      final int? nextValue = switch (widget.inputMode) {
+        KillerQueensInputMode.queen => currentValue == 1 ? null : 1,
+        KillerQueensInputMode.cross =>
+          currentValue == 1
+              ? null
+              : currentValue == 2
+              ? 0
+              : 2,
+        KillerQueensInputMode.clear => currentValue == 0 ? null : 0,
+      };
+      if (nextValue != null) {
+        widget.onMove?.call(
+          core.KillerQueensMove(row: row, col: col, value: nextValue),
+        );
+      }
       return;
     }
     if (event.logicalKey == LogicalKeyboardKey.delete ||
         event.logicalKey == LogicalKeyboardKey.backspace) {
       if (_board.cells[index] != 0) {
-        widget.onMove?.call(core.KillerQueensMove(row: row, col: col, value: 0));
+        widget.onMove?.call(
+          core.KillerQueensMove(row: row, col: col, value: 0),
+        );
       }
     }
-  }
-
-  @override
-  void onPanStart(DragStartDetails details) {
-    final Offset? gridPos = _hitTest(details.localPosition);
-    if (gridPos == null) return;
-    _lastDragPosition = gridPos;
-    _placeCrossAt(gridPos);
-    super.onPanStart(details);
-  }
-
-  @override
-  void onPanUpdate(DragUpdateDetails details) {
-    final Offset? gridPos = _hitTest(details.localPosition);
-    if (gridPos == null || gridPos == _lastDragPosition) return;
-    _lastDragPosition = gridPos;
-    _placeCrossAt(gridPos);
-    super.onPanUpdate(details);
-  }
-
-  @override
-  void onPanEnd(DragEndDetails details) {
-    _lastDragPosition = null;
-    super.onPanEnd(details);
-  }
-
-  void _placeCrossAt(Offset gridPos) {
-    final int row = gridPos.dy.toInt();
-    final int col = gridPos.dx.toInt();
-    final int index = row * _board.size + col;
-    if (_board.fixed[index] || _board.cells[index] == 1) {
-      return; // Skip fixed or queen cells
-    }
-    widget.onMove?.call(
-      core.KillerQueensMove(row: row, col: col, value: 2),
-    );
   }
 }
 
@@ -279,10 +280,12 @@ class KillerQueensRendererWidget extends PuzzleRendererWidget {
     super.onError,
     super.hintCells,
     super.hintAnimationValue,
+    this.inputMode = KillerQueensInputMode.queen,
     this.conflictingCells,
     this.isShowingConflicts = false,
   });
-  
+
+  final KillerQueensInputMode inputMode;
   final Set<int>? conflictingCells;
   final bool isShowingConflicts;
 
@@ -319,7 +322,8 @@ class _KillerQueensContentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final TextStyle textStyle = theme.textTheme.titleLarge?.copyWith(
+    final TextStyle textStyle =
+        theme.textTheme.titleLarge?.copyWith(
           color: theme.colorScheme.onSurface,
           fontWeight: FontWeight.w700,
         ) ??
@@ -362,11 +366,11 @@ class _KillerQueensContentPainter extends CustomPainter {
           gridPosition: Offset(col.toDouble(), row.toDouble()),
           metrics: metrics,
         );
-        
+
         final int index = row * board.size + col;
         final int cageId = board.cageByCell[index];
         final Color bgColor = cageColorFor(cageId);
-        
+
         // Draw cage background
         final Paint cageBgPaint = Paint()
           ..color = bgColor.withOpacity(0.92)
@@ -391,18 +395,19 @@ class _KillerQueensContentPainter extends CustomPainter {
         // Draw queen
         if (board.cells[index] == 1) {
           // Check if this queen is in conflict
-          final bool isConflicting = isShowingConflicts && 
-                                     conflictingCells != null && 
-                                     conflictingCells!.contains(index);
-          
+          final bool isConflicting =
+              isShowingConflicts &&
+              conflictingCells != null &&
+              conflictingCells!.contains(index);
+
           // Apply vibration offset if conflicting
           final double offsetX = isConflicting ? vibrationOffset : 0.0;
-          
+
           // Use red color for conflicting queens
           final TextStyle queenStyle = isConflicting
               ? textStyle.copyWith(color: Colors.red)
               : textStyle;
-          
+
           textPainter.text = TextSpan(text: 'Q', style: queenStyle);
           textPainter.layout(minWidth: 0, maxWidth: rect.width);
           final Offset textOffset = Offset(
@@ -458,7 +463,8 @@ class _KillerQueensContentPainter extends CustomPainter {
         }
 
         // Bottom boundary
-        if (row == board.size - 1 || board.cageByCell[index + board.size] != cage) {
+        if (row == board.size - 1 ||
+            board.cageByCell[index + board.size] != cage) {
           drawEdge(rect.bottomLeft, rect.bottomRight);
         }
 
@@ -474,7 +480,10 @@ class _KillerQueensContentPainter extends CustomPainter {
   bool shouldRepaint(covariant _KillerQueensContentPainter oldDelegate) {
     return oldDelegate.board != board ||
         oldDelegate.hintCells != hintCells ||
-        oldDelegate.hintProgress != hintProgress;
+        oldDelegate.hintProgress != hintProgress ||
+        oldDelegate.conflictingCells != conflictingCells ||
+        oldDelegate.isShowingConflicts != isShowingConflicts ||
+        oldDelegate.vibrationOffset != vibrationOffset;
   }
 }
 

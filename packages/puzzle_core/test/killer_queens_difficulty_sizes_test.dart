@@ -65,7 +65,28 @@ void main() {
       expect(puzzle.state.cells.length, equals(144));
     });
 
-    test('All puzzles have no givens (all cells start empty)', () {
+    test('Expert difficulty can use the temporary app-safe 10x10 profile', () {
+      const String seedStr = 'kq_expert_app_safe_test';
+      final int seed64 = Seed.fromString(seedStr);
+      final puzzle = engine.generate(
+        seedStr: seedStr,
+        seed64: seed64,
+        size: SizeOpt(id: '10x10', description: '10x10', width: 10, height: 10),
+        difficulty: DifficultyScore(value: 1.0, level: 'expert'),
+      );
+
+      expect(puzzle.state.size, equals(10));
+      expect(puzzle.state.cells.where((int value) => value == 1), isEmpty);
+      expect(puzzle.state.fixed.where((bool value) => value), isEmpty);
+
+      final solved = const KillerQueensSolver().solve(
+        puzzle.state,
+        SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
+      );
+      expect(solved.solutionStatus, equals(SolverStatus.unique));
+    });
+
+    test('All puzzles start empty and keep unique region solutions', () {
       final configs = [
         {'level': 'easy', 'size': 6},
         {'level': 'medium', 'size': 8},
@@ -76,23 +97,41 @@ void main() {
       for (final config in configs) {
         final level = config['level'] as String;
         final size = config['size'] as int;
-        final seedStr = 'kq_${level}_nogivens';
+        final seedStr = 'kq_${level}_empty_start';
         final seed64 = Seed.fromString(seedStr);
 
         final puzzle = engine.generate(
           seedStr: seedStr,
           seed64: seed64,
           size: SizeOpt(
-              id: '${size}x$size',
-              description: '${size}x$size',
-              width: size,
-              height: size),
+            id: '${size}x$size',
+            description: '${size}x$size',
+            width: size,
+            height: size,
+          ),
           difficulty: DifficultyScore(value: 0.5, level: level),
         );
 
-        final givensCount = puzzle.state.fixed.where((f) => f).length;
-        expect(givensCount, equals(0),
-            reason: '$level should have no givens (all cells empty)');
+        expect(
+          puzzle.state.cells.where((int value) => value == 1),
+          isEmpty,
+          reason: '$level should not reveal solution queens',
+        );
+        expect(
+          puzzle.state.fixed.where((bool value) => value),
+          isEmpty,
+          reason: '$level should not mark fixed queen cells',
+        );
+
+        final solved = const KillerQueensSolver().solve(
+          puzzle.state,
+          SolverContext(rng: SeededRng(seed64), maxSolutions: 2),
+        );
+        expect(
+          solved.solutionStatus,
+          equals(SolverStatus.unique),
+          reason: '$level should generate a unique puzzle',
+        );
       }
     });
 
@@ -106,8 +145,9 @@ void main() {
         difficulty: DifficultyScore(value: 0.3, level: 'easy'),
       );
 
-      final avgCageSize = easyPuzzle.state.cells.length / easyPuzzle.state.cages.length;
-      
+      final avgCageSize =
+          easyPuzzle.state.cells.length / easyPuzzle.state.cages.length;
+
       // Easy puzzles should have smaller average cage sizes
       expect(avgCageSize, lessThan(7.0));
     });
@@ -122,8 +162,9 @@ void main() {
         difficulty: DifficultyScore(value: 1.0, level: 'expert'),
       );
 
-      final avgCageSize = expertPuzzle.state.cells.length / expertPuzzle.state.cages.length;
-      
+      final avgCageSize =
+          expertPuzzle.state.cells.length / expertPuzzle.state.cages.length;
+
       // Expert puzzles should have larger average cage sizes
       expect(avgCageSize, greaterThan(10.0));
     });
@@ -141,16 +182,24 @@ void main() {
         final size = config['size'] as int;
         final seedStr = 'kq_${level}_cagecount';
         final seed64 = Seed.fromString(seedStr);
-        
+
         final puzzle = engine.generate(
           seedStr: seedStr,
           seed64: seed64,
-          size: SizeOpt(id: '${size}x$size', description: '${size}x$size', width: size, height: size),
+          size: SizeOpt(
+            id: '${size}x$size',
+            description: '${size}x$size',
+            width: size,
+            height: size,
+          ),
           difficulty: DifficultyScore(value: 0.5, level: level),
         );
 
-        expect(puzzle.state.cages.length, equals(size),
-            reason: '$level should have exactly $size cages');
+        expect(
+          puzzle.state.cages.length,
+          equals(size),
+          reason: '$level should have exactly $size cages',
+        );
       }
     });
   });

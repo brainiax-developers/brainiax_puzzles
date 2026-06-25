@@ -41,6 +41,7 @@ class SlitherlinkSolver extends PuzzleSolver<SlitherlinkBoard> {
       solutions: solutions,
       elapsed: stopwatch.elapsed,
       telemetry: metrics.toTelemetry(),
+      status: search.status,
     );
   }
 }
@@ -58,6 +59,21 @@ class _SlitherlinkSearch {
   final _SlitherlinkSolverMetrics metrics;
   final List<SlitherlinkBoard> solutions;
 
+  bool speculativeStepBudgetHit = false;
+
+  SolverStatus get status {
+    if (solutions.length >= 2) {
+      return SolverStatus.multiple;
+    }
+    if (speculativeStepBudgetHit) {
+      return SolverStatus.unknown;
+    }
+    if (solutions.isEmpty) {
+      return SolverStatus.noSolution;
+    }
+    return SolverStatus.unique;
+  }
+
   void run() {
     _dfs(initialState, 0);
   }
@@ -68,6 +84,8 @@ class _SlitherlinkSearch {
     }
     if (context.speculativeStepBudget != null &&
         metrics.speculativeSteps >= context.speculativeStepBudget!) {
+      speculativeStepBudgetHit = true;
+      metrics.speculativeStepBudgetHit = true;
       return;
     }
 
@@ -112,6 +130,9 @@ class _SlitherlinkSearch {
       if (solutions.length >= context.maxSolutions) {
         break;
       }
+      if (speculativeStepBudgetHit) {
+        break;
+      }
       final _SlitherlinkSolverState branch = state.clone();
       if (!branch.enqueue(edge, guess, _AssignmentReason.decision)) {
         continue;
@@ -130,6 +151,7 @@ class _SlitherlinkSolverMetrics {
   int speculativeSteps = 0;
   int maxDepth = 0;
   int solutionsExplored = 0;
+  bool speculativeStepBudgetHit = false;
 
   Map<String, Object?> toTelemetry() => <String, Object?>{
         'totalAssignments': totalAssignments,
@@ -138,6 +160,7 @@ class _SlitherlinkSolverMetrics {
         'speculativeSteps': speculativeSteps,
         'maxDepth': maxDepth,
         'solutionsExplored': solutionsExplored,
+        'speculativeStepBudgetHit': speculativeStepBudgetHit,
       };
 }
 

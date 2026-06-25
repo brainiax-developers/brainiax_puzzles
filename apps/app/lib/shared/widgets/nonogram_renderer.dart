@@ -7,6 +7,7 @@ import 'package:puzzle_core/puzzle_core.dart';
 import 'painter_utils.dart';
 import 'puzzle_renderer.dart';
 import 'performance_optimizations.dart';
+import '../models/puzzle_input_moves.dart';
 
 /// Nonogram puzzle renderer using the common PuzzleRenderer pattern.
 class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
@@ -21,6 +22,10 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   late Paint _selectionPaint;
   late Paint _errorPaint;
   late Paint _hintPaint;
+
+  final Set<int> _dragVisitedCells = <int>{};
+  final List<NonogramMove> _dragMoves = <NonogramMove>[];
+  int? _dragValue;
 
   @override
   void initState() {
@@ -74,8 +79,9 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   }
 
   void _updateBoard() {
-    final NonogramBoard? boardState =
-        widget.puzzle?.state is NonogramBoard ? widget.puzzle!.state as NonogramBoard : null;
+    final NonogramBoard? boardState = widget.puzzle?.state is NonogramBoard
+        ? widget.puzzle!.state as NonogramBoard
+        : null;
     _board = boardState ?? _emptyBoard();
   }
 
@@ -91,10 +97,13 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   @override
   void didUpdateWidget(covariant NonogramRendererWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final NonogramBoard? nextBoard =
-        widget.puzzle?.state is NonogramBoard ? widget.puzzle!.state as NonogramBoard : null;
+    final NonogramBoard? nextBoard = widget.puzzle?.state is NonogramBoard
+        ? widget.puzzle!.state as NonogramBoard
+        : null;
     final NonogramBoard? previousBoard =
-        oldWidget.puzzle?.state is NonogramBoard ? oldWidget.puzzle!.state as NonogramBoard : null;
+        oldWidget.puzzle?.state is NonogramBoard
+        ? oldWidget.puzzle!.state as NonogramBoard
+        : null;
     if (nextBoard != null) {
       if (_board != nextBoard) {
         _board = nextBoard;
@@ -108,13 +117,20 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     return PainterUtils.hitTestGrid(position: position, metrics: _gridMetrics);
   }
 
+  @override
+  bool get deferTapUntilTapUp => true;
+
+  @override
+  Offset? hitTest(Offset position) => _hitTest(position);
+
   _NonogramLayout _calculateLayout(Size size) {
     const double basePadding = 16.0;
     const double clueSpacing = 8.0;
     const double cellSpacing = 1.0;
 
     final ThemeData theme = Theme.of(context);
-    final TextStyle baseStyle = theme.textTheme.bodySmall ??
+    final TextStyle baseStyle =
+        theme.textTheme.bodySmall ??
         theme.textTheme.bodyMedium ??
         const TextStyle(fontSize: 12);
     final TextStyle clueStyle = baseStyle.copyWith(
@@ -127,8 +143,9 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
       textDirection: TextDirection.ltr,
     );
     for (int row = 0; row < _board.height; row++) {
-      final List<int> clue =
-          row < _board.rowClues.length ? _board.rowClues[row] : const <int>[];
+      final List<int> clue = row < _board.rowClues.length
+          ? _board.rowClues[row]
+          : const <int>[];
       final String text = clue.isEmpty ? '0' : clue.join(' ');
       rowPainter.text = TextSpan(text: text, style: clueStyle);
       rowPainter.layout();
@@ -140,8 +157,9 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
 
     int maxColumnLines = 0;
     for (int col = 0; col < _board.width; col++) {
-      final List<int> clue =
-          col < _board.columnClues.length ? _board.columnClues[col] : const <int>[];
+      final List<int> clue = col < _board.columnClues.length
+          ? _board.columnClues[col]
+          : const <int>[];
       final int lines = clue.isEmpty ? 1 : clue.length;
       if (lines > maxColumnLines) {
         maxColumnLines = lines;
@@ -165,8 +183,14 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     final double rightMargin = basePadding;
     final double bottomMargin = basePadding;
 
-    final double usableWidth = math.max(0, size.width - leftMargin - rightMargin);
-    final double usableHeight = math.max(0, size.height - topMargin - bottomMargin);
+    final double usableWidth = math.max(
+      0,
+      size.width - leftMargin - rightMargin,
+    );
+    final double usableHeight = math.max(
+      0,
+      size.height - topMargin - bottomMargin,
+    );
 
     final double cellWidth = _board.width > 0
         ? (usableWidth - cellSpacing * (_board.width - 1)) / _board.width
@@ -176,13 +200,17 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
         : 0;
     final double cellSize = math.max(0, math.min(cellWidth, cellHeight));
 
-    final double gridWidth = cellSize * _board.width +
+    final double gridWidth =
+        cellSize * _board.width +
         cellSpacing * (_board.width > 0 ? _board.width - 1 : 0);
-    final double gridHeight = cellSize * _board.height +
+    final double gridHeight =
+        cellSize * _board.height +
         cellSpacing * (_board.height > 0 ? _board.height - 1 : 0);
 
-    final double offsetX = leftMargin + math.max(0, (usableWidth - gridWidth) / 2);
-    final double offsetY = topMargin + math.max(0, (usableHeight - gridHeight) / 2);
+    final double offsetX =
+        leftMargin + math.max(0, (usableWidth - gridWidth) / 2);
+    final double offsetY =
+        topMargin + math.max(0, (usableHeight - gridHeight) / 2);
 
     final GridMetrics metrics = GridMetrics(
       cellSize: Size(cellSize, cellSize),
@@ -229,23 +257,31 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     final _NonogramLayout layout = _calculateLayout(size);
     _gridMetrics = layout.metrics;
     return CustomPaint(
-      painter: PuzzleGridPainter(
-        metrics: _gridMetrics,
-        linePaint: _linePaint,
-      ),
+      painter: PuzzleGridPainter(metrics: _gridMetrics, linePaint: _linePaint),
       size: size,
     );
   }
 
   @override
-  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) {
+  Widget buildCellContent(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
     // We paint entire board in buildPuzzleContent; per-cell overlay not needed.
     return const SizedBox.shrink();
   }
 
   @override
-  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize) {
-    final cellRect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildSelectionHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final cellRect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: selectionAnimation,
       builder: (context, _) => CustomPaint(
@@ -260,8 +296,15 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   }
 
   @override
-  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize) {
-    final cellRect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildErrorHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final cellRect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: errorAnimation,
       builder: (context, _) => CustomPaint(
@@ -276,11 +319,20 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   }
 
   @override
-  Widget buildHintHighlight(BuildContext context, Offset position, Size cellSize) {
-    final cellRect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildHintHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final cellRect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     final animVal = (widget.hintAnimationValue).clamp(0.0, 1.0);
     final paint = Paint()
-      ..color = _hintPaint.color.withOpacity(_hintPaint.color.opacity * (0.4 + 0.6 * animVal))
+      ..color = _hintPaint.color.withOpacity(
+        _hintPaint.color.opacity * (0.4 + 0.6 * animVal),
+      )
       ..style = PaintingStyle.fill;
     return CustomPaint(
       painter: CellBackgroundPainter(
@@ -320,6 +372,66 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
   }
 
   @override
+  void onPanStart(DragStartDetails details) {
+    final Offset? gp = _hitTest(details.localPosition);
+    if (gp == null) return;
+    _dragVisitedCells.clear();
+    _dragMoves.clear();
+    _dragValue = _dragValueForStartCell(gp);
+    _queueDragCell(gp);
+    super.onPanStart(details);
+  }
+
+  @override
+  void onPanUpdate(DragUpdateDetails details) {
+    final Offset? gp = _hitTest(details.localPosition);
+    if (gp == null || _dragValue == null) return;
+    _queueDragCell(gp);
+    super.onPanUpdate(details);
+  }
+
+  @override
+  void onPanEnd(DragEndDetails details) {
+    if (_dragMoves.isNotEmpty) {
+      widget.onMove?.call(
+        NonogramBatchMove(List<NonogramMove>.from(_dragMoves)),
+      );
+    }
+    _clearDragState();
+    super.onPanEnd(details);
+  }
+
+  int? _dragValueForStartCell(Offset gridPosition) {
+    final int row = gridPosition.dy.toInt();
+    final int col = gridPosition.dx.toInt();
+    final int? current = _board.cellAt(row, col);
+    if (widget.crossMode) {
+      return current == 0 ? null : 0;
+    }
+    return current == 1 ? null : 1;
+  }
+
+  void _queueDragCell(Offset gridPosition) {
+    final int row = gridPosition.dy.toInt();
+    final int col = gridPosition.dx.toInt();
+    final int index = _board.indexOf(row, col);
+    if (!_dragVisitedCells.add(index)) {
+      return;
+    }
+    final int? nextValue = _dragValue;
+    if (_board.cells[index] == nextValue) {
+      return;
+    }
+    _dragMoves.add(NonogramMove(row: row, col: col, value: nextValue));
+  }
+
+  void _clearDragState() {
+    _dragVisitedCells.clear();
+    _dragMoves.clear();
+    _dragValue = null;
+  }
+
+  @override
   void onKeyEvent(KeyEvent event) {
     super.onKeyEvent(event);
     if (event is! KeyDownEvent || selectedPosition == null) return;
@@ -335,7 +447,13 @@ class NonogramRenderer extends PuzzleRenderer<NonogramRendererWidget>
     }
     if (event.logicalKey == LogicalKeyboardKey.backspace ||
         event.logicalKey == LogicalKeyboardKey.delete) {
-      widget.onMove?.call(const NonogramMove(row: 0, col: 0, value: null).copyWith(row: row, col: col));
+      widget.onMove?.call(
+        const NonogramMove(
+          row: 0,
+          col: 0,
+          value: null,
+        ).copyWith(row: row, col: col),
+      );
       return;
     }
     // 0/1 direct entry
@@ -396,7 +514,9 @@ class _NonogramContentPainter extends CustomPainter {
     );
 
     for (int row = 0; row < board.height; row++) {
-      final List<int> rowClue = row < board.rowClues.length ? board.rowClues[row] : const <int>[];
+      final List<int> rowClue = row < board.rowClues.length
+          ? board.rowClues[row]
+          : const <int>[];
       final String clueText = rowClue.isEmpty ? '0' : rowClue.join(' ');
       rowPainter.text = TextSpan(text: clueText, style: clueTextStyle);
       rowPainter.layout();
@@ -413,8 +533,9 @@ class _NonogramContentPainter extends CustomPainter {
 
     final double columnBaseline = metrics.gridOffset.dy - clueSpacing;
     for (int col = 0; col < board.width; col++) {
-      final List<int> columnClue =
-          col < board.columnClues.length ? board.columnClues[col] : const <int>[];
+      final List<int> columnClue = col < board.columnClues.length
+          ? board.columnClues[col]
+          : const <int>[];
       final List<int> clues = columnClue.isEmpty ? const <int>[0] : columnClue;
       double y = columnBaseline;
       for (int i = clues.length - 1; i >= 0; i--) {
@@ -473,10 +594,10 @@ class _NonogramContentPainter extends CustomPainter {
 
 extension on NonogramMove {
   NonogramMove copyWith({int? row, int? col, int? value}) => NonogramMove(
-        row: row ?? this.row,
-        col: col ?? this.col,
-        value: value ?? this.value,
-      );
+    row: row ?? this.row,
+    col: col ?? this.col,
+    value: value ?? this.value,
+  );
 }
 
 class _NonogramLayout {

@@ -7,9 +7,13 @@ part of puzzle_core_kakuro_generator;
 class KakuroBottomUpGenerator {
   const KakuroBottomUpGenerator();
 
-  KakuroSolution? generate(KakuroLayout layout, SeededRng rng) {
+  KakuroSolution? generate(
+    KakuroLayout layout,
+    SeededRng rng, {
+    String difficulty = 'medium',
+  }) {
     // Hook for future implementation. Keeping the call separate makes it easy
     // to experiment with true bottom-up forcing while preserving determinism.
-    return buildSolutionFirst(layout, rng);
+    return buildSolutionFirst(layout, rng, difficulty: difficulty);
   }
 }

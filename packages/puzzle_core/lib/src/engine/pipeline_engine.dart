@@ -73,7 +73,13 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
             DifficultyRequest(level: difficulty.level, hint: difficulty.value),
       );
 
-      final generation = generator.generate(generationContext);
+      late final PuzzleGenerationResult<S> generation;
+      try {
+        generation = generator.generate(generationContext);
+      } on StateError catch (err) {
+        lastError = err;
+        continue;
+      }
       final S puzzle = generation.board;
 
       final ValidationSummary puzzleValidation = validator.validatePuzzle(puzzle);
@@ -90,6 +96,14 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
         puzzle,
         SolverContext(rng: solverRng, maxSolutions: 2),
       );
+      final SolverStatus solverStatus = solverResult.solutionStatus;
+
+      if (solverStatus == SolverStatus.unknown) {
+        lastError = StateError(
+          'Generated puzzle uniqueness is unknown for seed $seedStr (search budget exceeded)',
+        );
+        continue;
+      }
 
       if (!solverResult.hasSolution) {
         lastError = StateError('Generated puzzle is unsolvable for seed $seedStr');
@@ -134,6 +148,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
       // Accept if bucket matches or enforcement is off; otherwise try next attempt.
       final bool matches = !shouldEnforce || bucket == requestedLevel;
       if (matches) {
+        final SizeOpt effectiveSize = _resolveMetaSize(size, puzzle);
         final DifficultyTelemetry normalizedTelemetry = DifficultyTelemetry(
           rawScore: difficultyTelemetry.rawScore,
           bucket: bucket,
@@ -147,7 +162,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
         final PuzzleMetadata meta = PuzzleMetadata(
           engineVersion: version,
           rngId: SeededRng.rngId,
-          size: size,
+          size: effectiveSize,
           difficulty: finalDifficulty,
           seedStr: seedStr,
           seed64: seed64,
@@ -160,6 +175,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
             'generator': generation.snapshot.telemetry,
             'solver': solverResult.telemetry,
             'solutionCount': solverResult.solutions.length,
+            'solutionStatus': solverResult.solutionStatus.name,
             'puzzleValidationMs':
                 puzzleValidation.elapsed.inMicroseconds / 1000.0,
             'solutionValidationMs':
@@ -187,6 +203,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
     // If we reach here: we couldn't satisfy the requested bucket after retries.
     // Return the last valid puzzle instead of throwing, to avoid blocking play.
     if (lastGeneratorTelemetry != null && lastSolverTelemetry != null) {
+      final SizeOpt effectiveSize = _resolveMetaSize(size, lastPuzzle);
       final difficultyTelemetry = difficultyScorer.score(
         puzzle: lastPuzzle,
         solution: lastSolution,
@@ -208,7 +225,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
       final PuzzleMetadata meta = PuzzleMetadata(
         engineVersion: version,
         rngId: SeededRng.rngId,
-        size: size,
+        size: effectiveSize,
         difficulty: finalDifficulty,
         seedStr: seedStr,
         seed64: seed64,
@@ -221,6 +238,7 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
           'generator': lastGeneratorTelemetry,
           'solver': lastSolverTelemetry,
           'solutionCount': 1,
+          'solutionStatus': SolverStatus.unique.name,
           'puzzleValidationMs':
               lastPuzzleValidation.elapsed.inMicroseconds / 1000.0,
           'solutionValidationMs':
@@ -243,4 +261,24 @@ abstract class PipelinePuzzleEngine<S, M> extends PuzzleEngine<S, M> {
 
   @override
   bool isSolved(S state) => validator.isSolved(state);
+
+  SizeOpt _resolveMetaSize(SizeOpt requested, S puzzle) {
+    final dynamic board = puzzle;
+    try {
+      final int width = board.width as int;
+      final int height = board.height as int;
+      if (width > 0 && height > 0) {
+        final String id = '${width}x$height';
+        return SizeOpt(
+          id: id,
+          description: id,
+          width: width,
+          height: height,
+        );
+      }
+    } catch (_) {
+      // Keep requested size when board does not expose width/height.
+    }
+    return requested;
+  }
 }

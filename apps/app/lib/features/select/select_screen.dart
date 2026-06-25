@@ -1,19 +1,16 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../shared/models/models.dart';
+import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/services/puzzle_registry.dart';
-import '../../shared/widgets/widgets.dart';
-import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/brainiax/brainiax_widgets.dart';
+import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/puzzle_card.dart';
+import '../../shared/widgets/shimmer_widget.dart';
+import 'puzzle_detail_sheet.dart';
+import 'puzzle_launch_actions.dart';
 
-import '../../shared/services/kakuro_on_demand_service.dart';
-import '../../shared/services/puzzle_progress_service.dart';
-
-/// Screen for selecting a puzzle type and mode.
 class SelectScreen extends ConsumerStatefulWidget {
   const SelectScreen({super.key});
 
@@ -24,7 +21,8 @@ class SelectScreen extends ConsumerStatefulWidget {
 class _SelectScreenState extends ConsumerState<SelectScreen> {
   final PuzzleRegistry _registry = PuzzleRegistry();
   bool _isLoading = true;
-  Map<PuzzleCategory, List<PuzzleMetadata>> _puzzlesByCategory = {};
+  List<PuzzleMetadata> _metadata = const <PuzzleMetadata>[];
+  PuzzleLibraryFilter _filter = PuzzleLibraryFilter.all;
 
   @override
   void initState() {
@@ -32,276 +30,222 @@ class _SelectScreenState extends ConsumerState<SelectScreen> {
     _loadPuzzles();
   }
 
-  Future<void> _loadPuzzles() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate loading time for better UX
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // Initialize the registry (this will use the engines already registered in main.dart)
+  void _loadPuzzles() {
     _registry.initialize();
-    final puzzlesByCategory = _registry.getPuzzlesByCategory();
-
     setState(() {
-      _puzzlesByCategory = puzzlesByCategory;
+      _metadata = _registry.getAllPuzzleMetadata()
+        ..sort(
+          (a, b) => _librarySortKey(a.type).compareTo(_librarySortKey(b.type)),
+        );
       _isLoading = false;
     });
   }
 
-  void _navigateToPuzzle(PuzzleType puzzleType, PuzzleMode mode) {
-    context.push('/play/${puzzleType.key}/${mode.key}');
-  }
-
-  void _onDifficultySelected(PuzzleType puzzleType, String difficulty) {
-    // Store the difficulty selection for this puzzle type
-    // This will be used for persistence and default selection
-  }
-
-  void _onRandomPlay(PuzzleType puzzleType, String difficulty) {
-    if (puzzleType == PuzzleType.kakuroClassic) {
-      () async {
-        await _clearProgress(puzzleType);
-        bool dialogOpen = true;
-        bool cancelled = false;
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => WillPopScope(
-            onWillPop: () async {
-              cancelled = true;
-              return true;
-            },
-            child: const _KakuroLoadingDialog(),
-          ),
-        ).then((_) {
-          dialogOpen = false;
-          cancelled = true;
-        });
-        try {
-          final service = ref.read(kakuroOnDemandProvider);
-          final metadata = _registry.getMetadata(PuzzleType.kakuroClassic);
-          final sizeStr = metadata?.supportedSizes.isNotEmpty == true
-              ? metadata!.supportedSizes.first
-              : '9x9';
-          final parts = sizeStr.split('x');
-          final width = int.tryParse(parts.first) ?? 9;
-          final height = int.tryParse(parts.length > 1 ? parts.last : '') ?? 9;
-          final generated = await service.nextPuzzle(
-            difficulty: difficulty,
-            width: width,
-            height: height,
-          );
-          if (cancelled) return;
-          if (dialogOpen && mounted) {
-            Navigator.of(context, rootNavigator: true).pop();
-            dialogOpen = false;
-          }
-          if (!mounted) return;
-          if (kDebugMode) {
-            debugPrint(
-              '[Navigation][NewGame] kakuro seed=${generated.meta.seedStr} '
-              'difficulty=$difficulty source=new',
-            );
-          }
-          context.push('/play/${puzzleType.key}/random', extra: generated);
-        } catch (_) {
-          if (dialogOpen && mounted) {
-            Navigator.of(context, rootNavigator: true).pop();
-            dialogOpen = false;
-          }
-          if (!mounted || cancelled) return;
-          _showLegacyModal(puzzleType, difficulty);
-        }
-      }();
-      return;
-    }
-
-    // Non-Kakuro: keep existing modal generation UX
-    () async {
-      await _clearProgress(puzzleType);
-      _showLegacyModal(puzzleType, difficulty);
-    }();
-  }
-
-  void _showLegacyModal(PuzzleType puzzleType, String difficulty) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PuzzleGenerationModal(
-        puzzleType: puzzleType,
-        difficulty: difficulty,
-        onPuzzleGenerated: (puzzleInstance) {
-          Navigator.of(context).pop();
-          context.push('/play/${puzzleType.key}/random', extra: puzzleInstance);
-        },
-        onCancel: () {
-          Navigator.of(context).pop();
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Select Puzzle'),
-        backgroundColor: colorScheme.surface,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-      ),
-      body: _buildBody(),
+    final AsyncValue<List<PuzzleType>> favouriteTypesAsync = ref.watch(
+      favouritePuzzleTypesProvider,
     );
-  }
+    final Set<PuzzleType> favouriteTypes =
+        favouriteTypesAsync.asData?.value.toSet() ?? const <PuzzleType>{};
+    final List<PuzzleMetadata> filtered = _applyFilter(
+      _metadata,
+      favouriteTypes,
+      _filter,
+    );
+    final bool showWordFilter = _metadata.any(
+      (metadata) => metadata.category == PuzzleCategory.word,
+    );
 
-  Widget _buildBody() {
     if (_isLoading) {
-      return _buildLoadingState();
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          PuzzleCardShimmer(),
+          SizedBox(height: 16),
+          PuzzleCardShimmer(),
+          SizedBox(height: 16),
+          PuzzleCardShimmer(),
+        ],
+      );
     }
 
-    if (_puzzlesByCategory.isEmpty) {
-      return _buildEmptyState();
+    if (_metadata.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.extension_outlined,
+        title: 'No Puzzles Available',
+        message:
+            'No puzzle engines are currently registered. Please check your configuration.',
+        action: ElevatedButton.icon(
+          onPressed: _loadPuzzles,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Retry'),
+        ),
+      );
     }
 
-    return _buildPuzzleList();
-  }
-
-  Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       children: [
-        // Loading header
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                height: 24,
-                width: 200,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                height: 16,
-                width: 150,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ],
-          ),
+        const SectionHeader(
+          title: 'Puzzle Library',
+          subtitle:
+              'Choose a puzzle type, then pick Daily Challenge or Random Play.',
         ),
-        const SizedBox(height: 16),
-        // Loading puzzle cards
-        ...List.generate(
-          4,
-          (index) => Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: const PuzzleCardShimmer(),
-          ),
+        const SizedBox(height: 20),
+        FilterChipRow<PuzzleLibraryFilter>(
+          selectedValue: _filter,
+          onSelected: (filter) => setState(() => _filter = filter),
+          options: <FilterChipOption<PuzzleLibraryFilter>>[
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.all,
+              label: 'All',
+            ),
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.numbers,
+              label: 'Numbers',
+            ),
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.visual,
+              label: 'Visual',
+            ),
+            const FilterChipOption(
+              value: PuzzleLibraryFilter.favourites,
+              label: 'Favourites',
+            ),
+            if (showWordFilter)
+              const FilterChipOption(
+                value: PuzzleLibraryFilter.word,
+                label: 'Word',
+              ),
+          ],
         ),
+        const SizedBox(height: 20),
+        if (filtered.isEmpty)
+          EmptyStateCard(
+            title: _filter == PuzzleLibraryFilter.favourites
+                ? 'No favourite puzzles yet'
+                : 'No puzzle types match this filter',
+            body: _filter == PuzzleLibraryFilter.favourites
+                ? 'Star a puzzle card to save that puzzle type here.'
+                : 'Try All, Numbers, or Visual to browse the available puzzle types.',
+            icon: _filter == PuzzleLibraryFilter.favourites
+                ? Icons.star_outline
+                : Icons.filter_list_off,
+          )
+        else
+          ...filtered.map(
+            (metadata) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _PuzzleLibraryCardItem(metadata: metadata),
+            ),
+          ),
       ],
     );
   }
+}
 
-  Widget _buildEmptyState() {
-    return AppEmptyState(
-      icon: Icons.extension_outlined,
-      title: 'No Puzzles Available',
-      message:
-          'No puzzle engines are currently registered. Please check your configuration.',
-      action: ElevatedButton.icon(
-        onPressed: _loadPuzzles,
-        icon: const Icon(Icons.refresh),
-        label: const Text('Retry'),
-      ),
-    );
-  }
+class _PuzzleLibraryCardItem extends ConsumerWidget {
+  const _PuzzleLibraryCardItem({required this.metadata});
 
-  Widget _buildPuzzleList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _puzzlesByCategory.length,
-      itemBuilder: (context, index) {
-        final category = _puzzlesByCategory.keys.elementAt(index);
-        final puzzles = _puzzlesByCategory[category]!;
+  final PuzzleMetadata metadata;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CategoryHeader(category: category, puzzleCount: puzzles.length),
-            const SizedBox(height: 8),
-            ...puzzles.map(
-              (metadata) => Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Theme(
-                  // Apply a light per-puzzle accent to the card area so colors match the puzzle
-                  data: AppThemeData.forPuzzleType(
-                    metadata.type,
-                    Theme.of(context),
-                  ),
-                  child: PuzzleCard(
-                    metadata: metadata,
-                    onDailyChallenge: () =>
-                        _navigateToPuzzle(metadata.type, PuzzleMode.daily),
-                    onDifficultySelected: (difficulty) =>
-                        _onDifficultySelected(metadata.type, difficulty),
-                    onRandomPlay: _onRandomPlay,
-                  ),
-                ),
-              ),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool isFavourite =
+        ref.watch(isFavouritePuzzleTypeProvider(metadata.type)).asData?.value ??
+        false;
+    final ActivePuzzleRun? activeRun = ref
+        .watch(activeRunForPuzzleTypeProvider(metadata.type))
+        .asData
+        ?.value;
+
+    return PuzzleCard(
+      metadata: metadata,
+      isFavourite: isFavourite,
+      isInProgress: activeRun != null,
+      onTap: metadata.isAvailable
+          ? () => showPuzzleDetailSheet(context: context, metadata: metadata)
+          : null,
+      onToggleFavourite: () =>
+          ref.read(favouritePuzzleControllerProvider).toggle(metadata.type),
+      onResume: activeRun == null || !metadata.isAvailable
+          ? null
+          : () => resumePuzzleRun(
+              context: context,
+              ref: ref,
+              puzzleType: metadata.type,
             ),
-            if (index < _puzzlesByCategory.length - 1)
-              const SizedBox(height: 24),
-          ],
-        );
-      },
     );
-  }
-
-  Future<void> _clearProgress(PuzzleType puzzleType) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final progress = PuzzleProgressService(prefs);
-      await progress.clear(puzzleType);
-    } catch (_) {}
   }
 }
 
-class _KakuroLoadingDialog extends StatelessWidget {
-  const _KakuroLoadingDialog();
+enum PuzzleLibraryFilter { all, numbers, visual, word, favourites }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 48),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(strokeWidth: 4),
-            ),
-            const SizedBox(height: 16),
-            Text('Generating Kakuro...', style: theme.textTheme.bodyMedium),
-          ],
-        ),
-      ),
-    );
+List<PuzzleMetadata> _applyFilter(
+  List<PuzzleMetadata> metadata,
+  Set<PuzzleType> favouriteTypes,
+  PuzzleLibraryFilter filter,
+) {
+  return metadata.where((item) {
+    switch (filter) {
+      case PuzzleLibraryFilter.all:
+        return true;
+      case PuzzleLibraryFilter.numbers:
+        return _isNumbersPuzzle(item.type);
+      case PuzzleLibraryFilter.visual:
+        return _isVisualPuzzle(item.type);
+      case PuzzleLibraryFilter.word:
+        return item.category == PuzzleCategory.word;
+      case PuzzleLibraryFilter.favourites:
+        return favouriteTypes.contains(item.type);
+    }
+  }).toList();
+}
+
+bool _isNumbersPuzzle(PuzzleType type) {
+  switch (type) {
+    case PuzzleType.sudokuClassic:
+    case PuzzleType.kakuroClassic:
+    case PuzzleType.mathdokuClassic:
+    case PuzzleType.takuzuBinary:
+      return true;
+    case PuzzleType.nonogramMono:
+    case PuzzleType.slitherlinkLoop:
+    case PuzzleType.killerQueens:
+      return false;
+  }
+}
+
+bool _isVisualPuzzle(PuzzleType type) {
+  switch (type) {
+    case PuzzleType.nonogramMono:
+    case PuzzleType.slitherlinkLoop:
+    case PuzzleType.killerQueens:
+      return true;
+    case PuzzleType.sudokuClassic:
+    case PuzzleType.kakuroClassic:
+    case PuzzleType.mathdokuClassic:
+    case PuzzleType.takuzuBinary:
+      return false;
+  }
+}
+
+int _librarySortKey(PuzzleType type) {
+  switch (type) {
+    case PuzzleType.sudokuClassic:
+      return 0;
+    case PuzzleType.mathdokuClassic:
+      return 1;
+    case PuzzleType.takuzuBinary:
+      return 2;
+    case PuzzleType.nonogramMono:
+      return 10;
+    case PuzzleType.slitherlinkLoop:
+      return 11;
+    case PuzzleType.killerQueens:
+      return 12;
+    case PuzzleType.kakuroClassic:
+      return 99;
   }
 }

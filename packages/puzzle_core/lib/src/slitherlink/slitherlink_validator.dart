@@ -38,8 +38,7 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
     if (issues.isEmpty) {
       final _LoopTracker tracker = _LoopTracker(topology);
       final List<int> vertexOn = List<int>.filled(topology.vertexCount, 0);
-      final List<int> vertexUnknown =
-          List<int>.filled(topology.vertexCount, 0);
+      final List<int> vertexUnknown = List<int>.filled(topology.vertexCount, 0);
 
       for (int edge = 0; edge < board.edges.length; edge++) {
         final int value = board.edges[edge];
@@ -95,7 +94,8 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
     if (issues.isEmpty) {
       for (int i = 0; i < solution.edges.length; i++) {
         final int value = solution.edges[i];
-        if (value != SlitherlinkBoard.edgeOn && value != SlitherlinkBoard.edgeOff) {
+        if (value != SlitherlinkBoard.edgeOn &&
+            value != SlitherlinkBoard.edgeOff) {
           issues.add('solution_edge_unknown:$i');
           break;
         }
@@ -168,11 +168,59 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
 
   @override
   bool isSolved(SlitherlinkBoard board) {
-    if (!board.isComplete) {
-      return false;
+    return _validateDrawnLoop(board);
+  }
+
+  bool _validateDrawnLoop(SlitherlinkBoard board) {
+    final SlitherlinkTopology topology = board.topology;
+
+    for (final int value in board.edges) {
+      if (value != SlitherlinkBoard.edgeOn &&
+          value != SlitherlinkBoard.edgeOff &&
+          value != SlitherlinkBoard.edgeUnknown) {
+        return false;
+      }
     }
-    final ValidationSummary summary = validateSolution(board, board);
-    return summary.isValid;
+
+    for (int cell = 0; cell < board.cellCount; cell++) {
+      final int? clue = board.clues[cell];
+      if (clue == null) {
+        continue;
+      }
+      int onCount = 0;
+      for (final int edge in topology.cellEdges[cell]) {
+        if (board.edges[edge] == SlitherlinkBoard.edgeOn) {
+          onCount++;
+        }
+      }
+      if (onCount != clue) {
+        return false;
+      }
+    }
+
+    final _LoopTracker tracker = _LoopTracker(topology);
+    final List<int> vertexOn = List<int>.filled(topology.vertexCount, 0);
+
+    for (int edge = 0; edge < board.edges.length; edge++) {
+      if (board.edges[edge] != SlitherlinkBoard.edgeOn) {
+        continue;
+      }
+      final int a = topology.edgeVertexA[edge];
+      final int b = topology.edgeVertexB[edge];
+      vertexOn[a]++;
+      vertexOn[b]++;
+      if (!tracker.addEdge(edge)) {
+        return false;
+      }
+    }
+
+    for (final int degree in vertexOn) {
+      if (degree != 0 && degree != 2) {
+        return false;
+      }
+    }
+
+    return tracker.isSingleLoop();
   }
 
   bool _validateCells(SlitherlinkBoard board) {
@@ -222,10 +270,10 @@ class SlitherlinkValidator extends PuzzleValidator<SlitherlinkBoard> {
 
 class _LoopTracker {
   _LoopTracker(this.topology)
-      : parent = List<int>.generate(topology.vertexCount, (int i) => i),
-        size = List<int>.filled(topology.vertexCount, 1),
-        componentVertices = List<int>.filled(topology.vertexCount, 1),
-        componentOnEdges = List<int>.filled(topology.vertexCount, 0);
+    : parent = List<int>.generate(topology.vertexCount, (int i) => i),
+      size = List<int>.filled(topology.vertexCount, 1),
+      componentVertices = List<int>.filled(topology.vertexCount, 1),
+      componentOnEdges = List<int>.filled(topology.vertexCount, 0);
 
   final SlitherlinkTopology topology;
   final List<int> parent;

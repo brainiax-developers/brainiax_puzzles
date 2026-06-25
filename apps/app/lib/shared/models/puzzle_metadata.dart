@@ -7,12 +7,16 @@ class PuzzleMetadata {
   const PuzzleMetadata({
     required this.type,
     required this.displayName,
+    required this.description,
     required this.icon,
     required this.accentColors,
     required this.supportedSizes,
     required this.supportedDifficulties,
     required this.supportsHints,
     required this.category,
+    this.isAvailable = true,
+    this.availabilityBadgeLabel,
+    this.unavailableMessage,
   });
 
   /// The puzzle type this metadata describes.
@@ -20,6 +24,9 @@ class PuzzleMetadata {
 
   /// Human-readable display name.
   final String displayName;
+
+  /// Short objective or summary shown in selection UI.
+  final String description;
 
   /// Icon placeholder (can be replaced with actual icon later).
   final IconData icon;
@@ -39,9 +46,20 @@ class PuzzleMetadata {
   /// The category this puzzle belongs to.
   final PuzzleCategory category;
 
+  /// Whether this puzzle type can currently be started from app UI.
+  final bool isAvailable;
+
+  /// Optional product badge for visible but unavailable puzzle types.
+  final String? availabilityBadgeLabel;
+
+  /// Optional user-facing explanation for unavailable puzzle types.
+  final String? unavailableMessage;
+
   /// Get the primary accent color.
-  Color get primaryAccentColor => accentColors.isNotEmpty ? accentColors.first : Colors.blue;
+  Color get primaryAccentColor =>
+      accentColors.isNotEmpty ? accentColors.first : Colors.blue;
 
   /// Get the secondary accent color.
-  Color get secondaryAccentColor => accentColors.length > 1 ? accentColors[1] : primaryAccentColor;
+  Color get secondaryAccentColor =>
+      accentColors.length > 1 ? accentColors[1] : primaryAccentColor;
 }

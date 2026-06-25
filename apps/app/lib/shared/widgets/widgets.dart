@@ -1,5 +1,7 @@
 /// Shared widgets for the Brainiax Puzzles app.
 
+export 'app_shell.dart';
+export 'brainiax/brainiax_widgets.dart';
 export 'puzzle_card.dart';
 export 'shimmer_widget.dart';
 export 'category_header.dart';

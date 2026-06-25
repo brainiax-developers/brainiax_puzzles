@@ -1,0 +1,5 @@
+tags:
+  device-only:
+    skip: "Device-specific performance checks"
+  slow:
+    timeout: 5x

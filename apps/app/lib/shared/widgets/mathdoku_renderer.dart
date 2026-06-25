@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -118,12 +120,22 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
   }
 
   @override
-  Widget buildCellContent(BuildContext context, Offset position, Size cellSize) =>
-      const SizedBox.shrink();
+  Widget buildCellContent(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) => const SizedBox.shrink();
 
   @override
-  Widget buildSelectionHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildSelectionHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: selectionAnimation,
       builder: (context, _) => CustomPaint(
@@ -138,8 +150,15 @@ class MathdokuRenderer extends PuzzleRenderer<MathdokuRendererWidget>
   }
 
   @override
-  Widget buildErrorHighlight(BuildContext context, Offset position, Size cellSize) {
-    final rect = PainterUtils.getCellRect(gridPosition: position, metrics: _gridMetrics);
+  Widget buildErrorHighlight(
+    BuildContext context,
+    Offset position,
+    Size cellSize,
+  ) {
+    final rect = PainterUtils.getCellRect(
+      gridPosition: position,
+      metrics: _gridMetrics,
+    );
     return AnimatedBuilder(
       animation: errorAnimation,
       builder: (context, _) => CustomPaint(
@@ -277,19 +296,24 @@ class _MathdokuContentPainter extends CustomPainter {
             textStyle: valueStyle,
           );
         } else {
-          final Set<int> cellNotes = notes[row * board.size + col] ?? const <int>{};
+          final Set<int> cellNotes =
+              notes[row * board.size + col] ?? const <int>{};
           if (cellNotes.isNotEmpty) {
             const int noteGridSize = 3;
             final List<int> sortedNotes = cellNotes.toList()..sort();
-            final double noteWidth = rect.width / noteGridSize;
-            final double noteHeight = rect.height / noteGridSize;
-            final TextStyle noteStyle = theme.textTheme.labelSmall?.copyWith(
+            final MathdokuCellLayout layout = MathdokuCellLayout.forCell(rect);
+            final Rect noteGridRect = layout.noteGridRect;
+            final double noteWidth = noteGridRect.width / noteGridSize;
+            final double noteHeight = noteGridRect.height / noteGridSize;
+            final TextStyle noteStyle =
+                theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                   fontWeight: FontWeight.w500,
+                  fontSize: (noteHeight * 0.58).clamp(7.0, 11.0),
                 ) ??
                 TextStyle(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  fontSize: rect.height / 5.5,
+                  fontSize: (noteHeight * 0.58).clamp(7.0, 11.0),
                 );
 
             for (final int note in sortedNotes) {
@@ -299,8 +323,8 @@ class _MathdokuContentPainter extends CustomPainter {
               final int noteRow = (note - 1) ~/ noteGridSize;
               final int noteCol = (note - 1) % noteGridSize;
               final Rect noteRect = Rect.fromLTWH(
-                rect.left + (noteCol * noteWidth),
-                rect.top + (noteRow * noteHeight),
+                noteGridRect.left + (noteCol * noteWidth),
+                noteGridRect.top + (noteRow * noteHeight),
                 noteWidth,
                 noteHeight,
               );
@@ -315,15 +339,17 @@ class _MathdokuContentPainter extends CustomPainter {
         }
 
         // Cage label top-left
-        final bool isTopLeft = cageTopLeft[cage.id] == Offset(col.toDouble(), row.toDouble());
+        final bool isTopLeft =
+            cageTopLeft[cage.id] == Offset(col.toDouble(), row.toDouble());
         if (isTopLeft && cageStyle != null) {
           final String label = '${cage.target}${cage.operation.symbol}';
+          final MathdokuCellLayout layout = MathdokuCellLayout.forCell(rect);
           final TextPainter tp = TextPainter(
             text: TextSpan(text: label, style: cageStyle),
             textDirection: TextDirection.ltr,
             textAlign: TextAlign.left,
-          )..layout(maxWidth: rect.width - 2);
-          tp.paint(canvas, Offset(rect.left + 3, rect.top + 1));
+          )..layout(maxWidth: layout.cageLabelRect.width);
+          tp.paint(canvas, layout.cageLabelRect.topLeft);
         }
       }
     }
@@ -355,7 +381,8 @@ class _MathdokuContentPainter extends CustomPainter {
           drawEdge(rect.topRight, rect.bottomRight);
         }
         // Down
-        if (row == board.size - 1 || cageIdByCell[index + board.size] != cageId) {
+        if (row == board.size - 1 ||
+            cageIdByCell[index + board.size] != cageId) {
           drawEdge(rect.bottomLeft, rect.bottomRight);
         }
       }
@@ -364,8 +391,8 @@ class _MathdokuContentPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MathdokuContentPainter oldDelegate) {
-    return oldDelegate.board != board || 
-        oldDelegate.metrics != metrics || 
+    return oldDelegate.board != board ||
+        oldDelegate.metrics != metrics ||
         oldDelegate.theme != theme ||
         !_notesEqual(notes, oldDelegate.notes);
   }
@@ -383,6 +410,44 @@ class _MathdokuContentPainter extends CustomPainter {
       }
     }
     return true;
+  }
+}
+
+@visibleForTesting
+class MathdokuCellLayout {
+  const MathdokuCellLayout({
+    required this.cageLabelRect,
+    required this.noteGridRect,
+  });
+
+  final Rect cageLabelRect;
+  final Rect noteGridRect;
+
+  static MathdokuCellLayout forCell(Rect rect) {
+    final double inset = (rect.shortestSide * 0.07).clamp(2.0, 4.0);
+    final double labelHeight = (rect.height * 0.28).clamp(10.0, 16.0);
+    final double maxLabelWidth = math.max(1.0, rect.width - inset * 2);
+    final double minLabelWidth = math.min(18.0, maxLabelWidth);
+    final double labelWidth = (rect.width * 0.62).clamp(
+      minLabelWidth,
+      maxLabelWidth,
+    );
+    final Rect labelRect = Rect.fromLTWH(
+      rect.left + inset,
+      rect.top + inset * 0.5,
+      labelWidth,
+      labelHeight,
+    );
+
+    final double topOffset = labelHeight + inset * 1.6;
+    final Rect gridRect = Rect.fromLTRB(
+      rect.left + inset,
+      rect.top + topOffset,
+      rect.right - inset,
+      rect.bottom - inset,
+    );
+
+    return MathdokuCellLayout(cageLabelRect: labelRect, noteGridRect: gridRect);
   }
 }
 

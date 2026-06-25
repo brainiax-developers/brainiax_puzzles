@@ -5,15 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../models/puzzle_type.dart' as app;
+import '../config/app_environment.dart';
 import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
+import '../services/generated_puzzle_difficulty.dart';
 import 'engine_provider.dart';
 import '../services/generation_isolate.dart';
-import '../services/kakuro_on_demand_service.dart';
 import '../services/slitherlink_on_demand_service.dart';
 
 /// Phase-2 service level agreement for puzzle generation latency.
 const Duration puzzleGenerationPhase2Sla = Duration(milliseconds: 100);
+const int _maxGenerationAttempts = 3;
 
 /// Riverpod controller responsible for generating puzzles asynchronously.
 final puzzleGenerationControllerProvider =
@@ -57,105 +59,182 @@ class PuzzleGenerationController
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSize = size != null
+    final resolvedSize = puzzleType == app.PuzzleType.killerQueens
+        ? killerQueensAppSizeForDifficulty(difficulty)
+        : size != null
         ? _parseSize(size)
         : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
+    _assertProfileAllowedForProduction(
+      puzzleType: puzzleType,
+      size: resolvedSize,
+      difficulty: difficultyScore.level,
+    );
 
     final token = ++_generationToken;
 
     try {
       if (puzzleType == app.PuzzleType.slitherlinkLoop) {
+        final String resolvedSeed =
+            seed ?? SeedService().generateRandomSeed(puzzleType.key);
         final core.GeneratedPuzzle<dynamic> generated =
             await _generateSlitherlinkOnDemand(
-          difficulty: difficulty,
-          size: resolvedSize,
-        );
+              difficulty: difficulty,
+              size: resolvedSize,
+              seed: resolvedSeed,
+            );
+        final core.GeneratedPuzzle<dynamic> normalized =
+            normalizeGeneratedPuzzleDifficulty(
+              puzzle: generated,
+              requestedDifficulty: difficultyScore,
+            );
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
-            'difficulty=$difficulty size=${resolvedSize.id} '
-            'seed=on-demand elapsedMs=${stopwatch.elapsedMilliseconds}',
+            '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+            'size=${resolvedSize.id} '
+            'seed=$resolvedSeed elapsedMs=${stopwatch.elapsedMilliseconds}',
           );
         }
         if (token == _generationToken) {
-          state = AsyncValue.data(generated);
+          state = AsyncValue.data(normalized);
         }
-        return generated;
+        return normalized;
       }
-      // Some engines (e.g., Kakuro) may fail for specific seeds; retry with fresh seeds a few times
-      const int maxAttempts = 3;
+      // Retry with deterministic sub-seeds derived from one base seed.
+      final String baseSeed =
+          seed ?? SeedService().generateRandomSeed(puzzleType.key);
       Object? lastError;
       StackTrace? lastStack;
-      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        final attemptSeed =
-            seed ?? SeedService().generateRandomSeed(puzzleType.key);
+      core.GeneratedPuzzle<dynamic>? lastDifficultyMismatch;
+      for (int attempt = 1; attempt <= _maxGenerationAttempts; attempt++) {
+        final String attemptSeed = _seedForAttempt(baseSeed, attempt);
+        final Duration attemptTimeout = _attemptTimeoutFor(
+          puzzleType: puzzleType,
+          elapsed: stopwatch.elapsed,
+        );
+        if (attemptTimeout <= Duration.zero) {
+          lastError = TimeoutException(
+            'Generation budget exceeded for ${puzzleType.key}',
+            puzzleGenerationTimeoutFor(
+              engineId: puzzleType.key,
+              difficulty: difficulty,
+            ),
+          );
+          break;
+        }
         if (kDebugMode) {
           debugPrint(
             '[Generation][Start] type=${puzzleType.key} '
             'difficulty=$difficulty size=${resolvedSize.id} '
-            'seed=$attemptSeed attempt=$attempt',
+            'seed=$attemptSeed attempt=$attempt '
+            'attemptBudgetMs=${attemptTimeout.inMilliseconds}',
           );
         }
         try {
           // Move heavy generation to a background isolate to avoid UI jank/ANRs.
-          final Duration attemptTimeout = () {
-            if (puzzleType == app.PuzzleType.kakuroClassic)
-              return const Duration(seconds: 3);
-            if (puzzleType == app.PuzzleType.slitherlinkLoop)
-              return const Duration(seconds: 3);
-            return const Duration(seconds: 2);
-          }();
-          final generated = await generatePuzzleIsolated(
-            engineId: puzzleType.key,
-            seedStr: attemptSeed,
-            seed64: attemptSeed.hashCode,
-            size: resolvedSize,
-            difficulty: difficultyScore,
-          ).timeout(attemptTimeout);
-            if (token == _generationToken) {
-              state = AsyncValue.data(generated);
-            }
-            if (kDebugMode) {
-              debugPrint(
-                '[Generation][Success] type=${puzzleType.key} '
-                'difficulty=$difficulty size=${resolvedSize.id} '
-                'seed=${generated.meta.seedStr} attempt=$attempt '
-                'elapsedMs=${stopwatch.elapsedMilliseconds}',
-              );
-            }
-            return generated;
-          } catch (e, st) {
-            lastError = e;
-            lastStack = st;
-            // Try next attempt with a new seed
-            if (attempt == maxAttempts) break;
-            // brief microtask yield to keep UI responsive
-            await Future<void>.delayed(const Duration(milliseconds: 10));
-          }
-        }
-      // If we get here, all attempts failed
-      if (puzzleType == app.PuzzleType.kakuroClassic) {
-        try {
-          final fallback = await _generateKakuroOnDemand(
-            difficulty: difficulty,
-            size: resolvedSize,
+          final worker = ref.read(puzzleGenerationWorkerProvider);
+          final generated = await worker.generate(
+            PuzzleGenerationRequest(
+              engineId: puzzleType.key,
+              seedStr: attemptSeed,
+              seed64: core.Seed.fromString(attemptSeed),
+              size: resolvedSize,
+              difficulty: difficultyScore,
+            ),
+            timeout: attemptTimeout,
           );
+          if (!generatedPuzzleMatchesDifficulty(generated, difficultyScore)) {
+            lastDifficultyMismatch = generated;
+            lastError = StateError(
+              'Generated ${generated.meta.difficulty.level} puzzle for '
+              'requested ${difficultyScore.level}',
+            );
+            lastStack = StackTrace.current;
+            if (attempt < _maxGenerationAttempts) {
+              if (kDebugMode) {
+                debugPrint(
+                  '[Generation][RetryDifficulty] type=${puzzleType.key} '
+                  '${generatedPuzzleDifficultyDebugFields(puzzle: generated, requestedDifficulty: difficultyScore)} '
+                  'seed=${generated.meta.seedStr} attempt=$attempt',
+                );
+              }
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+              continue;
+            }
+            break;
+          }
+          final core.GeneratedPuzzle<dynamic> normalized =
+              normalizeGeneratedPuzzleDifficulty(
+                puzzle: generated,
+                requestedDifficulty: difficultyScore,
+              );
+          if (token == _generationToken) {
+            state = AsyncValue.data(normalized);
+          }
           if (kDebugMode) {
             debugPrint(
-              '[Generation][Fallback] type=${puzzleType.key} '
-              'difficulty=$difficulty size=${resolvedSize.id} '
-              'seed=${fallback.meta.seedStr} elapsedMs=${stopwatch.elapsedMilliseconds}',
+              '[Generation][Success] type=${puzzleType.key} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+              'size=${resolvedSize.id} '
+              'seed=${normalized.meta.seedStr} attempt=$attempt '
+              'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );
           }
-          if (token == _generationToken) {
-            state = AsyncValue.data(fallback);
-          }
-          return fallback;
-        } catch (_) {
-          // Fall through to existing error handling if fallback fails.
+          return normalized;
+        } catch (e, st) {
+          lastError = e;
+          lastStack = st;
+          if (attempt == _maxGenerationAttempts) break;
+          // brief microtask yield to keep UI responsive
+          await Future<void>.delayed(const Duration(milliseconds: 10));
         }
       }
+      if (lastDifficultyMismatch != null) {
+        if (puzzleType == app.PuzzleType.kakuroClassic) {
+          lastError = core.GenerationFailure(
+            message:
+                'Kakuro generation did not produce the requested difficulty '
+                'within the bounded retry budget.',
+            attempts: _maxGenerationAttempts,
+            elapsed: stopwatch.elapsed,
+            baseSeed: core.Seed.fromString(baseSeed),
+            lastError: lastError,
+            lastStackTrace: lastStack,
+            context: <String, Object?>{
+              'difficulty': difficultyScore.level,
+              'generatedDifficulty':
+                  lastDifficultyMismatch.meta.difficulty.level,
+              'size': resolvedSize.id,
+              'engineId': puzzleType.key,
+            },
+          );
+          lastStack ??= StackTrace.current;
+        } else {
+          final normalized = normalizeGeneratedPuzzleDifficulty(
+            puzzle: lastDifficultyMismatch,
+            requestedDifficulty: difficultyScore,
+            telemetryExtras: const <String, Object?>{
+              'difficultyFallback': true,
+              'difficultyFallbackReason':
+                  'controller_best_effort_after_mismatch_retries',
+            },
+          );
+          if (token == _generationToken) {
+            state = AsyncValue.data(normalized);
+          }
+          if (kDebugMode) {
+            debugPrint(
+              '[Generation][DifficultyFallback] type=${puzzleType.key} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+              'seed=${lastDifficultyMismatch.meta.seedStr} '
+              'elapsedMs=${stopwatch.elapsedMilliseconds}',
+            );
+          }
+          return normalized;
+        }
+      }
+      // If we get here, all attempts failed.
       if (token == _generationToken) {
         state = AsyncValue.error(
           lastError ?? StateError('Generation failed'),
@@ -228,6 +307,15 @@ class PuzzleGenerationController
               height: 8,
             );
         }
+      case app.PuzzleType.kakuroClassic:
+        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
+        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
+          difficulty: difficulty,
+          surface: surface,
+        );
+        return _parseSize(sizeId);
+      case app.PuzzleType.killerQueens:
+        return killerQueensAppSizeForDifficulty(difficulty);
       default:
         return _defaultSizeFor(puzzleType);
     }
@@ -259,11 +347,10 @@ class PuzzleGenerationController
           height: 10,
         );
       case app.PuzzleType.kakuroClassic:
-        return const core.SizeOpt(
-          id: '9x9',
-          description: '9x9',
-          width: 9,
-          height: 9,
+        return _parseSize(
+          core.KakuroSupportedProfiles.appProfilesForSurface(
+            _activeKakuroAppSurface(),
+          ).first.sizeId,
         );
       case app.PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
@@ -328,27 +415,83 @@ class PuzzleGenerationController
     }
   }
 
-  Future<core.GeneratedPuzzle<dynamic>> _generateKakuroOnDemand({
-    required String difficulty,
-    required core.SizeOpt size,
-  }) async {
-    final service = ref.read(kakuroOnDemandProvider);
-    return service.nextPuzzle(
-      difficulty: difficulty,
-      width: size.width,
-      height: size.height,
-    );
-  }
-
   Future<core.GeneratedPuzzle<dynamic>> _generateSlitherlinkOnDemand({
     required String difficulty,
     required core.SizeOpt size,
+    required String seed,
   }) async {
     final service = ref.read(slitherlinkOnDemandProvider);
     return service.nextPuzzle(
       difficulty: difficulty,
       width: size.width,
       height: size.height,
+      seed: seed,
     );
+  }
+
+  String _seedForAttempt(String baseSeed, int attempt) {
+    if (attempt <= 1) {
+      return baseSeed;
+    }
+    return '$baseSeed#attempt$attempt';
+  }
+
+  Duration _attemptTimeoutFor({
+    required app.PuzzleType puzzleType,
+    required Duration elapsed,
+  }) {
+    if (puzzleType == app.PuzzleType.kakuroClassic) {
+      final Duration remaining =
+          puzzleGenerationTimeoutFor(engineId: puzzleType.key) - elapsed;
+      return remaining <= Duration.zero ? Duration.zero : remaining;
+    }
+    return puzzleGenerationTimeoutFor(engineId: puzzleType.key);
+  }
+
+  void _assertProfileAllowedForProduction({
+    required app.PuzzleType puzzleType,
+    required core.SizeOpt size,
+    required String difficulty,
+  }) {
+    if (puzzleType != app.PuzzleType.kakuroClassic) {
+      return;
+    }
+    final String normalizedDifficulty =
+        core.KakuroSupportedProfiles.normalizeDifficulty(difficulty);
+    final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
+    final bool allowed = core.KakuroSupportedProfiles.isAppProfileAllowed(
+      sizeId: size.id,
+      difficulty: normalizedDifficulty,
+      surface: surface,
+    );
+    if (allowed) {
+      return;
+    }
+    if (surface == core.KakuroAppProfileSurface.nonProduction) {
+      throw StateError(
+        'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} '
+        'is not enabled for non-production random play.',
+      );
+    }
+    final core.KakuroProfileTier? tier = core.KakuroSupportedProfiles.tierFor(
+      sizeId: size.id,
+      difficulty: normalizedDifficulty,
+    );
+    final String reason = switch (tier) {
+      core.KakuroProfileTier.benchmarkOnly =>
+        'benchmark-only and not enabled for production random play',
+      core.KakuroProfileTier.experimental =>
+        'experimental and not enabled for production random play',
+      _ => 'unsupported by production policy',
+    };
+    throw StateError(
+      'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} is $reason.',
+    );
+  }
+
+  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
+    return AppEnvironment.isProduction
+        ? core.KakuroAppProfileSurface.production
+        : core.KakuroAppProfileSurface.nonProduction;
   }
 }

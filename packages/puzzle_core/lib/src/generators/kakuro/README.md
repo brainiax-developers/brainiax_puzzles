@@ -29,15 +29,15 @@ The generator collects solver telemetry (shrink %, forced assignments, propagati
 rounds, backtrack nodes) and feeds it into `KakuroDifficultyScorer`. The resulting
 `DifficultyTelemetry.rawScore` is bucketed via `kakuro_difficulty_thresholds.json`.
 
-## Strategy switch
+## Strategy
 
-`GenerateKakuroRequest.strategy` toggles between `solutionFirst` (implemented today)
-and a placeholder `bottomUp` generator. The enum is surfaced through the public API
-so we can experiment with clue-forcing heuristics without touching the UI.
+`GenerateKakuroRequest.strategy` exposes only `solutionFirst`, the implemented
+generator. Bottom-up clue forcing is intentionally not a selectable strategy
+until a real implementation exists.
 
 ## Uniqueness guarantees
 
 Every candidate puzzle is validated by `KakuroSolver` with `maxSolutions: 2`.
 If multiple solutions are found, the puzzle is rejected and the generator restarts.
-Telemetry is emitted on every attempt so the app can provide meaningful diagnostics
-and fall back to a cached puzzle when the configured time budget elapses.
+Telemetry is emitted on every attempt so the app can provide meaningful
+diagnostics and surface a retryable failure when the configured budget elapses.

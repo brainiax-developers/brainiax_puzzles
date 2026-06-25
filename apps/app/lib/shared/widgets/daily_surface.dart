@@ -15,10 +15,10 @@ class DailySurface extends ConsumerWidget {
 
   /// Specific puzzle type for this daily surface (null for overall status).
   final PuzzleType? puzzleType;
-  
+
   /// Whether to show the puzzle name in the surface.
   final bool showPuzzleName;
-  
+
   /// Whether to show a compact version of the surface.
   final bool compact;
 
@@ -26,7 +26,7 @@ class DailySurface extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     if (puzzleType != null) {
       return _buildPuzzleSpecificSurface(context, ref, theme, colorScheme);
     } else {
@@ -41,7 +41,7 @@ class DailySurface extends ConsumerWidget {
     ColorScheme colorScheme,
   ) {
     final statusAsync = ref.watch(dailyStatusForPuzzleProvider(puzzleType!));
-    
+
     return statusAsync.when(
       data: (status) {
         if (status == null) {
@@ -55,16 +55,18 @@ class DailySurface extends ConsumerWidget {
               Row(
                 children: [
                   Icon(
-                    status.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: status.isCompleted 
-                        ? Colors.green 
+                    status.isCompleted
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: status.isCompleted
+                        ? Colors.green
                         : colorScheme.primary,
                     size: compact ? 16 : 20,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      showPuzzleName 
+                      showPuzzleName
                           ? 'Daily ${puzzleType!.displayName}'
                           : 'Daily Challenge',
                       style: theme.textTheme.titleSmall?.copyWith(
@@ -129,9 +131,11 @@ class DailySurface extends ConsumerWidget {
             Row(
               children: [
                 Icon(
-                  overallStatus.isAllCompleted ? Icons.emoji_events : Icons.calendar_today,
-                  color: overallStatus.isAllCompleted 
-                      ? Colors.amber 
+                  overallStatus.isAllCompleted
+                      ? Icons.emoji_events
+                      : Icons.calendar_today,
+                  color: overallStatus.isAllCompleted
+                      ? Colors.amber
                       : colorScheme.primary,
                   size: compact ? 16 : 20,
                 ),
@@ -227,10 +231,7 @@ class DailySurface extends ConsumerWidget {
 
 /// Card wrapper for daily surface.
 class _DailySurfaceCard extends StatelessWidget {
-  const _DailySurfaceCard({
-    required this.child,
-    this.compact = false,
-  });
+  const _DailySurfaceCard({required this.child, this.compact = false});
 
   final Widget child;
   final bool compact;
@@ -239,7 +240,7 @@ class _DailySurfaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(
@@ -264,10 +265,7 @@ class _DailySurfaceCard extends StatelessWidget {
 
 /// Progress bar for daily completion.
 class _DailyProgressBar extends StatelessWidget {
-  const _DailyProgressBar({
-    required this.progress,
-    required this.colorScheme,
-  });
+  const _DailyProgressBar({required this.progress, required this.colorScheme});
 
   final double progress;
   final ColorScheme colorScheme;
@@ -304,25 +302,22 @@ class _DailyActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     final isCompleted = status?.isCompleted ?? false;
-    final buttonText = isCompleted ? 'Completed' : 'Start Daily';
+    final buttonText = isCompleted ? 'View Daily' : 'Start Daily';
     final buttonColor = isCompleted ? Colors.green : colorScheme.primary;
-    
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: isCompleted ? null : () => _navigateToDaily(context),
+        onPressed: () => _navigateToDaily(context),
         style: ElevatedButton.styleFrom(
           backgroundColor: buttonColor.withOpacity(0.1),
           foregroundColor: buttonColor,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: BorderSide(
-              color: buttonColor.withOpacity(0.3),
-              width: 1,
-            ),
+            side: BorderSide(color: buttonColor.withOpacity(0.3), width: 1),
           ),
           padding: EdgeInsets.symmetric(
             vertical: compact ? 8 : 12,
