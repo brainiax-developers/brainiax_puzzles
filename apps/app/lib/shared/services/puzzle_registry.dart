@@ -191,6 +191,9 @@ class PuzzleRegistry {
           supportedDifficulties: kakuroDifficulties,
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,
+          isAvailable: false,
+          availabilityBadgeLabel: type.availabilityBadgeLabel,
+          unavailableMessage: type.unavailableMessage,
         );
 
       case app.PuzzleType.slitherlinkLoop:

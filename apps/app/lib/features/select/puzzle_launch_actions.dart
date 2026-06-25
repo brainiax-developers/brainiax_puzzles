@@ -18,6 +18,17 @@ Future<void> resumePuzzleRun({
   required WidgetRef ref,
   required PuzzleType puzzleType,
 }) async {
+  if (!puzzleType.isPlayable) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(puzzleType.unavailableMessage ?? 'Unavailable.'),
+        ),
+      );
+    }
+    return;
+  }
+
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final PuzzleProgressService progress = PuzzleProgressService(prefs);
   final ActivePuzzleRun? run = await progress.loadActiveRun(puzzleType);
@@ -46,6 +57,17 @@ Future<void> startRandomPuzzleFlow({
   required PuzzleType puzzleType,
   required String difficulty,
 }) async {
+  if (!puzzleType.isPlayable) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(puzzleType.unavailableMessage ?? 'Unavailable.'),
+        ),
+      );
+    }
+    return;
+  }
+
   await _clearProgress(ref, puzzleType);
 
   if (!context.mounted) {

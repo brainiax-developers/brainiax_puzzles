@@ -130,8 +130,11 @@ void main() {
           ? core.KakuroAppProfileSurface.production
           : core.KakuroAppProfileSurface.nonProduction;
       expect(metadata, isNotNull);
+      expect(metadata!.isAvailable, isFalse);
+      expect(metadata.availabilityBadgeLabel, 'Coming Soon');
+      expect(metadata.unavailableMessage, 'Kakuro is coming soon.');
       expect(
-        metadata!.supportedSizes,
+        metadata.supportedSizes,
         equals(core.KakuroSupportedProfiles.appSizesForSurface(surface)),
       );
       expect(

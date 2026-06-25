@@ -29,6 +29,16 @@ void main() {
   }
 
   group('dailyHubProvider', () {
+    test('default daily puzzle types exclude Kakuro', () {
+      final ProviderContainer container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(dailyPuzzleTypesProvider),
+        isNot(contains(PuzzleType.kakuroClassic)),
+      );
+    });
+
     test(
       'marks the week using any daily completion, not all daily puzzles',
       () async {
@@ -37,7 +47,7 @@ void main() {
         final List<PuzzleType> puzzleTypes = <PuzzleType>[
           PuzzleType.sudokuClassic,
           PuzzleType.nonogramMono,
-          PuzzleType.kakuroClassic,
+          PuzzleType.slitherlinkLoop,
         ];
         final ProviderContainer container = buildContainer(
           nowUtc: nowUtc,
@@ -55,8 +65,8 @@ void main() {
               completedAt: null,
               timeUntilReset: reset,
             ),
-            PuzzleType.kakuroClassic: DailyStatus(
-              puzzleType: PuzzleType.kakuroClassic,
+            PuzzleType.slitherlinkLoop: DailyStatus(
+              puzzleType: PuzzleType.slitherlinkLoop,
               isCompleted: false,
               completedAt: null,
               timeUntilReset: reset,
@@ -154,7 +164,7 @@ void main() {
           puzzleTypes: const <PuzzleType>[
             PuzzleType.sudokuClassic,
             PuzzleType.nonogramMono,
-            PuzzleType.kakuroClassic,
+            PuzzleType.slitherlinkLoop,
           ],
           statuses: <PuzzleType, DailyStatus>{
             PuzzleType.sudokuClassic: DailyStatus(
@@ -169,8 +179,8 @@ void main() {
               completedAt: null,
               timeUntilReset: reset,
             ),
-            PuzzleType.kakuroClassic: DailyStatus(
-              puzzleType: PuzzleType.kakuroClassic,
+            PuzzleType.slitherlinkLoop: DailyStatus(
+              puzzleType: PuzzleType.slitherlinkLoop,
               isCompleted: false,
               completedAt: null,
               timeUntilReset: reset,
@@ -223,7 +233,7 @@ void main() {
         expect(view.entries[2].cardState, DailyHubCardState.play);
         expect(view.uncompletedPuzzleTypes, <PuzzleType>[
           PuzzleType.nonogramMono,
-          PuzzleType.kakuroClassic,
+          PuzzleType.slitherlinkLoop,
         ]);
       },
     );

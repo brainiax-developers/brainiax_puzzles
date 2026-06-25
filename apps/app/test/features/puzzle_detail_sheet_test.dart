@@ -25,6 +25,22 @@ void main() {
     category: PuzzleCategory.logic,
   );
 
+  const PuzzleMetadata comingSoonMetadata = PuzzleMetadata(
+    type: PuzzleType.kakuroClassic,
+    displayName: 'Classic Kakuro',
+    description:
+        'Place digits so each clue group adds correctly without repeats.',
+    icon: Icons.add_box,
+    accentColors: [Color(0xFFFF9800), Color(0xFFF57C00)],
+    supportedSizes: ['7x9'],
+    supportedDifficulties: ['Easy'],
+    supportsHints: true,
+    category: PuzzleCategory.logic,
+    isAvailable: false,
+    availabilityBadgeLabel: 'Coming Soon',
+    unavailableMessage: 'Kakuro is coming soon.',
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
@@ -52,6 +68,7 @@ void main() {
   }
 
   Widget buildSubject({
+    PuzzleMetadata sheetMetadata = metadata,
     bool? isFavourite,
     bool dailyCompleted = false,
     ActivePuzzleRun? activeRun,
@@ -60,27 +77,30 @@ void main() {
     final overrides = [
       if (isFavourite != null)
         isFavouritePuzzleTypeProvider(
-          metadata.type,
+          sheetMetadata.type,
         ).overrideWith((ref) async => isFavourite),
       activeRunForPuzzleTypeProvider(
-        metadata.type,
+        sheetMetadata.type,
       ).overrideWith((ref) async => activeRun),
       puzzleTodayCompletionProvider(
-        metadata.type,
+        sheetMetadata.type,
       ).overrideWith((ref) async => dailyCompleted),
       preferredDifficultyProvider(
-        metadata.type,
+        sheetMetadata.type,
       ).overrideWith((ref) async => preferredDifficulty),
     ];
 
     return ProviderScope(
       overrides: overrides,
       child: MaterialApp(
-        theme: AppTheme.light(),
+        theme: AppTheme.light().copyWith(splashFactory: NoSplash.splashFactory),
         home: Builder(
           builder: (context) {
             return Scaffold(
-              body: PuzzleDetailSheet(hostContext: context, metadata: metadata),
+              body: PuzzleDetailSheet(
+                hostContext: context,
+                metadata: sheetMetadata,
+              ),
             );
           },
         ),
@@ -129,7 +149,10 @@ void main() {
           metadata.type,
         ).overrideWith((ref) async => preferredDifficulty),
       ],
-      child: MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+      child: MaterialApp.router(
+        theme: AppTheme.light().copyWith(splashFactory: NoSplash.splashFactory),
+        routerConfig: router,
+      ),
     );
   }
 
@@ -307,5 +330,21 @@ void main() {
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('coming soon sheet disables launch actions safely', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(buildSubject(sheetMetadata: comingSoonMetadata));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Coming Soon'), findsWidgets);
+    expect(find.text('Kakuro is coming soon.'), findsOneWidget);
+    expect(find.text('Choose Mode'), findsNothing);
+
+    final ElevatedButton button = tester.widget(
+      find.widgetWithText(ElevatedButton, 'Coming Soon'),
+    );
+    expect(button.onPressed, isNull);
   });
 }

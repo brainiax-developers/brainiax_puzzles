@@ -14,6 +14,9 @@ class PuzzleMetadata {
     required this.supportedDifficulties,
     required this.supportsHints,
     required this.category,
+    this.isAvailable = true,
+    this.availabilityBadgeLabel,
+    this.unavailableMessage,
   });
 
   /// The puzzle type this metadata describes.
@@ -43,9 +46,20 @@ class PuzzleMetadata {
   /// The category this puzzle belongs to.
   final PuzzleCategory category;
 
+  /// Whether this puzzle type can currently be started from app UI.
+  final bool isAvailable;
+
+  /// Optional product badge for visible but unavailable puzzle types.
+  final String? availabilityBadgeLabel;
+
+  /// Optional user-facing explanation for unavailable puzzle types.
+  final String? unavailableMessage;
+
   /// Get the primary accent color.
-  Color get primaryAccentColor => accentColors.isNotEmpty ? accentColors.first : Colors.blue;
+  Color get primaryAccentColor =>
+      accentColors.isNotEmpty ? accentColors.first : Colors.blue;
 
   /// Get the secondary accent color.
-  Color get secondaryAccentColor => accentColors.length > 1 ? accentColors[1] : primaryAccentColor;
+  Color get secondaryAccentColor =>
+      accentColors.length > 1 ? accentColors[1] : primaryAccentColor;
 }

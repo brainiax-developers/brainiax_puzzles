@@ -89,6 +89,21 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     // If no puzzle instance was passed and there's no active game state,
     // auto-start a new random game for Random mode so the canvas is populated.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_isRoutePuzzleAvailable()) {
+        if (!mounted) return;
+        setState(() {
+          _dailyGateResolved = true;
+          _dailyBlocked = true;
+          _dailyBlockedMessage =
+              widget.puzzleType.unavailableMessage ?? 'Unavailable.';
+          _isPlaying = false;
+          _isPaused = true;
+          _statsLoaded = true;
+          _timerStarted = true;
+        });
+        return;
+      }
+
       try {
         final currentState = ref.read(gameStateProvider);
         final engineAvailable =
@@ -415,6 +430,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     _timerStarted = true;
     _startTimer();
   }
+
+  bool _isRoutePuzzleAvailable() => widget.puzzleType.isPlayable;
 
   // Provide default size strings for different puzzle types used when
   // launching a random puzzle without explicit size parameters.
@@ -2275,6 +2292,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     final theme = AppThemeData.forPuzzleType(widget.puzzleType, baseTheme);
     final colorScheme = theme.colorScheme;
 
+    if (!_isRoutePuzzleAvailable()) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        appBar: AppBar(title: Text(widget.puzzleType.displayName)),
+        body: _buildUnavailableState(theme, colorScheme),
+      );
+    }
+
     // Register Riverpod listeners here (only once) — ref.listen must be used
     // from the build method of a ConsumerWidget/ConsumerStatefulWidget.
     if (!_listenersRegistered) {
@@ -3031,6 +3056,58 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildUnavailableState(ThemeData theme, ColorScheme colorScheme) {
+    final bool isDaily = widget.mode == PuzzleMode.daily;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.hourglass_top_rounded,
+                  size: 32,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.puzzleType.availabilityBadgeLabel ?? 'Coming Soon',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.puzzleType.unavailableMessage ?? 'Unavailable.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton(
+                onPressed: () =>
+                    isDaily ? context.go('/daily') : context.go('/puzzles'),
+                child: Text(isDaily ? 'Back to Daily' : 'Back to Library'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
