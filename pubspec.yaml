@@ -32,7 +32,7 @@ melos:
   scripts:
     analyze: melos exec -c 1 -- flutter analyze || dart analyze
     test: melos exec -c 1 -- flutter test --no-pub || dart test
-    format: melos exec -c 1 -- dart format . --fix
+    format: melos exec -c 1 -- dart format .
     coverage: melos exec --scope=app -- flutter test --no-pub --coverage
     check_coverage: dart bin/check_coverage.dart apps/app/coverage/lcov.info 0.8
     perf_gate: dart bin/bench.dart --engines "stub,stub_sudoku" --count 50 --difficulty medium --size "9x9" --output benchmark_current.json --ci --baseline benchmarks/phase2_baseline.json --threshold 0

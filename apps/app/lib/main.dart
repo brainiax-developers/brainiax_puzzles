@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_router.dart';
+import 'shared/auth/auth_providers.dart';
 import 'shared/firebase/firebase_init.dart';
-import 'shared/firebase/auth_glue.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
 import 'shared/providers/simple_theme_provider.dart';
@@ -16,15 +16,18 @@ Future<void> main() async {
 
   try {
     // Run initialization with overall timeout to prevent long waits
-    await Future.wait([
-      _initializeApp(),
-    ]).timeout(
+    await Future.wait([_initializeApp()]).timeout(
       const Duration(seconds: 8),
       onTimeout: () {
         if (kDebugMode) {
-          print('⚠️ App initialization timeout - launching with minimal config');
+          print(
+            '⚠️ App initialization timeout - launching with minimal config',
+          );
         }
-        throw TimeoutException('App initialization timeout', const Duration(seconds: 8));
+        throw TimeoutException(
+          'App initialization timeout',
+          const Duration(seconds: 8),
+        );
       },
     );
   } catch (e) {
@@ -35,8 +38,17 @@ Future<void> main() async {
     // Continue with app launch even if initialization fails
   }
 
+  final container = ProviderContainer();
+  unawaited(
+    container
+        .read(authBootstrapControllerProvider.notifier)
+        .bootstrapAnonymousSignIn(),
+  );
+
   // 4) Launch app
-  runApp(const ProviderScope(child: BrainiaxApp()));
+  runApp(
+    UncontrolledProviderScope(container: container, child: const BrainiaxApp()),
+  );
 }
 
 Future<void> _initializeApp() async {
@@ -50,9 +62,6 @@ Future<void> _initializeApp() async {
   ];
 
   await Future.wait(futures);
-
-  // 2) Ensure an anonymous user (depends on Firebase)
-  await ensureAnonAuth();
 
   final initDuration = DateTime.now().difference(initStartTime);
   if (kDebugMode) {
@@ -68,7 +77,6 @@ class BrainiaxApp extends ConsumerStatefulWidget {
 }
 
 class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
-
   @override
   Widget build(BuildContext context) {
     final currentTheme = ref.watch(currentThemeProvider);
@@ -86,23 +94,23 @@ class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
             ? currentTheme
             : AppTheme.light(),
         loading: () => AppTheme.light(),
-        error: (_, __) => AppTheme.light(),
+        error: (error, stackTrace) => AppTheme.light(),
       ),
       darkTheme: themeStateAsync.when(
         data: (state) => state.effectiveMode == AppThemeMode.dark
             ? currentTheme
             : AppTheme.dark(),
         loading: () => AppTheme.dark(),
-        error: (_, __) => AppTheme.dark(),
+        error: (error, stackTrace) => AppTheme.dark(),
       ),
       themeMode: themeStateAsync.when(
         data: (state) => state.mode == AppThemeMode.system
             ? ThemeMode.system
             : (state.effectiveMode == AppThemeMode.dark
-                ? ThemeMode.dark
-                : ThemeMode.light),
+                  ? ThemeMode.dark
+                  : ThemeMode.light),
         loading: () => ThemeMode.system,
-        error: (_, __) => ThemeMode.system,
+        error: (error, stackTrace) => ThemeMode.system,
       ),
 
       routeInformationProvider: appRouter.routeInformationProvider,
