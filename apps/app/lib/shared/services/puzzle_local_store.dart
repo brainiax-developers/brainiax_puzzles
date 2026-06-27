@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import '../streak/daily_streak_service.dart';
 
 /// Contract for persisting puzzle completion progress locally.
 abstract class PuzzleLocalStore {
@@ -53,9 +54,13 @@ abstract class PuzzleLocalStore {
 
 /// SharedPreferences backed implementation of [PuzzleLocalStore].
 class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
-  SharedPreferencesPuzzleLocalStore(this._prefs);
+  SharedPreferencesPuzzleLocalStore(
+    this._prefs, {
+    DailyStreakService? dailyStreakService,
+  }) : _dailyStreakService = dailyStreakService ?? const DailyStreakService();
 
   final SharedPreferences _prefs;
+  final DailyStreakService _dailyStreakService;
 
   static const _storageNamespace = 'puzzle_local_store.v2';
   static const _bestTimePrefix = '$_storageNamespace.best_time';
@@ -263,25 +268,21 @@ class SharedPreferencesPuzzleLocalStore implements PuzzleLocalStore {
   }
 
   Future<void> _updateDailyStreak(String utcDayKey) async {
-    final String? lastDate = _prefs.getString(_dailyStreakLastDateKey);
-    int streak = _prefs.getInt(_dailyStreakCurrentKey) ?? 0;
+    final DailyStreakStatus current = await dailyStreakStatus();
+    final DailyStreakStatus updated = _dailyStreakService.recordCompletion(
+      current: current,
+      completedAtUtc: DailyUtcDate.parseKey(utcDayKey),
+      completedDateKeyUtc: utcDayKey,
+    );
 
-    if (lastDate == null) {
-      streak = 1;
-    } else if (lastDate == utcDayKey) {
-      streak = streak == 0 ? 1 : streak;
-    } else if (DailyUtcDate.isNextDayKey(lastDate, utcDayKey)) {
-      streak += 1;
-    } else {
-      streak = 1;
+    await _prefs.setInt(_dailyStreakCurrentKey, updated.currentStreak);
+    if (updated.bestStreak > current.bestStreak) {
+      await _prefs.setInt(_dailyStreakBestKey, updated.bestStreak);
     }
-
-    final int best = _prefs.getInt(_dailyStreakBestKey) ?? 0;
-    await _prefs.setInt(_dailyStreakCurrentKey, streak);
-    if (streak > best) {
-      await _prefs.setInt(_dailyStreakBestKey, streak);
-    }
-    await _prefs.setString(_dailyStreakLastDateKey, utcDayKey);
+    await _prefs.setString(
+      _dailyStreakLastDateKey,
+      updated.lastCompletedDateKeyUtc ?? utcDayKey,
+    );
   }
 
   String _bestTimeKey(PuzzleType puzzleType, String difficulty) {

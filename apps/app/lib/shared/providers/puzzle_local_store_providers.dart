@@ -6,14 +6,14 @@ import '../services/favourite_puzzle_service.dart';
 import '../services/difficulty_preference_service.dart';
 import '../services/puzzle_local_store.dart';
 import '../services/puzzle_progress_service.dart';
+import '../streak/daily_streak_providers.dart';
+import '../streak/daily_streak_service.dart';
+
+export '../streak/daily_streak_providers.dart';
+export '../streak/daily_streak_models.dart';
 
 typedef PuzzleDifficultyKey = (PuzzleType puzzleType, String difficulty);
 typedef PuzzleDateKey = (PuzzleType puzzleType, DateTime date);
-
-/// Injectable UTC "now" used by Daily Challenge providers and tests.
-final dailyNowProvider = Provider<DateTime>((ref) {
-  return DateTime.now().toUtc();
-});
 
 final sharedPreferencesProvider = FutureProvider<SharedPreferences>((
   ref,
@@ -70,28 +70,9 @@ final dailyStreakStatusProvider = FutureProvider<DailyStreakStatus>((
 ) async {
   final store = await ref.watch(puzzleLocalStoreProvider.future);
   final DailyStreakStatus stored = await store.dailyStreakStatus();
-  final String? lastCompletedDateKeyUtc = stored.lastCompletedDateKeyUtc;
-  if (lastCompletedDateKeyUtc == null) {
-    return stored;
-  }
-
+  final DailyStreakService service = ref.watch(dailyStreakServiceProvider);
   final DateTime nowUtc = ref.watch(dailyNowProvider);
-  final String todayKey = DailyUtcDate.todayKey(now: nowUtc);
-  final String yesterdayKey = DailyUtcDate.keyFor(
-    DailyUtcDate.today(now: nowUtc).subtract(const Duration(days: 1)),
-  );
-  final bool streakIsActive =
-      lastCompletedDateKeyUtc == todayKey ||
-      lastCompletedDateKeyUtc == yesterdayKey;
-  if (streakIsActive) {
-    return stored;
-  }
-
-  return DailyStreakStatus(
-    currentStreak: 0,
-    bestStreak: stored.bestStreak,
-    lastCompletedDateKeyUtc: lastCompletedDateKeyUtc,
-  );
+  return service.normalizeForToday(stored: stored, nowUtc: nowUtc);
 });
 
 final homeStatsProvider = FutureProvider<HomeStatsSnapshot>((ref) async {
