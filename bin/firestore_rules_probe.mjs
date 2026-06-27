@@ -149,6 +149,26 @@ await expectStatus(
   request('PATCH', 'users/alice', 'alice', profileFields('alice')),
 );
 await expectStatus(
+  'owner can read own profile',
+  200,
+  request('GET', 'users/alice', 'alice'),
+);
+await expectStatus(
+  'other user cannot read private profile',
+  403,
+  request('GET', 'users/alice', 'bob'),
+);
+await expectStatus(
+  'other user cannot write private profile',
+  403,
+  request('PATCH', 'users/alice', 'bob', profileFields('alice')),
+);
+await expectStatus(
+  'unauthenticated user cannot write profile',
+  403,
+  request('PATCH', 'users/guest', null, profileFields('guest')),
+);
+await expectStatus(
   'profile write rejects admin fields',
   403,
   request('PATCH', 'users/alice', 'alice', {
@@ -211,6 +231,39 @@ await expectStatus(
     'leaderboards/2026-06/puzzleTypes/sudoku_classic/entries/entry-2',
     'alice',
     leaderboardFields('bob', 'entry-2'),
+  ),
+);
+await expectStatus(
+  'leaderboard write rejects mismatched path period',
+  403,
+  request(
+    'PATCH',
+    'leaderboards/2026-07/puzzleTypes/sudoku_classic/entries/entry-3',
+    'alice',
+    leaderboardFields('alice', 'entry-3'),
+  ),
+);
+await expectStatus(
+  'leaderboard write rejects mismatched path entry id',
+  403,
+  request(
+    'PATCH',
+    'leaderboards/2026-06/puzzleTypes/sudoku_classic/entries/entry-4',
+    'alice',
+    leaderboardFields('alice', 'entry-mismatch'),
+  ),
+);
+await expectStatus(
+  'leaderboard write rejects client rank',
+  403,
+  request(
+    'PATCH',
+    'leaderboards/2026-06/puzzleTypes/sudoku_classic/entries/entry-5',
+    'alice',
+    {
+      ...leaderboardFields('alice', 'entry-5'),
+      rank: value.int(1),
+    },
   ),
 );
 await expectStatus(

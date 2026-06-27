@@ -55,6 +55,22 @@ The probe validates that owners can write their own metadata, other users cannot
 read/write private metadata, `/config` writes are denied, leaderboard writes
 require matching auth and payload UIDs, and gameplay/admin fields are rejected.
 
+Manual emulator checklist for BX-0413:
+
+- Run the probe command above against the local Firestore emulator, not a
+  production Firebase project.
+- Confirm owner-only profile access passes: `owner can write own profile`,
+  `owner can read own profile`, `other user cannot read private profile`, and
+  `other user cannot write private profile`.
+- Confirm owner-only subcollection access passes for runs and stats:
+  `owner can write own run`, `other user cannot write private run`,
+  `owner can write own stats`, and `other user cannot read private stats`.
+- Confirm constrained leaderboard writes pass: matching auth/payload/path fields
+  are allowed, mismatched payload UID/path IDs are rejected, and client-provided
+  `rank` is rejected.
+- Confirm gameplay payload fields such as `board` remain rejected by the run
+  write probe.
+
 ## Collections
 
 ### `/users/{uid}`

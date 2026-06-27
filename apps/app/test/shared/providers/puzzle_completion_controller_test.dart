@@ -105,6 +105,78 @@ void main() {
   );
 
   test(
+    'daily completion updates local store and enqueues run result stats and streak sync items',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final DateTime completedAt = DateTime.utc(2026, 6, 22, 8);
+      final ProviderContainer container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(AsyncValue.data(prefs)),
+          dailyNowProvider.overrideWithValue(completedAt),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final PuzzleCompletionStatus status = await container
+          .read(puzzleCompletionControllerProvider)
+          .recordCompletion(
+            puzzleType: PuzzleType.sudokuClassic,
+            difficulty: 'easy',
+            completionTime: const Duration(seconds: 75),
+            mode: PuzzleMode.daily,
+            completedAt: completedAt,
+            size: '9x9',
+            seed: 'daily-sync-seed',
+            moveCount: 10,
+            hintsUsed: 0,
+            dailyDateKeyUtc: '2026-06-22',
+          );
+
+      final List<PuzzleCompletionRecord> records = await container.read(
+        completionRecordsProvider.future,
+      );
+      final PuzzleStatsAggregate aggregate = await container.read(
+        localStatsAggregateProvider.future,
+      );
+      final DailyStreakStatus streak = await container.read(
+        dailyStreakStatusProvider.future,
+      );
+      final List<SyncQueueItem> queueItems = await container.read(
+        pendingSyncQueueItemsProvider.future,
+      );
+
+      expect(status.bestTime, const Duration(seconds: 75));
+      expect(status.isDailyCompleted, isTrue);
+      expect(records, hasLength(1));
+      expect(records.single.dailyDateKeyUtc, '2026-06-22');
+      expect(aggregate.totalCompletions, 1);
+      expect(aggregate.dailyCompletions, 1);
+      expect(streak.currentStreak, 1);
+      expect(streak.lastCompletedDateKeyUtc, '2026-06-22');
+      expect(
+        queueItems.map((SyncQueueItem item) => item.type).toSet(),
+        <SyncQueueItemType>{
+          SyncQueueItemType.puzzleCompletion,
+          SyncQueueItemType.statsSnapshot,
+          SyncQueueItemType.dailyStreakSnapshot,
+        },
+      );
+      expect(queueItems, hasLength(3));
+      expect(
+        queueItems
+            .where(
+              (SyncQueueItem item) =>
+                  item.type == SyncQueueItemType.puzzleCompletion,
+            )
+            .single
+            .id,
+        'completion:${records.single.id}',
+      );
+    },
+  );
+
+  test(
     'duplicate recordCompletion calls with the same run id do not duplicate queue items',
     () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -201,8 +273,17 @@ void main() {
     final List<SyncQueueItem> queueItems = await container.read(
       pendingSyncQueueItemsProvider.future,
     );
+    final HomeStatsSnapshot homeStats = await container.read(
+      homeStatsProvider.future,
+    );
+    final PuzzleStatsAggregate aggregate = await container.read(
+      localStatsAggregateProvider.future,
+    );
 
     expect(status.bestTime, const Duration(seconds: 88));
+    expect(homeStats.totalSolved, 1);
+    expect(aggregate.totalCompletions, 1);
+    expect(aggregate.byPuzzle[PuzzleType.takuzuBinary]?.totalCompletions, 1);
     expect(queueItems, hasLength(2));
     expect(syncEngine.calls, 1);
   });

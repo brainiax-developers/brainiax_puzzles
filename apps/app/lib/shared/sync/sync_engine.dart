@@ -102,12 +102,20 @@ class SyncEngine {
 
       int synced = 0;
       int failed = 0;
+      final Set<String> syncedRunResultIds = <String>{};
 
       for (final SyncQueueItem item in items) {
         final DateTime attemptedAtUtc = _nowUtc().toUtc();
         try {
           await _queue.markSyncing(item.id, attemptedAtUtc: attemptedAtUtc);
-          await _uploadItem(identity.uid, item);
+          final String? runResultId = _runResultIdFromPayload(item);
+          if (runResultId == null ||
+              !syncedRunResultIds.contains(runResultId)) {
+            await _uploadItem(identity.uid, item);
+            if (runResultId != null) {
+              syncedRunResultIds.add(runResultId);
+            }
+          }
           await _queue.markSynced(item.id, completedAtUtc: _nowUtc().toUtc());
           synced += 1;
         } catch (error, stackTrace) {
@@ -168,6 +176,14 @@ class SyncEngine {
           updatedAtUtc: _favouritesUpdatedAtUtcFromPayload(item),
         );
     }
+  }
+
+  String? _runResultIdFromPayload(SyncQueueItem item) {
+    if (item.type != SyncQueueItemType.puzzleCompletion) {
+      return null;
+    }
+    return _stringOrNull(item.payload['id']) ??
+        _stringOrNull(item.payload['recordId']);
   }
 
   PuzzleRunResult _runResultFromPayload(SyncQueueItem item) {
@@ -288,7 +304,9 @@ class SyncEngine {
   }
 
   DateTime _favouritesUpdatedAtUtcFromPayload(SyncQueueItem item) {
-    final DateTime? updatedAtUtc = _dateTimeOrNull(item.payload['updatedAtUtc']);
+    final DateTime? updatedAtUtc = _dateTimeOrNull(
+      item.payload['updatedAtUtc'],
+    );
     return updatedAtUtc ?? item.createdAtUtc.toUtc();
   }
 

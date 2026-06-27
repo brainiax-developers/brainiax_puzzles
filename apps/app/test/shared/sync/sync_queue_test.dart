@@ -50,6 +50,31 @@ void main() {
     expect(items.single.payload['seed'], 'alpha');
   });
 
+  test('mark syncing increments attempts and clears stale errors', () async {
+    final DateTime failedAtUtc = DateTime.utc(2026, 6, 21, 9, 20);
+    final DateTime attemptedAtUtc = DateTime.utc(2026, 6, 21, 9, 25);
+
+    await queue.enqueue(_item(id: 'completion:syncing'));
+    await queue.markFailed(
+      'completion:syncing',
+      failedAtUtc: failedAtUtc,
+      lastError: 'network unavailable',
+    );
+    await queue.markSyncing(
+      'completion:syncing',
+      attemptedAtUtc: attemptedAtUtc,
+    );
+
+    final SyncQueueItem item = (await queue.all()).single;
+
+    expect(item.status, SyncQueueItemStatus.syncing);
+    expect(item.attempts, 2);
+    expect(item.lastAttemptAtUtc, attemptedAtUtc);
+    expect(item.lastError, isNull);
+    expect(await queue.pending(), isEmpty);
+    expect(await queue.failed(), isEmpty);
+  });
+
   test('mark synced moves the item out of pending and failed views', () async {
     final DateTime attemptedAtUtc = DateTime.utc(2026, 6, 21, 9, 30);
 

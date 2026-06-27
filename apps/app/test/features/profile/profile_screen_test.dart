@@ -84,6 +84,61 @@ void main() {
     }
   });
 
+  testWidgets('shows pending sync state with manual sync action', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      buildSubject([
+        authRepositoryProvider.overrideWithValue(
+          const _FakeAuthRepository(
+            AuthState.authenticated(
+              UserIdentity(uid: 'anon-user', isAnonymous: true),
+            ),
+          ),
+        ),
+        homeStatsProvider.overrideWith(
+          (ref) async => const HomeStatsSnapshot(
+            totalSolved: 1,
+            todayCompleted: 1,
+            completedThisWeek: 1,
+          ),
+        ),
+        localStatsAggregateProvider.overrideWith(
+          (ref) async => PuzzleStatsAggregate.empty,
+        ),
+        dailyStreakStatusProvider.overrideWith(
+          (ref) async => const DailyStreakStatus(
+            currentStreak: 1,
+            bestStreak: 1,
+            lastCompletedDateKeyUtc: '2026-06-27',
+          ),
+        ),
+        syncEngineProvider.overrideWithValue(
+          AsyncValue.data(_buildSyncEngine()),
+        ),
+        pendingSyncQueueItemsProvider.overrideWith(
+          (ref) async => <SyncQueueItem>[_queueItem('pending-sync')],
+        ),
+        failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Anonymous'), findsOneWidget);
+    expect(find.text('Sync pending'), findsOneWidget);
+    expect(
+      find.text(
+        '1 item waiting to sync. Local progress is already saved on this device.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('profile-sync-now-button')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Latest issue:'), findsNothing);
+  });
+
   testWidgets('shows signed-in sync error state and puzzle breakdown', (
     WidgetTester tester,
   ) async {

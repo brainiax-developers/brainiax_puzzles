@@ -13,10 +13,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'auth failure exits gracefully and leaves pending items untouched',
+    'auth failure exits gracefully and leaves pending and failed items untouched',
     () async {
       final queue = _FakeSyncQueue(<SyncQueueItem>[
         _completionItem(queueId: 'completion:run-1', runId: 'run-1'),
+        _completionItem(queueId: 'completion:run-2', runId: 'run-2').copyWith(
+          attempts: 2,
+          lastAttemptAtUtc: DateTime.utc(2026, 6, 21, 11),
+          status: SyncQueueItemStatus.failed,
+          lastError: 'previous failure',
+        ),
       ]);
       final repository = _FakeSyncRepository();
       final reporter = _FakeFailureReporter();
@@ -33,20 +39,49 @@ void main() {
       );
 
       final result = await engine.processPending();
-      final item = (await queue.all()).single;
+      final items = await queue.all();
 
       expect(result.skipped, isTrue);
       expect(result.skippedReason, 'auth-unavailable');
       expect(authRepository.signInCalls, 1);
       expect(repository.uploadRunCalls, 0);
-      expect(item.status, SyncQueueItemStatus.pending);
-      expect(item.attempts, 0);
+      expect(items[0].status, SyncQueueItemStatus.pending);
+      expect(items[0].attempts, 0);
+      expect(items[1].status, SyncQueueItemStatus.failed);
+      expect(items[1].attempts, 2);
+      expect(items[1].lastError, 'previous failure');
       expect(reporter.operations, contains('anonymous-auth'));
     },
   );
 
+  test('successful sync marks a pending run result synced', () async {
+    final queue = _FakeSyncQueue(<SyncQueueItem>[
+      _completionItem(queueId: 'completion:run-success', runId: 'run-success'),
+    ]);
+    final repository = _FakeSyncRepository();
+    final engine = SyncEngine(
+      queue: queue,
+      repository: repository,
+      authRepository: _authenticatedRepository(),
+      nowUtc: () => DateTime.utc(2026, 6, 21, 12),
+    );
+
+    final result = await engine.processPending();
+    final SyncQueueItem item = (await queue.all()).single;
+
+    expect(result.attempted, 1);
+    expect(result.synced, 1);
+    expect(result.failed, 0);
+    expect(repository.ensureProfileCalls, 1);
+    expect(repository.uploadRunCalls, 1);
+    expect(repository.runDocuments.keys, <String>['run-success']);
+    expect(item.status, SyncQueueItemStatus.synced);
+    expect(item.attempts, 1);
+    expect(item.lastError, isNull);
+  });
+
   test(
-    'duplicate run payloads upsert one deterministic remote document',
+    'duplicate run payloads upload one deterministic remote document',
     () async {
       final queue = _FakeSyncQueue(<SyncQueueItem>[
         _completionItem(queueId: 'completion:run-1:a', runId: 'run-1'),
@@ -66,7 +101,7 @@ void main() {
       expect(result.synced, 2);
       expect(result.failed, 0);
       expect(repository.ensureProfileCalls, 1);
-      expect(repository.uploadRunCalls, 2);
+      expect(repository.uploadRunCalls, 1);
       expect(repository.runDocuments.keys, <String>['run-1']);
       expect(
         (await queue.all()).map((SyncQueueItem item) => item.status),
