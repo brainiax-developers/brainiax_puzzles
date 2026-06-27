@@ -1,0 +1,82 @@
+import 'package:app/shared/models/models.dart';
+import 'package:app/shared/sync/sync_queue.dart';
+import 'package:app/shared/sync/sync_queue_item.dart';
+import 'package:app/shared/sync/sync_service.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late SyncService service;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    service = SyncService(SharedPreferencesSyncQueue(prefs));
+  });
+
+  test('completion queue items contain only minimal sync payload fields', () {
+    final PuzzleCompletionRecord record = PuzzleCompletionRecord(
+      id: 'record-1',
+      puzzleType: PuzzleType.sudokuClassic,
+      mode: PuzzleMode.daily,
+      difficulty: 'easy',
+      size: '9x9',
+      seed: 'seed-1',
+      completedAtUtc: DateTime.utc(2026, 6, 21, 12),
+      elapsedMs: 12345,
+      moveCount: 18,
+      hintsUsed: 2,
+      dailyDateKeyUtc: '2026-06-21',
+    );
+
+    final SyncQueueItem item = service.completionQueueItemForRecord(record);
+
+    expect(item.id, 'completion:record-1');
+    expect(item.type, SyncQueueItemType.puzzleCompletion);
+    expect(item.status, SyncQueueItemStatus.pending);
+    expect(item.payload, <String, dynamic>{
+      'recordId': 'record-1',
+      'puzzleType': 'sudoku_classic',
+      'mode': 'daily',
+      'difficulty': 'easy',
+      'size': '9x9',
+      'seed': 'seed-1',
+      'completedAtUtc': '2026-06-21T12:00:00.000Z',
+      'elapsedMs': 12345,
+      'moveCount': 18,
+      'hintsUsed': 2,
+      'dailyDateKeyUtc': '2026-06-21',
+    });
+    expect(item.payload.containsKey('board'), isFalse);
+    expect(item.payload.containsKey('solution'), isFalse);
+  });
+
+  test(
+    'enqueue completion record stays idempotent through the queue',
+    () async {
+      final PuzzleCompletionRecord record = PuzzleCompletionRecord(
+        id: 'record-2',
+        puzzleType: PuzzleType.nonogramMono,
+        mode: PuzzleMode.random,
+        difficulty: 'normal',
+        size: '10x10',
+        seed: 'seed-2',
+        completedAtUtc: DateTime.utc(2026, 6, 21, 13),
+        elapsedMs: 20000,
+        moveCount: 25,
+        hintsUsed: 0,
+        dailyDateKeyUtc: null,
+      );
+
+      await service.enqueueCompletionRecord(record);
+      await service.enqueueCompletionRecord(record);
+
+      final List<SyncQueueItem> items = await service.pending();
+
+      expect(items, hasLength(1));
+      expect(items.single.payload['recordId'], 'record-2');
+    },
+  );
+}
