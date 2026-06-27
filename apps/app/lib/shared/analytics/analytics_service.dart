@@ -52,6 +52,43 @@ abstract interface class AnalyticsService {
 
   Future<void> authUpgradePromptShown(AccountUpgradePromptEligibility prompt);
 
+  Future<void> authAnonymousBootstrapStarted();
+
+  Future<void> authAnonymousBootstrapSucceeded();
+
+  Future<void> authAnonymousBootstrapFailed({String? reason});
+
+  Future<void> authFlowStarted({
+    required String provider,
+    required String upgradePath,
+  });
+
+  Future<void> authFlowSucceeded({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  });
+
+  Future<void> authFlowFailed({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  });
+
+  Future<void> authFlowCancelled({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  });
+
+  Future<void> authFlowUnavailable({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  });
+
   Future<void> authLinkSucceeded({
     required String provider,
     required String upgradePath,
@@ -213,14 +250,112 @@ class FirebaseAnalyticsService implements AnalyticsService {
   }
 
   @override
+  Future<void> authAnonymousBootstrapStarted() {
+    return _logEvent(
+      AnalyticsEvents.authAnonymousBootstrapStarted,
+      const <String, Object>{},
+    );
+  }
+
+  @override
+  Future<void> authAnonymousBootstrapSucceeded() {
+    return _logEvent(
+      AnalyticsEvents.authAnonymousBootstrapSucceeded,
+      const <String, Object>{},
+    );
+  }
+
+  @override
+  Future<void> authAnonymousBootstrapFailed({String? reason}) {
+    return _logEvent(
+      AnalyticsEvents.authAnonymousBootstrapFailed,
+      _optionalReasonParameters(reason),
+    );
+  }
+
+  @override
+  Future<void> authFlowStarted({
+    required String provider,
+    required String upgradePath,
+  }) {
+    return _authFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkStarted,
+      signInEvent: AnalyticsEvents.authSignInStarted,
+      provider: provider,
+      upgradePath: upgradePath,
+    );
+  }
+
+  @override
+  Future<void> authFlowSucceeded({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) {
+    return _authFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkSucceeded,
+      signInEvent: AnalyticsEvents.authSignInSucceeded,
+      provider: provider,
+      upgradePath: upgradePath,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowFailed({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) {
+    return _authFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkFailed,
+      signInEvent: AnalyticsEvents.authSignInFailed,
+      provider: provider,
+      upgradePath: upgradePath,
+      reason: reason,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowCancelled({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) {
+    return _authFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkCancelled,
+      signInEvent: AnalyticsEvents.authSignInCancelled,
+      provider: provider,
+      upgradePath: upgradePath,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowUnavailable({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) {
+    return _authFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkUnavailable,
+      signInEvent: AnalyticsEvents.authSignInUnavailable,
+      provider: provider,
+      upgradePath: upgradePath,
+      reason: reason,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
   Future<void> authLinkSucceeded({
     required String provider,
     required String upgradePath,
   }) {
-    return _logEvent(AnalyticsEvents.authLinkSucceeded, <String, Object>{
-      AnalyticsParameters.provider: provider,
-      AnalyticsParameters.upgradePath: upgradePath,
-    });
+    return authFlowSucceeded(provider: provider, upgradePath: upgradePath);
   }
 
   @override
@@ -274,6 +409,50 @@ class FirebaseAnalyticsService implements AnalyticsService {
     return parameters;
   }
 
+  Map<String, Object> _optionalReasonParameters(String? reason) {
+    final Map<String, Object> parameters = <String, Object>{};
+    if (reason != null && reason.isNotEmpty) {
+      parameters[AnalyticsParameters.reason] = reason;
+    }
+    return parameters;
+  }
+
+  Future<void> _authFlowEvent({
+    required String linkEvent,
+    required String signInEvent,
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) {
+    final Map<String, Object> parameters = <String, Object>{
+      AnalyticsParameters.provider: provider,
+      AnalyticsParameters.upgradePath: upgradePath,
+    };
+    if (reason != null && reason.isNotEmpty) {
+      parameters[AnalyticsParameters.reason] = reason;
+    }
+    if (resultStatus != null && resultStatus.isNotEmpty) {
+      parameters[AnalyticsParameters.resultStatus] = resultStatus;
+    }
+    return _logEvent(
+      _authFlowEventName(
+        linkEvent: linkEvent,
+        signInEvent: signInEvent,
+        upgradePath: upgradePath,
+      ),
+      parameters,
+    );
+  }
+
+  String _authFlowEventName({
+    required String linkEvent,
+    required String signInEvent,
+    required String upgradePath,
+  }) {
+    return upgradePath == 'anonymous_link' ? linkEvent : signInEvent;
+  }
+
   Future<void> _logEvent(String name, Map<String, Object> parameters) {
     return _guard(() => _client.logEvent(name: name, parameters: parameters));
   }
@@ -319,6 +498,51 @@ class NoopAnalyticsService implements AnalyticsService {
 
   @override
   Future<void> appOpen() async {}
+
+  @override
+  Future<void> authAnonymousBootstrapFailed({String? reason}) async {}
+
+  @override
+  Future<void> authAnonymousBootstrapStarted() async {}
+
+  @override
+  Future<void> authAnonymousBootstrapSucceeded() async {}
+
+  @override
+  Future<void> authFlowCancelled({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) async {}
+
+  @override
+  Future<void> authFlowFailed({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) async {}
+
+  @override
+  Future<void> authFlowStarted({
+    required String provider,
+    required String upgradePath,
+  }) async {}
+
+  @override
+  Future<void> authFlowSucceeded({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) async {}
+
+  @override
+  Future<void> authFlowUnavailable({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) async {}
 
   @override
   Future<void> authLinkSucceeded({

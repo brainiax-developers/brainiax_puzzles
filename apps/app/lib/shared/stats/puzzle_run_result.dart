@@ -1,3 +1,4 @@
+import '../app_metadata/app_metadata.dart';
 import '../models/active_puzzle_run.dart';
 import '../models/puzzle_completion_record.dart';
 import '../models/puzzle_mode.dart';
@@ -17,6 +18,7 @@ class PuzzleRunResult {
     required this.moveCount,
     required this.hintsUsed,
     required this.dailyDateKeyUtc,
+    this.engineVersion = unknownAppMetadataValue,
     this.startedAtUtc,
     this.sessionUpdatedAtUtc,
   });
@@ -32,6 +34,7 @@ class PuzzleRunResult {
   final int moveCount;
   final int hintsUsed;
   final String? dailyDateKeyUtc;
+  final String engineVersion;
   final DateTime? startedAtUtc;
   final DateTime? sessionUpdatedAtUtc;
 
@@ -67,9 +70,17 @@ class PuzzleRunResult {
       moveCount: record.moveCount,
       hintsUsed: record.hintsUsed,
       dailyDateKeyUtc: record.dailyDateKeyUtc,
-      startedAtUtc: startedAtUtc?.toUtc() ?? session?.createdAtUtc.toUtc(),
+      engineVersion: _engineVersionFromSession(session),
+      startedAtUtc:
+          startedAtUtc?.toUtc() ??
+          session?.createdAtUtc.toUtc() ??
+          record.completedAtUtc.toUtc().subtract(
+            Duration(milliseconds: record.elapsedMs),
+          ),
       sessionUpdatedAtUtc:
-          sessionUpdatedAtUtc?.toUtc() ?? session?.updatedAtUtc.toUtc(),
+          sessionUpdatedAtUtc?.toUtc() ??
+          session?.updatedAtUtc.toUtc() ??
+          record.completedAtUtc.toUtc(),
     );
   }
 
@@ -80,11 +91,13 @@ class PuzzleRunResult {
     'difficulty': difficulty,
     'size': size,
     'seed': seed,
+    'completed': completed,
     'completedAtUtc': completedAtUtc.toUtc().toIso8601String(),
     'elapsedMs': elapsedMs,
     'moveCount': moveCount,
     'hintsUsed': hintsUsed,
     'dailyDateKeyUtc': dailyDateKeyUtc,
+    'engineVersion': engineVersion,
     'startedAtUtc': startedAtUtc?.toUtc().toIso8601String(),
     'sessionUpdatedAtUtc': sessionUpdatedAtUtc?.toUtc().toIso8601String(),
   };
@@ -98,6 +111,11 @@ class PuzzleRunResult {
       throw FormatException('Invalid run result type or mode: $json');
     }
 
+    final DateTime completedAtUtc = DateTime.parse(
+      json['completedAtUtc'] as String,
+    ).toUtc();
+    final int elapsedMs = json['elapsedMs'] as int? ?? 0;
+
     return PuzzleRunResult(
       id: json['id'] as String,
       puzzleType: puzzleType,
@@ -105,15 +123,32 @@ class PuzzleRunResult {
       difficulty: json['difficulty'] as String? ?? 'unknown',
       size: json['size'] as String? ?? 'unknown',
       seed: json['seed'] as String? ?? '',
-      completedAtUtc: DateTime.parse(json['completedAtUtc'] as String).toUtc(),
-      elapsedMs: json['elapsedMs'] as int? ?? 0,
+      completedAtUtc: completedAtUtc,
+      elapsedMs: elapsedMs,
       moveCount: json['moveCount'] as int? ?? 0,
       hintsUsed: json['hintsUsed'] as int? ?? 0,
       dailyDateKeyUtc: json['dailyDateKeyUtc'] as String?,
-      startedAtUtc: _dateTimeOrNull(json['startedAtUtc']),
-      sessionUpdatedAtUtc: _dateTimeOrNull(json['sessionUpdatedAtUtc']),
+      engineVersion:
+          json['engineVersion'] as String? ?? unknownAppMetadataValue,
+      startedAtUtc:
+          _dateTimeOrNull(json['startedAtUtc']) ??
+          completedAtUtc.subtract(Duration(milliseconds: elapsedMs)),
+      sessionUpdatedAtUtc:
+          _dateTimeOrNull(json['sessionUpdatedAtUtc']) ?? completedAtUtc,
     );
   }
+}
+
+String _engineVersionFromSession(ActivePuzzleRun? session) {
+  final Object? meta = session?.generatedPuzzleJson['meta'];
+  if (meta is! Map) {
+    return unknownAppMetadataValue;
+  }
+  final Object? engineVersion = meta['engineVersion'];
+  if (engineVersion is! String || engineVersion.trim().isEmpty) {
+    return unknownAppMetadataValue;
+  }
+  return engineVersion;
 }
 
 DateTime? _dateTimeOrNull(Object? value) {

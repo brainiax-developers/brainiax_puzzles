@@ -25,7 +25,10 @@ void main() {
         difficulty: 'hard',
         size: '9x9',
         seed: 'seed-123',
-        generatedPuzzleJson: const <String, dynamic>{'id': 'ignored'},
+        generatedPuzzleJson: const <String, dynamic>{
+          'id': 'ignored',
+          'meta': <String, dynamic>{'engineVersion': 'engine-1'},
+        },
         createdAtUtc: DateTime.utc(2026, 6, 20, 9, 30),
         updatedAtUtc: DateTime.utc(2026, 6, 20, 9, 44),
         elapsedMs: 44000,
@@ -54,10 +57,14 @@ void main() {
       expect(result.moveCount, 18);
       expect(result.hintsUsed, 2);
       expect(result.dailyDateKeyUtc, '2026-06-20');
+      expect(result.engineVersion, 'engine-1');
+      expect(result.toJson()['completed'], isTrue);
       expect(
         PuzzleRunResult.fromJson(result.toJson()).toJson(),
         result.toJson(),
       );
+      expect(result.toJson().containsKey('generatedPuzzleJson'), isFalse);
+      expect(result.toJson().containsKey('board'), isFalse);
     },
   );
 }

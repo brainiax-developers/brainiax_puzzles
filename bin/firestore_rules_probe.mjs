@@ -93,8 +93,10 @@ function runFields(uid, runId) {
     uid: value.str(uid),
     puzzleType: value.str('sudoku_classic'),
     mode: value.str('daily'),
+    seed: value.str('daily-seed-2026-06-27'),
     difficulty: value.str('hard'),
     size: value.str('9x9'),
+    completed: value.bool(true),
     dailyDateKeyUtc: value.str('2026-06-27'),
     startedAt: value.ts('2026-06-27T00:00:00Z'),
     completedAt: value.ts('2026-06-27T00:05:00Z'),
@@ -102,6 +104,10 @@ function runFields(uid, runId) {
     elapsedMs: value.int(300000),
     moveCount: value.int(45),
     hintsUsed: value.int(1),
+    engineVersion: value.str('1.0.0'),
+    appVersion: value.str('1.0.0+1'),
+    createdAt: value.ts('2026-06-27T00:06:00Z'),
+    updatedAt: value.ts('2026-06-27T00:06:00Z'),
   };
 }
 
@@ -272,5 +278,29 @@ await expectStatus(
   request('PATCH', 'users/alice/runs/run-3', 'alice', {
     ...runFields('alice', 'run-3'),
     board: value.str('not allowed'),
+  }),
+);
+await expectStatus(
+  'run write rejects solution payload fields',
+  403,
+  request('PATCH', 'users/alice/runs/run-4', 'alice', {
+    ...runFields('alice', 'run-4'),
+    solution: value.str('not allowed'),
+  }),
+);
+await expectStatus(
+  'run write rejects admin payload fields',
+  403,
+  request('PATCH', 'users/alice/runs/run-5', 'alice', {
+    ...runFields('alice', 'run-5'),
+    isAdmin: value.bool(true),
+  }),
+);
+await expectStatus(
+  'run write rejects incomplete run summaries',
+  403,
+  request('PATCH', 'users/alice/runs/run-6', 'alice', {
+    ...runFields('alice', 'run-6'),
+    completed: value.bool(false),
   }),
 );

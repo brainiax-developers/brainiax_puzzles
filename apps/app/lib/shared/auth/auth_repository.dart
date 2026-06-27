@@ -232,14 +232,44 @@ class FirebaseAuthRepository implements AuthRepository {
     if (currentUser != null && !currentUser.isAnonymous) {
       return GoogleSignInResult.signedIn(currentState);
     }
+    final String upgradePath = _upgradePathFor(currentUser);
+    await _trackAuthFlowStarted(provider: 'google', upgradePath: upgradePath);
 
     final GoogleSignInTokens? tokens;
     try {
       tokens = await _googleSignInClient.signIn();
     } on google_sign_in.GoogleSignInException catch (error) {
       if (_isGoogleCancellation(error)) {
+        await _trackAuthFlowCancelled(
+          provider: 'google',
+          upgradePath: upgradePath,
+          resultStatus: GoogleSignInResultStatus.cancelled.name,
+        );
         return const GoogleSignInResult.cancelled();
       }
+      if (_isGoogleUnavailable(error)) {
+        await _trackAuthFlowUnavailable(
+          provider: 'google',
+          upgradePath: upgradePath,
+          reason: 'google-unavailable',
+          resultStatus: GoogleSignInResultStatus.recoverableFailure.name,
+        );
+        return GoogleSignInResult.recoverableFailure(
+          authState: currentState,
+          failure: GoogleSignInFailure(
+            code: 'google-unavailable',
+            message:
+                error.description ??
+                'Google sign-in is unavailable right now. Please try again.',
+          ),
+        );
+      }
+      await _trackAuthFlowFailed(
+        provider: 'google',
+        upgradePath: upgradePath,
+        reason: 'google-${error.code.name}',
+        resultStatus: GoogleSignInResultStatus.recoverableFailure.name,
+      );
       return GoogleSignInResult.recoverableFailure(
         authState: currentState,
         failure: GoogleSignInFailure(
@@ -250,6 +280,12 @@ class FirebaseAuthRepository implements AuthRepository {
         ),
       );
     } on GoogleSignInUnavailableException catch (error) {
+      await _trackAuthFlowUnavailable(
+        provider: 'google',
+        upgradePath: upgradePath,
+        reason: 'google-unavailable',
+        resultStatus: GoogleSignInResultStatus.recoverableFailure.name,
+      );
       return GoogleSignInResult.recoverableFailure(
         authState: currentState,
         failure: GoogleSignInFailure(
@@ -260,6 +296,11 @@ class FirebaseAuthRepository implements AuthRepository {
     }
 
     if (tokens == null) {
+      await _trackAuthFlowCancelled(
+        provider: 'google',
+        upgradePath: upgradePath,
+        resultStatus: GoogleSignInResultStatus.cancelled.name,
+      );
       return const GoogleSignInResult.cancelled();
     }
 
@@ -273,9 +314,10 @@ class FirebaseAuthRepository implements AuthRepository {
       if (currentUser != null && currentUser.isAnonymous) {
         final firebase_auth.UserCredential linkedCredential = await currentUser
             .linkWithCredential(credential);
-        await _analyticsService.authLinkSucceeded(
+        await _trackAuthFlowSucceeded(
           provider: 'google',
-          upgradePath: 'anonymous_link',
+          upgradePath: upgradePath,
+          resultStatus: GoogleSignInResultStatus.linked.name,
         );
         return GoogleSignInResult.linked(
           _mapUser(linkedCredential.user ?? _firebaseAuth.currentUser),
@@ -284,14 +326,21 @@ class FirebaseAuthRepository implements AuthRepository {
 
       final firebase_auth.UserCredential signedInCredential =
           await _firebaseAuth.signInWithCredential(credential);
-      await _analyticsService.authLinkSucceeded(
+      await _trackAuthFlowSucceeded(
         provider: 'google',
-        upgradePath: 'direct_sign_in',
+        upgradePath: upgradePath,
+        resultStatus: GoogleSignInResultStatus.signedIn.name,
       );
       return GoogleSignInResult.signedIn(
         _mapUser(signedInCredential.user ?? _firebaseAuth.currentUser),
       );
     } on firebase_auth.FirebaseAuthException catch (error) {
+      await _trackAuthFlowFailed(
+        provider: 'google',
+        upgradePath: upgradePath,
+        reason: error.code,
+        resultStatus: GoogleSignInResultStatus.recoverableFailure.name,
+      );
       return GoogleSignInResult.recoverableFailure(
         authState: currentState,
         failure: GoogleSignInFailure(
@@ -309,15 +358,24 @@ class FirebaseAuthRepository implements AuthRepository {
     if (currentUser != null && !currentUser.isAnonymous) {
       return AppleSignInResult.signedIn(currentState);
     }
+    final String upgradePath = _upgradePathFor(currentUser);
+    await _trackAuthFlowStarted(provider: 'apple', upgradePath: upgradePath);
 
     // TODO(bx-0411): Wire up `sign_in_with_apple` and the Firebase credential
     // exchange once the iOS/macOS setup is ready.
+    final AppleSignInFailure failure = AppleSignInFailure(
+      code: 'apple-unavailable',
+      message: _appleSignInUnavailableMessage(),
+    );
+    await _trackAuthFlowUnavailable(
+      provider: 'apple',
+      upgradePath: upgradePath,
+      reason: failure.code,
+      resultStatus: AppleSignInResultStatus.recoverableFailure.name,
+    );
     return AppleSignInResult.recoverableFailure(
       authState: currentState,
-      failure: AppleSignInFailure(
-        code: 'apple-unavailable',
-        message: _appleSignInUnavailableMessage(),
-      ),
+      failure: failure,
     );
   }
 
@@ -352,6 +410,84 @@ class FirebaseAuthRepository implements AuthRepository {
     } catch (_) {
       return const <String>[];
     }
+  }
+
+  String _upgradePathFor(firebase_auth.User? currentUser) {
+    return currentUser != null && currentUser.isAnonymous
+        ? 'anonymous_link'
+        : 'direct_sign_in';
+  }
+
+  Future<void> _trackAuthFlowStarted({
+    required String provider,
+    required String upgradePath,
+  }) async {
+    try {
+      await _analyticsService.authFlowStarted(
+        provider: provider,
+        upgradePath: upgradePath,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _trackAuthFlowSucceeded({
+    required String provider,
+    required String upgradePath,
+    required String resultStatus,
+  }) async {
+    try {
+      await _analyticsService.authFlowSucceeded(
+        provider: provider,
+        upgradePath: upgradePath,
+        resultStatus: resultStatus,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _trackAuthFlowFailed({
+    required String provider,
+    required String upgradePath,
+    required String reason,
+    required String resultStatus,
+  }) async {
+    try {
+      await _analyticsService.authFlowFailed(
+        provider: provider,
+        upgradePath: upgradePath,
+        reason: reason,
+        resultStatus: resultStatus,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _trackAuthFlowCancelled({
+    required String provider,
+    required String upgradePath,
+    required String resultStatus,
+  }) async {
+    try {
+      await _analyticsService.authFlowCancelled(
+        provider: provider,
+        upgradePath: upgradePath,
+        resultStatus: resultStatus,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _trackAuthFlowUnavailable({
+    required String provider,
+    required String upgradePath,
+    required String reason,
+    required String resultStatus,
+  }) async {
+    try {
+      await _analyticsService.authFlowUnavailable(
+        provider: provider,
+        upgradePath: upgradePath,
+        reason: reason,
+        resultStatus: resultStatus,
+      );
+    } catch (_) {}
   }
 }
 
@@ -396,11 +532,14 @@ bool _isGoogleCancellation(google_sign_in.GoogleSignInException error) {
   switch (error.code) {
     case google_sign_in.GoogleSignInExceptionCode.canceled:
     case google_sign_in.GoogleSignInExceptionCode.interrupted:
-    case google_sign_in.GoogleSignInExceptionCode.uiUnavailable:
       return true;
     default:
       return false;
   }
+}
+
+bool _isGoogleUnavailable(google_sign_in.GoogleSignInException error) {
+  return error.code == google_sign_in.GoogleSignInExceptionCode.uiUnavailable;
 }
 
 String _googleSignInFailureMessage(firebase_auth.FirebaseAuthException error) {

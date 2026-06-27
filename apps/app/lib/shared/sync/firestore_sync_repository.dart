@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../app_metadata/app_metadata.dart';
 import '../auth/user_identity.dart';
 import '../firestore/firestore_converters.dart';
 import '../firestore/firestore_models.dart';
@@ -26,10 +27,15 @@ abstract interface class SyncRepository {
 }
 
 class FirestoreSyncRepository implements SyncRepository {
-  FirestoreSyncRepository(this._firestore, {DateTime Function()? nowUtc})
-    : _nowUtc = nowUtc ?? (() => DateTime.now().toUtc());
+  FirestoreSyncRepository(
+    this._firestore, {
+    AppBuildMetadata appMetadata = AppBuildMetadata.current,
+    DateTime Function()? nowUtc,
+  }) : _appMetadata = appMetadata,
+       _nowUtc = nowUtc ?? (() => DateTime.now().toUtc());
 
   final FirebaseFirestore _firestore;
+  final AppBuildMetadata _appMetadata;
   final DateTime Function() _nowUtc;
 
   @override
@@ -62,32 +68,33 @@ class FirestoreSyncRepository implements SyncRepository {
   }
 
   @override
-  Future<void> uploadRunResult(String uid, PuzzleRunResult result) {
+  Future<void> uploadRunResult(String uid, PuzzleRunResult result) async {
     final DocumentReference<RunResultFirestoreModel> document = _firestore
         .doc(FirestorePaths.userRun(uid: uid, runId: result.id))
         .withConverter<RunResultFirestoreModel>(
           fromFirestore: runResultFirestoreConverter.fromFirestore,
           toFirestore: runResultFirestoreConverter.toFirestore,
         );
+    final DateTime updatedAtUtc = _nowUtc().toUtc();
 
-    return document.set(
-      RunResultFirestoreModel(
-        runId: result.id,
-        uid: uid,
-        puzzleType: result.puzzleType.key,
-        mode: result.mode.key,
-        difficulty: result.difficulty,
-        size: result.size,
-        dailyDateKeyUtc: result.dailyDateKeyUtc,
-        startedAtUtc: result.startedAtUtc,
-        completedAtUtc: result.completedAtUtc,
-        sessionUpdatedAtUtc: result.sessionUpdatedAtUtc,
-        elapsedMs: result.elapsedMs,
-        moveCount: result.moveCount,
-        hintsUsed: result.hintsUsed,
-      ),
-      SetOptions(merge: true),
-    );
+    await _firestore.runTransaction((transaction) async {
+      final DocumentSnapshot<RunResultFirestoreModel> snapshot =
+          await transaction.get(document);
+      final DateTime createdAtUtc =
+          snapshot.data()?.createdAtUtc ?? updatedAtUtc;
+
+      transaction.set(
+        document,
+        runResultFirestoreModelForUpload(
+          uid: uid,
+          result: result,
+          appMetadata: _appMetadata,
+          createdAtUtc: createdAtUtc,
+          updatedAtUtc: updatedAtUtc,
+        ),
+        SetOptions(merge: true),
+      );
+    });
   }
 
   @override
@@ -152,7 +159,8 @@ class FirestoreSyncRepository implements SyncRepository {
     await _firestore.runTransaction((transaction) async {
       final DocumentSnapshot<Map<String, dynamic>> snapshot = await transaction
           .get(document);
-      final Map<String, dynamic> profile = snapshot.data() ?? <String, dynamic>{};
+      final Map<String, dynamic> profile =
+          snapshot.data() ?? <String, dynamic>{};
       final FavouritePreferencesMergeResult resolved =
           resolveFavouritePreferencesForSync(
             remotePreferences: _jsonMap(profile['preferences']),
@@ -166,9 +174,7 @@ class FirestoreSyncRepository implements SyncRepository {
         'lastSeenAt': FirestoreTimestamp.toTimestamp(nowUtc),
         'preferences': <String, dynamic>{
           'favoritePuzzleTypes': resolved.favouriteKeys,
-          'updatedAt': FirestoreTimestamp.toTimestamp(
-            resolved.updatedAtUtc,
-          ),
+          'updatedAt': FirestoreTimestamp.toTimestamp(resolved.updatedAtUtc),
         },
       }, SetOptions(merge: true));
     });
@@ -220,6 +226,55 @@ class FirestoreSyncRepository implements SyncRepository {
   }
 }
 
+RunResultFirestoreModel runResultFirestoreModelForUpload({
+  required String uid,
+  required PuzzleRunResult result,
+  required AppBuildMetadata appMetadata,
+  required DateTime createdAtUtc,
+  required DateTime updatedAtUtc,
+}) {
+  final DateTime completedAtUtc = result.completedAtUtc.toUtc();
+  final DateTime startedAtUtc =
+      result.startedAtUtc?.toUtc() ??
+      completedAtUtc.subtract(Duration(milliseconds: result.elapsedMs));
+
+  return RunResultFirestoreModel(
+    runId: result.id,
+    uid: uid,
+    puzzleType: result.puzzleType.key,
+    mode: result.mode.key,
+    seed: result.seed,
+    difficulty: result.difficulty,
+    size: result.size,
+    completed: true,
+    dailyDateKeyUtc: result.dailyDateKeyUtc,
+    startedAtUtc: startedAtUtc,
+    completedAtUtc: completedAtUtc,
+    sessionUpdatedAtUtc: result.sessionUpdatedAtUtc?.toUtc() ?? completedAtUtc,
+    elapsedMs: result.elapsedMs,
+    moveCount: result.moveCount,
+    hintsUsed: result.hintsUsed,
+    engineVersion: _nonEmptyOrDefault(
+      result.engineVersion,
+      appMetadata.defaultEngineVersion,
+    ),
+    appVersion: _nonEmptyOrDefault(
+      appMetadata.appVersion,
+      unknownAppMetadataValue,
+    ),
+    createdAtUtc: createdAtUtc.toUtc(),
+    updatedAtUtc: updatedAtUtc.toUtc(),
+  );
+}
+
+String _nonEmptyOrDefault(String value, String fallback) {
+  final String trimmed = value.trim();
+  if (trimmed.isNotEmpty) {
+    return trimmed;
+  }
+  return fallback.trim().isEmpty ? unknownAppMetadataValue : fallback;
+}
+
 FavouritePreferencesMergeResult resolveFavouritePreferencesForSync({
   required Map<String, dynamic> remotePreferences,
   required List<String> localFavouriteKeys,
@@ -229,13 +284,12 @@ FavouritePreferencesMergeResult resolveFavouritePreferencesForSync({
     remotePreferences['favoritePuzzleTypes'] ??
         remotePreferences['favouritePuzzleTypes'] ??
         remotePreferences['favourites'],
-  ).toSet().toList()
-    ..sort();
+  ).toSet().toList()..sort();
   final DateTime? remoteUpdatedAtUtc = FirestoreTimestamp.toNullableDateTime(
     remotePreferences['updatedAt'],
   );
-  final List<String> normalizedLocalKeys =
-      localFavouriteKeys.toSet().toList()..sort();
+  final List<String> normalizedLocalKeys = localFavouriteKeys.toSet().toList()
+    ..sort();
   final DateTime normalizedLocalUpdatedAtUtc = localUpdatedAtUtc.toUtc();
 
   if (remoteFavouriteKeys.isEmpty) {
@@ -250,8 +304,7 @@ FavouritePreferencesMergeResult resolveFavouritePreferencesForSync({
       favouriteKeys: <String>{
         ...remoteFavouriteKeys,
         ...normalizedLocalKeys,
-      }.toList()
-        ..sort(),
+      }.toList()..sort(),
       updatedAtUtc: normalizedLocalUpdatedAtUtc,
     );
   }

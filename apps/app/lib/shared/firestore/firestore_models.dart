@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../app_metadata/app_metadata.dart';
+
 const int firestoreSchemaVersion = 1;
 
 class UserPreferencesFirestoreModel {
@@ -86,15 +88,21 @@ class RunResultFirestoreModel {
     required this.uid,
     required this.puzzleType,
     required this.mode,
+    required this.seed,
     required this.difficulty,
     required this.size,
+    required this.startedAtUtc,
     required this.completedAtUtc,
     required this.elapsedMs,
     required this.moveCount,
     required this.hintsUsed,
+    required this.engineVersion,
+    required this.appVersion,
+    required this.createdAtUtc,
+    required this.updatedAtUtc,
     this.schemaVersion = firestoreSchemaVersion,
+    this.completed = true,
     this.dailyDateKeyUtc,
-    this.startedAtUtc,
     this.sessionUpdatedAtUtc,
   });
 
@@ -103,15 +111,21 @@ class RunResultFirestoreModel {
   final String uid;
   final String puzzleType;
   final String mode;
+  final String seed;
   final String difficulty;
   final String size;
+  final bool completed;
   final String? dailyDateKeyUtc;
-  final DateTime? startedAtUtc;
+  final DateTime startedAtUtc;
   final DateTime completedAtUtc;
   final DateTime? sessionUpdatedAtUtc;
   final int elapsedMs;
   final int moveCount;
   final int hintsUsed;
+  final String engineVersion;
+  final String appVersion;
+  final DateTime createdAtUtc;
+  final DateTime updatedAtUtc;
 
   Map<String, dynamic> toFirestoreJson() => <String, dynamic>{
     'schemaVersion': schemaVersion,
@@ -119,10 +133,12 @@ class RunResultFirestoreModel {
     'uid': uid,
     'puzzleType': puzzleType,
     'mode': mode,
+    'seed': seed,
     'difficulty': difficulty,
     'size': size,
+    'completed': completed,
     'dailyDateKeyUtc': dailyDateKeyUtc,
-    'startedAt': FirestoreTimestamp.toNullableTimestamp(startedAtUtc),
+    'startedAt': FirestoreTimestamp.toTimestamp(startedAtUtc),
     'completedAt': FirestoreTimestamp.toTimestamp(completedAtUtc),
     'sessionUpdatedAt': FirestoreTimestamp.toNullableTimestamp(
       sessionUpdatedAtUtc,
@@ -130,26 +146,52 @@ class RunResultFirestoreModel {
     'elapsedMs': elapsedMs,
     'moveCount': moveCount,
     'hintsUsed': hintsUsed,
+    'engineVersion': engineVersion,
+    'appVersion': appVersion,
+    'createdAt': FirestoreTimestamp.toTimestamp(createdAtUtc),
+    'updatedAt': FirestoreTimestamp.toTimestamp(updatedAtUtc),
   };
 
   factory RunResultFirestoreModel.fromFirestoreJson(Map<String, dynamic> json) {
+    final DateTime completedAtUtc = FirestoreTimestamp.toDateTime(
+      json['completedAt'],
+    );
+    final int elapsedMs = _int(json['elapsedMs']);
+    final DateTime startedAtUtc =
+        FirestoreTimestamp.toNullableDateTime(json['startedAt']) ??
+        completedAtUtc.subtract(Duration(milliseconds: elapsedMs));
+    final DateTime createdAtUtc =
+        FirestoreTimestamp.toNullableDateTime(json['createdAt']) ??
+        completedAtUtc;
+    final DateTime updatedAtUtc =
+        FirestoreTimestamp.toNullableDateTime(json['updatedAt']) ??
+        createdAtUtc;
+
     return RunResultFirestoreModel(
       schemaVersion: _int(json['schemaVersion'], defaultValue: 1),
       runId: _requiredString(json, 'runId'),
       uid: _requiredString(json, 'uid'),
       puzzleType: _requiredString(json, 'puzzleType'),
       mode: _requiredString(json, 'mode'),
+      seed: _nullableString(json['seed']) ?? '',
       difficulty: _requiredString(json, 'difficulty'),
       size: _requiredString(json, 'size'),
+      completed: _bool(json['completed'], defaultValue: true),
       dailyDateKeyUtc: _nullableString(json['dailyDateKeyUtc']),
-      startedAtUtc: FirestoreTimestamp.toNullableDateTime(json['startedAt']),
-      completedAtUtc: FirestoreTimestamp.toDateTime(json['completedAt']),
+      startedAtUtc: startedAtUtc,
+      completedAtUtc: completedAtUtc,
       sessionUpdatedAtUtc: FirestoreTimestamp.toNullableDateTime(
         json['sessionUpdatedAt'],
       ),
-      elapsedMs: _int(json['elapsedMs']),
+      elapsedMs: elapsedMs,
       moveCount: _int(json['moveCount']),
       hintsUsed: _int(json['hintsUsed']),
+      engineVersion:
+          _nullableString(json['engineVersion']) ?? unknownAppMetadataValue,
+      appVersion:
+          _nullableString(json['appVersion']) ?? unknownAppMetadataValue,
+      createdAtUtc: createdAtUtc,
+      updatedAtUtc: updatedAtUtc,
     );
   }
 }

@@ -50,8 +50,10 @@ void main() {
         uid: 'uid-123',
         puzzleType: 'sudoku_classic',
         mode: 'daily',
+        seed: 'seed-123',
         difficulty: 'hard',
         size: '9x9',
+        completed: true,
         dailyDateKeyUtc: '2026-06-20',
         startedAtUtc: DateTime.utc(2026, 6, 20, 8),
         completedAtUtc: DateTime.utc(2026, 6, 20, 8, 5),
@@ -59,6 +61,10 @@ void main() {
         elapsedMs: 300000,
         moveCount: 45,
         hintsUsed: 1,
+        engineVersion: '1.0.0',
+        appVersion: '1.0.0+1',
+        createdAtUtc: DateTime.utc(2026, 6, 20, 8, 6),
+        updatedAtUtc: DateTime.utc(2026, 6, 20, 8, 7),
       );
 
       final json = runResultFirestoreConverter.toJson(model);
@@ -70,11 +76,24 @@ void main() {
       expect(restored.uid, model.uid);
       expect(restored.puzzleType, model.puzzleType);
       expect(restored.mode, model.mode);
+      expect(restored.seed, model.seed);
+      expect(restored.completed, isTrue);
       expect(restored.dailyDateKeyUtc, model.dailyDateKeyUtc);
+      expect(restored.startedAtUtc, model.startedAtUtc);
       expect(restored.completedAtUtc, model.completedAtUtc);
       expect(restored.elapsedMs, model.elapsedMs);
       expect(restored.moveCount, model.moveCount);
       expect(restored.hintsUsed, model.hintsUsed);
+      expect(restored.engineVersion, model.engineVersion);
+      expect(restored.appVersion, model.appVersion);
+      expect(restored.createdAtUtc, model.createdAtUtc);
+      expect(restored.updatedAtUtc, model.updatedAtUtc);
+      expect(json['seed'], 'seed-123');
+      expect(json['completed'], isTrue);
+      expect(json['engineVersion'], '1.0.0');
+      expect(json['appVersion'], '1.0.0+1');
+      expect(json['createdAt'], isA<Timestamp>());
+      expect(json['updatedAt'], isA<Timestamp>());
       expect(
         json.keys.toSet().intersection(<String>{
           'board',
@@ -200,12 +219,19 @@ void main() {
           'uid': 'uid-123',
           'puzzleType': 'sudoku_classic',
           'mode': 'random',
+          'seed': 'seed-123',
           'difficulty': 'easy',
           'size': '9x9',
+          'completed': true,
+          'startedAt': Timestamp.fromDate(DateTime.utc(2026, 6, 20, 7, 59)),
           'completedAt': '2026-06-20T08:00:00Z',
           'elapsedMs': 1,
           'moveCount': 1,
           'hintsUsed': 0,
+          'engineVersion': '1.0.0',
+          'appVersion': '1.0.0+1',
+          'createdAt': Timestamp.fromDate(DateTime.utc(2026, 6, 20, 8)),
+          'updatedAt': Timestamp.fromDate(DateTime.utc(2026, 6, 20, 8)),
         }),
         throwsFormatException,
       );

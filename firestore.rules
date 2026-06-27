@@ -146,32 +146,45 @@ service cloud.firestore {
     function validRun(data, uid, runId) {
       return onlyFields(data, [
           'completedAt',
+          'completed',
+          'appVersion',
+          'createdAt',
           'dailyDateKeyUtc',
           'difficulty',
           'elapsedMs',
+          'engineVersion',
           'hintsUsed',
           'mode',
           'moveCount',
           'puzzleType',
           'runId',
           'schemaVersion',
+          'seed',
           'sessionUpdatedAt',
           'size',
           'startedAt',
           'uid',
+          'updatedAt',
         ]) &&
         requiredFields(data, [
+          'appVersion',
           'completedAt',
+          'completed',
+          'createdAt',
           'difficulty',
           'elapsedMs',
+          'engineVersion',
           'hintsUsed',
           'mode',
           'moveCount',
           'puzzleType',
           'runId',
           'schemaVersion',
+          'seed',
           'size',
+          'startedAt',
           'uid',
+          'updatedAt',
         ]) &&
         hasNoBlockedClientFields(data) &&
         hasSchemaVersion(data) &&
@@ -179,18 +192,25 @@ service cloud.firestore {
         data.runId == runId &&
         isNonEmptyString(data.puzzleType, 64) &&
         (data.mode == 'daily' || data.mode == 'random') &&
+        data.seed is string &&
+        data.seed.size() <= 256 &&
         isNonEmptyString(data.difficulty, 48) &&
         isNonEmptyString(data.size, 32) &&
+        data.completed == true &&
         (
           (data.mode == 'daily' && hasField(data, 'dailyDateKeyUtc') && isDateKey(data.dailyDateKeyUtc)) ||
           (data.mode == 'random' && (!hasField(data, 'dailyDateKeyUtc') || data.dailyDateKeyUtc == null))
         ) &&
-        optionalTimestamp(data, 'startedAt') &&
+        data.startedAt is timestamp &&
         data.completedAt is timestamp &&
         optionalTimestamp(data, 'sessionUpdatedAt') &&
         isIntInRange(data.elapsedMs, 0, 2592000000) &&
         isIntInRange(data.moveCount, 0, 1000000) &&
-        isIntInRange(data.hintsUsed, 0, 10000);
+        isIntInRange(data.hintsUsed, 0, 10000) &&
+        isNonEmptyString(data.engineVersion, 64) &&
+        isNonEmptyString(data.appVersion, 64) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
     }
 
     function validStats(data, uid, puzzleType) {

@@ -10,6 +10,8 @@ import 'shared/theme/app_theme.dart';
 import 'shared/services/engine_registry_service.dart';
 import 'shared/providers/simple_theme_provider.dart';
 import 'shared/services/snack_bar_service.dart';
+import 'shared/sync/sync_lifecycle_controller.dart';
+import 'shared/sync/sync_providers.dart';
 // Preloading disabled: puzzles will be generated on demand only
 
 Future<void> main() async {
@@ -77,13 +79,34 @@ class BrainiaxApp extends ConsumerStatefulWidget {
   ConsumerState<BrainiaxApp> createState() => _BrainiaxAppState();
 }
 
-class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
+class _BrainiaxAppState extends ConsumerState<BrainiaxApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(ref.read(analyticsServiceProvider).appOpen());
+      ref.read(syncLifecycleControllerProvider).scheduleStartupFlush();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    unawaited(
+      ref
+          .read(syncLifecycleControllerProvider)
+          .flushPending(SyncLifecycleTrigger.resume),
+    );
   }
 
   @override

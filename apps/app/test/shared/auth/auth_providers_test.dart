@@ -4,8 +4,12 @@ import 'package:app/shared/auth/auth_providers.dart';
 import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
 import 'package:app/shared/auth/user_identity.dart';
+import 'package:app/shared/analytics/analytics_events.dart';
+import 'package:app/shared/analytics/analytics_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../analytics/fake_analytics_service.dart';
 
 void main() {
   group('auth providers', () {
@@ -54,8 +58,12 @@ void main() {
           UserIdentity(uid: 'anon-user', isAnonymous: true),
         ),
       );
+      final analytics = FakeAnalyticsService();
       final container = ProviderContainer(
-        overrides: [authRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          analyticsServiceProvider.overrideWithValue(analytics),
+        ],
       );
       addTearDown(() async {
         container.dispose();
@@ -70,6 +78,10 @@ void main() {
       expect(repository.lastTimeout, const Duration(milliseconds: 250));
       expect(container.read(currentUserIdentityProvider)?.uid, 'anon-user');
       expect(container.read(authBootstrapControllerProvider).hasError, isFalse);
+      expect(analytics.events.map((event) => event.name), <String>[
+        AnalyticsEvents.authAnonymousBootstrapStarted,
+        AnalyticsEvents.authAnonymousBootstrapSucceeded,
+      ]);
     });
 
     test('bootstrap records errors without rethrowing', () async {
@@ -80,8 +92,12 @@ void main() {
           const Duration(milliseconds: 50),
         ),
       );
+      final analytics = FakeAnalyticsService();
       final container = ProviderContainer(
-        overrides: [authRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          analyticsServiceProvider.overrideWithValue(analytics),
+        ],
       );
       addTearDown(() async {
         container.dispose();
@@ -97,6 +113,16 @@ void main() {
       expect(bootstrapState.error, isA<TimeoutException>());
       expect(repository.signInCalls, 1);
       expect(container.read(currentUserIdentityProvider), isNull);
+      expect(analytics.events.map((event) => event.name), <String>[
+        AnalyticsEvents.authAnonymousBootstrapStarted,
+        AnalyticsEvents.authAnonymousBootstrapFailed,
+      ]);
+      expect(
+        analytics
+            .lastEventNamed(AnalyticsEvents.authAnonymousBootstrapFailed)
+            ?.parameters,
+        <String, Object?>{'reason': 'TimeoutException'},
+      );
     });
 
     test('bootstrap skips sign-in when already authenticated', () async {

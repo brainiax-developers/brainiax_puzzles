@@ -69,6 +69,68 @@ void main() {
       });
     });
 
+    test('routes auth link and sign-in flow events by upgrade path', () async {
+      final client = _FakeAnalyticsClient();
+      final service = FirebaseAnalyticsService(client: client);
+
+      await service.authFlowStarted(
+        provider: 'google',
+        upgradePath: 'anonymous_link',
+      );
+      await service.authFlowSucceeded(
+        provider: 'google',
+        upgradePath: 'anonymous_link',
+        resultStatus: 'linked',
+      );
+      await service.authFlowCancelled(
+        provider: 'google',
+        upgradePath: 'direct_sign_in',
+        resultStatus: 'cancelled',
+      );
+      await service.authFlowUnavailable(
+        provider: 'apple',
+        upgradePath: 'direct_sign_in',
+        reason: 'apple-unavailable',
+        resultStatus: 'recoverableFailure',
+      );
+
+      expect(client.loggedEvents.map((event) => event.name), <String>[
+        AnalyticsEvents.authLinkStarted,
+        AnalyticsEvents.authLinkSucceeded,
+        AnalyticsEvents.authSignInCancelled,
+        AnalyticsEvents.authSignInUnavailable,
+      ]);
+      expect(client.loggedEvents[1].parameters, <String, Object>{
+        AnalyticsParameters.provider: 'google',
+        AnalyticsParameters.upgradePath: 'anonymous_link',
+        AnalyticsParameters.resultStatus: 'linked',
+      });
+      expect(client.loggedEvents[3].parameters, <String, Object>{
+        AnalyticsParameters.provider: 'apple',
+        AnalyticsParameters.upgradePath: 'direct_sign_in',
+        AnalyticsParameters.reason: 'apple-unavailable',
+        AnalyticsParameters.resultStatus: 'recoverableFailure',
+      });
+    });
+
+    test('logs anonymous auth bootstrap outcomes', () async {
+      final client = _FakeAnalyticsClient();
+      final service = FirebaseAnalyticsService(client: client);
+
+      await service.authAnonymousBootstrapStarted();
+      await service.authAnonymousBootstrapSucceeded();
+      await service.authAnonymousBootstrapFailed(reason: 'TimeoutException');
+
+      expect(client.loggedEvents.map((event) => event.name), <String>[
+        AnalyticsEvents.authAnonymousBootstrapStarted,
+        AnalyticsEvents.authAnonymousBootstrapSucceeded,
+        AnalyticsEvents.authAnonymousBootstrapFailed,
+      ]);
+      expect(client.loggedEvents.last.parameters, <String, Object>{
+        AnalyticsParameters.reason: 'TimeoutException',
+      });
+    });
+
     test('swallows analytics client failures', () async {
       final client = _FakeAnalyticsClient(throwOnLog: true);
       final service = FirebaseAnalyticsService(client: client);
@@ -76,6 +138,15 @@ void main() {
       await expectLater(service.appOpen(), completes);
       await expectLater(
         service.syncFailed(attempted: 2, failed: 1, reason: 'network'),
+        completes,
+      );
+      await expectLater(
+        service.authFlowFailed(
+          provider: 'google',
+          upgradePath: 'anonymous_link',
+          reason: 'network',
+          resultStatus: 'recoverableFailure',
+        ),
         completes,
       );
     });

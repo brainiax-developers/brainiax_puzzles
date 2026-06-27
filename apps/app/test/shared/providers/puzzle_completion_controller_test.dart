@@ -99,6 +99,8 @@ void main() {
         runItem.payload['sessionUpdatedAtUtc'],
         seededRun.updatedAtUtc.toUtc().toIso8601String(),
       );
+      expect(runItem.payload['engineVersion'], puzzle.meta.engineVersion);
+      expect(runItem.payload['completed'], isTrue);
       expect(runItem.payload.containsKey('generatedPuzzleJson'), isFalse);
       expect(runItem.payload.containsKey('board'), isFalse);
     },

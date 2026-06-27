@@ -69,6 +69,9 @@ class AuthBootstrapController extends AsyncNotifier<void> {
     }
 
     state = const AsyncLoading();
+    await _trackAnalytics(
+      () => ref.read(analyticsServiceProvider).authAnonymousBootstrapStarted(),
+    );
 
     try {
       final authState = await repository.signInAnonymously(timeout: timeout);
@@ -83,13 +86,31 @@ class AuthBootstrapController extends AsyncNotifier<void> {
           );
         }
       }
+      await _trackAnalytics(
+        () => ref
+            .read(analyticsServiceProvider)
+            .authAnonymousBootstrapSucceeded(),
+      );
       state = const AsyncData(null);
     } catch (error, stackTrace) {
       if (kDebugMode) {
         debugPrint('Anonymous authentication bootstrap failed: $error');
         debugPrint('App will continue without authentication.');
       }
+      await _trackAnalytics(
+        () => ref
+            .read(analyticsServiceProvider)
+            .authAnonymousBootstrapFailed(reason: error.runtimeType.toString()),
+      );
       state = AsyncError(error, stackTrace);
+    }
+  }
+
+  Future<void> _trackAnalytics(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {
+      // Analytics failures must never block account bootstrap.
     }
   }
 }

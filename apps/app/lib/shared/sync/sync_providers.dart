@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_metadata/app_metadata_providers.dart';
 import '../analytics/analytics_providers.dart';
 import '../auth/auth_providers.dart';
 import '../auth/auth_repository.dart';
@@ -16,6 +17,7 @@ import '../stats/stats_models.dart';
 import '../streak/daily_streak_models.dart';
 import 'firestore_sync_repository.dart';
 import 'sync_engine.dart';
+import 'sync_lifecycle_controller.dart';
 import 'sync_queue.dart';
 import 'sync_queue_item.dart';
 import 'sync_service.dart';
@@ -38,7 +40,10 @@ final firestoreSyncRepositoryProvider = Provider<SyncRepository?>((ref) {
   if (firestore == null) {
     return null;
   }
-  return FirestoreSyncRepository(firestore);
+  return FirestoreSyncRepository(
+    firestore,
+    appMetadata: ref.watch(appBuildMetadataProvider),
+  );
 });
 
 final syncFailureReporterProvider = Provider<SyncFailureReporter?>((ref) {
@@ -49,11 +54,11 @@ final syncFailureReporterProvider = Provider<SyncFailureReporter?>((ref) {
 });
 
 final syncEngineProvider = FutureProvider<SyncEngine?>((ref) async {
-  final SyncQueue queue = await ref.watch(syncQueueProvider.future);
   final SyncRepository? repository = ref.watch(firestoreSyncRepositoryProvider);
   if (repository == null) {
     return null;
   }
+  final SyncQueue queue = await ref.watch(syncQueueProvider.future);
   final AuthRepository authRepository = ref.watch(authRepositoryProvider);
   final SyncFailureReporter? failureReporter = ref.watch(
     syncFailureReporterProvider,
@@ -200,6 +205,19 @@ class SyncController {
 }
 
 final syncControllerProvider = Provider<SyncController>(SyncController.new);
+
+final syncLifecycleControllerProvider = Provider<SyncLifecycleController>((
+  ref,
+) {
+  final SyncController syncController = ref.watch(syncControllerProvider);
+  final SyncFailureReporter? failureReporter = ref.watch(
+    syncFailureReporterProvider,
+  );
+  return SyncLifecycleController(
+    processPending: syncController.processPending,
+    failureReporter: failureReporter,
+  );
+});
 
 class _CrashReportingSyncFailureReporter implements SyncFailureReporter {
   const _CrashReportingSyncFailureReporter(this._crashReporting);

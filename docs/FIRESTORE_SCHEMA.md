@@ -131,19 +131,25 @@ store in-progress board state.
 | `uid` | string | Firebase Auth uid. |
 | `puzzleType` | string | Puzzle type key. |
 | `mode` | string | `daily` or `random`. |
+| `seed` | string | Puzzle seed metadata. No generated puzzle payload is stored. |
 | `difficulty` | string | Difficulty key/label. |
 | `size` | string | Puzzle size label. |
+| `completed` | boolean | Always `true` for uploaded completed-run summaries. |
 | `dailyDateKeyUtc` | string, null | `YYYY-MM-DD` for daily runs. |
-| `startedAt` | Timestamp, null | Run start time if known. |
+| `startedAt` | Timestamp | Run start time. Falls back to `completedAt - elapsedMs` when older local queue items omitted it. |
 | `completedAt` | Timestamp | Completion time. |
 | `sessionUpdatedAt` | Timestamp, null | Last local session update time. |
 | `elapsedMs` | number | Completion duration. |
-| `moveCount` | number | User move count. |
+| `moveCount` | number | User move count. This is the stable counter field; raw `moves` history is prohibited. |
 | `hintsUsed` | number | Hints used. |
+| `engineVersion` | string | Puzzle engine version metadata, or `unknown` if unavailable from older local data. |
+| `appVersion` | string | App build metadata, or `unknown` if no build-time version source is configured. |
+| `createdAt` | Timestamp | Firestore metadata creation timestamp for the remote summary document. |
+| `updatedAt` | Timestamp | Firestore metadata update timestamp for the remote summary document. |
 
 Do not add `board`, `cells`, `grid`, `generatedPuzzleJson`, `solution`,
-`activeRunState`, `moves`, or seed-derived generated puzzle payload fields to
-this document.
+`activeRunState`, `moves`, solver output, clue grids, user-entered cells, or
+seed-derived generated puzzle payload fields to this document.
 
 ### `/users/{uid}/dailyStreak/state`
 

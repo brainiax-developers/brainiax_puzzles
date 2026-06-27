@@ -117,6 +117,16 @@ void main() {
         <String, Object?>{
           'provider': 'google',
           'upgrade_path': 'anonymous_link',
+          'result_status': 'linked',
+        },
+      );
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authLinkStarted)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'anonymous_link',
         },
       );
       verify(() => anonUser.linkWithCredential(any())).called(1);
@@ -144,7 +154,17 @@ void main() {
       expect(result.authState?.identity?.uid, 'google-user');
       expect(
         analyticsService
-            .lastEventNamed(AnalyticsEvents.authLinkSucceeded)
+            .lastEventNamed(AnalyticsEvents.authSignInSucceeded)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'direct_sign_in',
+          'result_status': 'signedIn',
+        },
+      );
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authSignInStarted)
             ?.parameters,
         <String, Object?>{
           'provider': 'google',
@@ -164,6 +184,16 @@ void main() {
       final result = await repository.signInWithGoogle();
 
       expect(result.status, GoogleSignInResultStatus.cancelled);
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authLinkCancelled)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'anonymous_link',
+          'result_status': 'cancelled',
+        },
+      );
       verifyNever(() => anonUser.linkWithCredential(any()));
       verifyNever(() => firebaseAuth.signInWithCredential(any()));
     });
@@ -188,6 +218,17 @@ void main() {
         expect(result.failure?.code, 'credential-already-in-use');
         expect(result.authState?.identity?.uid, 'anon-user');
         expect(result.authState?.isAnonymous, isTrue);
+        expect(
+          analyticsService
+              .lastEventNamed(AnalyticsEvents.authLinkFailed)
+              ?.parameters,
+          <String, Object?>{
+            'provider': 'google',
+            'upgrade_path': 'anonymous_link',
+            'reason': 'credential-already-in-use',
+            'result_status': 'recoverableFailure',
+          },
+        );
         verify(() => anonUser.linkWithCredential(any())).called(1);
         verifyNever(() => firebaseAuth.signInWithCredential(any()));
       },
@@ -207,6 +248,40 @@ void main() {
       expect(result.status, GoogleSignInResultStatus.recoverableFailure);
       expect(result.failure?.code, 'network-request-failed');
       expect(result.failure?.message, contains('network connection'));
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authSignInFailed)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'direct_sign_in',
+          'reason': 'network-request-failed',
+          'result_status': 'recoverableFailure',
+        },
+      );
+    });
+
+    test('reports Google provider unavailability distinctly', () async {
+      when(() => firebaseAuth.currentUser).thenReturn(null);
+      when(
+        () => googleSignInClient.signIn(),
+      ).thenThrow(const GoogleSignInUnavailableException('Google unavailable'));
+
+      final result = await repository.signInWithGoogle();
+
+      expect(result.status, GoogleSignInResultStatus.recoverableFailure);
+      expect(result.failure?.code, 'google-unavailable');
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authSignInUnavailable)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'direct_sign_in',
+          'reason': 'google-unavailable',
+          'result_status': 'recoverableFailure',
+        },
+      );
     });
 
     test(
@@ -224,6 +299,17 @@ void main() {
         expect(result.status, AppleSignInResultStatus.recoverableFailure);
         expect(result.failure?.code, 'apple-unavailable');
         expect(result.failure?.message, contains('Android'));
+        expect(
+          analyticsService
+              .lastEventNamed(AnalyticsEvents.authSignInUnavailable)
+              ?.parameters,
+          <String, Object?>{
+            'provider': 'apple',
+            'upgrade_path': 'direct_sign_in',
+            'reason': 'apple-unavailable',
+            'result_status': 'recoverableFailure',
+          },
+        );
         verifyNever(() => firebaseAuth.signInAnonymously());
         verifyNever(() => firebaseAuth.signInWithCredential(any()));
       },

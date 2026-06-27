@@ -14,6 +14,7 @@ void main() {
         'generatedPuzzleJson': '{"board":[[1,2],[3,4]]}',
         'payload': <String, Object?>{'notes': 'secret'},
         'notes': 'private note',
+        'seed': 'daily-seed',
         'clues': <int>[1, 2, 3],
       },
     );
@@ -60,7 +61,14 @@ void main() {
       expect(record.information, contains('puzzleType=kakuro_classic'));
       expect(
         record.information.join(' '),
-        isNot(anyOf(contains('board'), contains('notes'), contains('clues'))),
+        isNot(
+          anyOf(
+            contains('board'),
+            contains('notes'),
+            contains('clues'),
+            contains('seed'),
+          ),
+        ),
       );
     },
   );

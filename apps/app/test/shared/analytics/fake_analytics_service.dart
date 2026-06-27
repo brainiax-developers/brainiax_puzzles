@@ -171,19 +171,116 @@ class FakeAnalyticsService implements AnalyticsService {
   }
 
   @override
+  Future<void> authAnonymousBootstrapStarted() async {
+    events.add(
+      const LoggedAnalyticsEvent(
+        name: AnalyticsEvents.authAnonymousBootstrapStarted,
+      ),
+    );
+  }
+
+  @override
+  Future<void> authAnonymousBootstrapSucceeded() async {
+    events.add(
+      const LoggedAnalyticsEvent(
+        name: AnalyticsEvents.authAnonymousBootstrapSucceeded,
+      ),
+    );
+  }
+
+  @override
+  Future<void> authAnonymousBootstrapFailed({String? reason}) async {
+    events.add(
+      LoggedAnalyticsEvent(
+        name: AnalyticsEvents.authAnonymousBootstrapFailed,
+        parameters: _reasonParameters(reason),
+      ),
+    );
+  }
+
+  @override
+  Future<void> authFlowStarted({
+    required String provider,
+    required String upgradePath,
+  }) async {
+    _addAuthFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkStarted,
+      signInEvent: AnalyticsEvents.authSignInStarted,
+      provider: provider,
+      upgradePath: upgradePath,
+    );
+  }
+
+  @override
+  Future<void> authFlowSucceeded({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) async {
+    _addAuthFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkSucceeded,
+      signInEvent: AnalyticsEvents.authSignInSucceeded,
+      provider: provider,
+      upgradePath: upgradePath,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowFailed({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) async {
+    _addAuthFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkFailed,
+      signInEvent: AnalyticsEvents.authSignInFailed,
+      provider: provider,
+      upgradePath: upgradePath,
+      reason: reason,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowCancelled({
+    required String provider,
+    required String upgradePath,
+    String? resultStatus,
+  }) async {
+    _addAuthFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkCancelled,
+      signInEvent: AnalyticsEvents.authSignInCancelled,
+      provider: provider,
+      upgradePath: upgradePath,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
+  Future<void> authFlowUnavailable({
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) async {
+    _addAuthFlowEvent(
+      linkEvent: AnalyticsEvents.authLinkUnavailable,
+      signInEvent: AnalyticsEvents.authSignInUnavailable,
+      provider: provider,
+      upgradePath: upgradePath,
+      reason: reason,
+      resultStatus: resultStatus,
+    );
+  }
+
+  @override
   Future<void> authLinkSucceeded({
     required String provider,
     required String upgradePath,
   }) async {
-    events.add(
-      LoggedAnalyticsEvent(
-        name: AnalyticsEvents.authLinkSucceeded,
-        parameters: <String, Object?>{
-          AnalyticsParameters.provider: provider,
-          AnalyticsParameters.upgradePath: upgradePath,
-        },
-      ),
-    );
+    await authFlowSucceeded(provider: provider, upgradePath: upgradePath);
   }
 
   @override
@@ -221,5 +318,38 @@ class FakeAnalyticsService implements AnalyticsService {
         parameters: parameters,
       ),
     );
+  }
+
+  void _addAuthFlowEvent({
+    required String linkEvent,
+    required String signInEvent,
+    required String provider,
+    required String upgradePath,
+    String? reason,
+    String? resultStatus,
+  }) {
+    final Map<String, Object?> parameters = <String, Object?>{
+      AnalyticsParameters.provider: provider,
+      AnalyticsParameters.upgradePath: upgradePath,
+    };
+    if (reason != null && reason.isNotEmpty) {
+      parameters[AnalyticsParameters.reason] = reason;
+    }
+    if (resultStatus != null && resultStatus.isNotEmpty) {
+      parameters[AnalyticsParameters.resultStatus] = resultStatus;
+    }
+    events.add(
+      LoggedAnalyticsEvent(
+        name: upgradePath == 'anonymous_link' ? linkEvent : signInEvent,
+        parameters: parameters,
+      ),
+    );
+  }
+
+  Map<String, Object?> _reasonParameters(String? reason) {
+    if (reason == null || reason.isEmpty) {
+      return const <String, Object?>{};
+    }
+    return <String, Object?>{AnalyticsParameters.reason: reason};
   }
 }
