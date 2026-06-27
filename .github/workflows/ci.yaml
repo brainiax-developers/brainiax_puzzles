@@ -16,6 +16,8 @@ jobs:
     if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -40,7 +42,15 @@ jobs:
           melos bootstrap
 
       - name: Analyze (root)
-        run: melos analyze
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            export MELOS_ANALYZE_DIFF="${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            export MELOS_ANALYZE_DIFF="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          echo "Using MELOS_ANALYZE_DIFF=${MELOS_ANALYZE_DIFF:-<working-tree-only>}"
+          melos analyze
 
       - name: Test (root)
         run: melos test
@@ -61,6 +71,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2

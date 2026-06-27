@@ -30,7 +30,7 @@ dev_dependencies:
 # (Optional) Melos scripts live here now
 melos:
   scripts:
-    analyze: melos exec -c 1 -- flutter analyze || dart analyze
+    analyze: dart run bin/melos_analyze.dart
     test: melos exec -c 1 -- flutter test --no-pub || dart test
     format: melos exec -c 1 -- dart format .
     coverage: melos exec --scope=app -- flutter test --no-pub --coverage
