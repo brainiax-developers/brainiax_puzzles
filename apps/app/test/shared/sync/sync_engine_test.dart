@@ -278,6 +278,11 @@ class _FakeAuthRepository implements AuthRepository {
     }
     return _currentState;
   }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    return GoogleSignInResult.signedIn(_currentState);
+  }
 }
 
 class _FakeSyncRepository implements SyncRepository {

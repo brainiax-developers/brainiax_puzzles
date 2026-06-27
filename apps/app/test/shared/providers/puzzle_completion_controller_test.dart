@@ -279,6 +279,11 @@ class _UnusedAuthRepository implements AuthRepository {
   }) async {
     return currentAuthState;
   }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    return GoogleSignInResult.signedIn(currentAuthState);
+  }
 }
 
 class _UnusedSyncRepository implements SyncRepository {

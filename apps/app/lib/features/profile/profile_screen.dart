@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/account/account_upgrade_prompt_providers.dart';
 import '../../shared/account/account_upgrade_prompt_service.dart';
+import '../../shared/auth/auth_providers.dart';
+import '../../shared/auth/auth_repository.dart';
 import '../../shared/models/puzzle_type.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/sync/sync_engine.dart';
@@ -22,6 +25,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isSyncing = false;
+  bool _isSigningInWithGoogle = false;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +41,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           dashboard: dashboard,
           upgradePrompt: upgradePrompt,
           isSyncing: _isSyncing,
+          isSigningInWithGoogle: _isSigningInWithGoogle,
           onSyncNow: dashboard.syncSummary.canSyncNow ? _handleSyncNow : null,
+          onSignInWithGoogle:
+              dashboard.authAvailable &&
+                  dashboard.accountState != ProfileAccountState.signedIn
+              ? _handleSignInWithGoogle
+              : null,
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => _ProfileLoadError(
@@ -77,6 +87,81 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     }
   }
+
+  Future<void> _handleSignInWithGoogle() async {
+    if (_isSigningInWithGoogle) {
+      return;
+    }
+
+    setState(() {
+      _isSigningInWithGoogle = true;
+    });
+
+    try {
+      final GoogleSignInResult result = await ref
+          .read(authRepositoryProvider)
+          .signInWithGoogle();
+
+      if (result.succeeded) {
+        await _triggerProfileSyncAfterGoogleSignIn(result);
+      }
+
+      ref.invalidate(authStateProvider);
+      ref.invalidate(currentUserIdentityProvider);
+      ref.invalidate(profileDashboardProvider);
+      ref.invalidate(accountUpgradePromptEligibilityProvider);
+
+      if (!mounted || result.status == GoogleSignInResultStatus.cancelled) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_googleSignInResultMessage(result))),
+      );
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Google sign-in failed unexpectedly: $error');
+        debugPrint('$stackTrace');
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Google sign-in is unavailable right now. You can keep playing normally.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSigningInWithGoogle = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _triggerProfileSyncAfterGoogleSignIn(
+    GoogleSignInResult result,
+  ) async {
+    final identity = result.authState?.identity;
+    if (identity == null) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(firestoreSyncRepositoryProvider)
+          ?.ensureUserProfile(identity);
+      await ref.read(syncControllerProvider).processPending();
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Post Google sign-in profile sync failed: $error');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
 }
 
 class _ProfileBody extends StatelessWidget {
@@ -84,13 +169,17 @@ class _ProfileBody extends StatelessWidget {
     required this.dashboard,
     required this.upgradePrompt,
     required this.isSyncing,
+    required this.isSigningInWithGoogle,
     required this.onSyncNow,
+    required this.onSignInWithGoogle,
   });
 
   final ProfileDashboardData dashboard;
   final AccountUpgradePromptEligibility? upgradePrompt;
   final bool isSyncing;
+  final bool isSigningInWithGoogle;
   final VoidCallback? onSyncNow;
+  final VoidCallback? onSignInWithGoogle;
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +193,9 @@ class _ProfileBody extends StatelessWidget {
         _AccountStatusCard(
           dashboard: dashboard,
           isSyncing: isSyncing,
+          isSigningInWithGoogle: isSigningInWithGoogle,
           onSyncNow: onSyncNow,
+          onSignInWithGoogle: onSignInWithGoogle,
         ),
         SizedBox(height: spacing.l),
         _OverviewCard(overview: dashboard.overview),
@@ -146,12 +237,16 @@ class _AccountStatusCard extends StatelessWidget {
   const _AccountStatusCard({
     required this.dashboard,
     required this.isSyncing,
+    required this.isSigningInWithGoogle,
     required this.onSyncNow,
+    required this.onSignInWithGoogle,
   });
 
   final ProfileDashboardData dashboard;
   final bool isSyncing;
+  final bool isSigningInWithGoogle;
   final VoidCallback? onSyncNow;
+  final VoidCallback? onSignInWithGoogle;
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +354,33 @@ class _AccountStatusCard extends StatelessWidget {
                       )
                     : const Icon(Icons.sync_outlined),
                 label: Text(isSyncing ? 'Syncing...' : 'Sync Now'),
+              ),
+            ),
+          ],
+          if (onSignInWithGoogle != null) ...[
+            SizedBox(height: spacing.s),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const ValueKey('profile-google-sign-in-button'),
+                onPressed: isSigningInWithGoogle ? null : onSignInWithGoogle,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF162846),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: isSigningInWithGoogle
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login_outlined),
+                label: Text(
+                  isSigningInWithGoogle
+                      ? 'Connecting...'
+                      : 'Continue with Google',
+                ),
               ),
             ),
           ],
@@ -857,6 +979,20 @@ String _syncResultMessage(SyncEngineResult result) {
     return 'Sync failed for ${result.failed} item${result.failed == 1 ? '' : 's'}.';
   }
   return 'Synced ${result.synced} item${result.synced == 1 ? '' : 's'}; ${result.failed} still need attention.';
+}
+
+String _googleSignInResultMessage(GoogleSignInResult result) {
+  switch (result.status) {
+    case GoogleSignInResultStatus.linked:
+      return 'Google account connected. Your existing progress stayed attached.';
+    case GoogleSignInResultStatus.signedIn:
+      return 'Signed in with Google. You can keep playing normally.';
+    case GoogleSignInResultStatus.cancelled:
+      return '';
+    case GoogleSignInResultStatus.recoverableFailure:
+      return result.failure?.message ??
+          'Google sign-in could not finish. You can keep playing normally.';
+  }
 }
 
 String _formatDuration(Duration? duration) {

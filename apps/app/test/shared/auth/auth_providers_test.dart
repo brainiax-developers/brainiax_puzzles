@@ -162,6 +162,11 @@ class _FakeAuthRepository implements AuthRepository {
     return nextState;
   }
 
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    return GoogleSignInResult.signedIn(_currentState);
+  }
+
   void emit(AuthState nextState) {
     _currentState = nextState;
     _controller.add(nextState);

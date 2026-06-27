@@ -4,12 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart' as google_sign_in;
 
 import 'auth_repository.dart';
 import 'auth_state.dart';
 import 'user_identity.dart';
 
 const Duration authBootstrapTimeout = Duration(seconds: 5);
+
+final googleSignInClientProvider = Provider<GoogleSignInClient>((ref) {
+  return GoogleSignInPluginClient(google_sign_in.GoogleSignIn.instance);
+});
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   if (Firebase.apps.isEmpty) {
@@ -19,7 +24,10 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   }
 
   try {
-    return FirebaseAuthRepository(firebase_auth.FirebaseAuth.instance);
+    return FirebaseAuthRepository(
+      firebase_auth.FirebaseAuth.instance,
+      googleSignInClient: ref.watch(googleSignInClientProvider),
+    );
   } catch (error) {
     return UnavailableAuthRepository('FirebaseAuth is unavailable: $error');
   }

@@ -46,7 +46,9 @@ class FirestoreSyncRepository implements SyncRepository {
         'uid': identity.uid,
         'lastSeenAt': FirestoreTimestamp.toTimestamp(nowUtc),
         'isAnonymous': identity.isAnonymous,
-        'providerIds': identity.isAnonymous
+        'providerIds': identity.providerIds.isNotEmpty
+            ? identity.providerIds
+            : identity.isAnonymous
             ? const <String>['anonymous']
             : const <String>[],
       };
