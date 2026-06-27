@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,24 +9,22 @@ import '../services/difficulty_preference_service.dart';
 import '../services/puzzle_local_store.dart';
 import '../services/puzzle_progress_service.dart';
 import '../stats/local_stats_service.dart';
+import '../stats/puzzle_run_result.dart';
 import '../stats/stats_models.dart';
 import '../streak/daily_streak_providers.dart';
 import '../streak/daily_streak_service.dart';
 import '../sync/sync_queue.dart';
+import '../sync/sync_providers.dart';
 import '../sync/sync_service.dart';
 import '../sync/sync_triggers.dart';
+import 'shared_preferences_provider.dart';
 
+export 'shared_preferences_provider.dart';
 export '../streak/daily_streak_providers.dart';
 export '../streak/daily_streak_models.dart';
 
 typedef PuzzleDifficultyKey = (PuzzleType puzzleType, String difficulty);
 typedef PuzzleDateKey = (PuzzleType puzzleType, DateTime date);
-
-final sharedPreferencesProvider = FutureProvider<SharedPreferences>((
-  ref,
-) async {
-  return SharedPreferences.getInstance();
-});
 
 class HomeStatsSnapshot {
   const HomeStatsSnapshot({
@@ -301,6 +301,13 @@ class PuzzleCompletionController {
       hintsUsed: hintsUsed,
       dailyDateKeyUtc: dailyDateKeyUtc,
     );
+    final PuzzleRunResult runResult = await _buildRunResult(
+      record: record,
+      puzzleType: puzzleType,
+      mode: mode,
+      completionTime: completionTime,
+      dailyDateKeyUtc: utcDayKey,
+    );
 
     _ref.invalidate(puzzleBestTimeProvider((puzzleType, difficulty)));
     _ref.invalidate(completionRecordsProvider);
@@ -324,9 +331,9 @@ class PuzzleCompletionController {
         await store.isDailyCompleted(puzzleType, utcDayKey);
     final DailyStreakStatus dailyStreak = await store.dailyStreakStatus();
     await _enqueueCompletionSync(
-      store: store,
-      record: record,
-      dailyStreak: dailyStreak,
+      runResult: runResult,
+      stats: await LocalStatsService(store).aggregateStats(),
+      dailyStreak: mode == PuzzleMode.daily ? dailyStreak : null,
     );
 
     return PuzzleCompletionStatus(
@@ -338,27 +345,55 @@ class PuzzleCompletionController {
   }
 
   Future<void> _enqueueCompletionSync({
-    required PuzzleLocalStore store,
-    required PuzzleCompletionRecord record,
-    required DailyStreakStatus dailyStreak,
+    required PuzzleRunResult runResult,
+    required PuzzleStatsAggregate stats,
+    required DailyStreakStatus? dailyStreak,
   }) async {
     try {
-      final PuzzleStatsAggregate stats = await LocalStatsService(
-        store,
-      ).aggregateStats();
-      final SharedPreferences prefs = await _ref.read(
-        sharedPreferencesProvider.future,
-      );
-      final SyncTriggers triggers = SyncTriggers(
-        syncService: SyncService(SharedPreferencesSyncQueue(prefs)),
-      );
-      await triggers.afterCompletionRecorded(
-        record: record,
-        stats: stats,
-        dailyStreak: dailyStreak,
-      );
+      final SyncController syncController = _ref.read(syncControllerProvider);
+      await syncController.enqueueRunResult(runResult);
+      await syncController.enqueueStatsSnapshot(stats);
+      if (dailyStreak != null) {
+        await syncController.enqueueDailyStreakSnapshot(dailyStreak);
+      }
+      unawaited(_syncPending(syncController));
     } catch (_) {
       // TODO(BX-0415): Report sync trigger failures through Crashlytics.
+    }
+  }
+
+  Future<PuzzleRunResult> _buildRunResult({
+    required PuzzleCompletionRecord record,
+    required PuzzleType puzzleType,
+    required PuzzleMode mode,
+    required Duration completionTime,
+    required String? dailyDateKeyUtc,
+  }) async {
+    final SharedPreferences prefs = await _ref.read(
+      sharedPreferencesProvider.future,
+    );
+    final PuzzleProgressService progress = PuzzleProgressService(prefs);
+    final ActivePuzzleRun? session = await progress.loadActiveRunFor(
+      type: puzzleType,
+      mode: mode,
+      dailyDateKeyUtc: mode == PuzzleMode.daily ? dailyDateKeyUtc : null,
+    );
+
+    return PuzzleRunResult.fromCompletionRecord(
+      record,
+      session: session,
+      startedAtUtc: session == null
+          ? record.completedAtUtc.subtract(completionTime)
+          : null,
+      sessionUpdatedAtUtc: session == null ? record.completedAtUtc : null,
+    );
+  }
+
+  Future<void> _syncPending(SyncController syncController) async {
+    try {
+      await syncController.processPending();
+    } catch (_) {
+      // Background sync failures must never block completion UX.
     }
   }
 }

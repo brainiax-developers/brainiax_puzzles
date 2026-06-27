@@ -9,8 +9,10 @@ import '../auth/auth_repository.dart';
 import '../firestore/firestore_providers.dart';
 import '../models/puzzle_completion_record.dart';
 import '../models/puzzle_type.dart';
-import '../providers/puzzle_local_store_providers.dart';
+import '../providers/shared_preferences_provider.dart';
+import '../stats/puzzle_run_result.dart';
 import '../stats/stats_models.dart';
+import '../streak/daily_streak_models.dart';
 import 'firestore_sync_repository.dart';
 import 'sync_engine.dart';
 import 'sync_queue.dart';
@@ -117,6 +119,12 @@ class SyncController {
   Future<void> enqueueCompletionRecord(PuzzleCompletionRecord record) async {
     final SyncService service = await _ref.read(syncServiceProvider.future);
     await service.enqueueCompletionRecord(record);
+    _invalidateQueueProviders();
+  }
+
+  Future<void> enqueueRunResult(PuzzleRunResult result) async {
+    final SyncService service = await _ref.read(syncServiceProvider.future);
+    await service.enqueueRunResult(result);
     _invalidateQueueProviders();
   }
 
