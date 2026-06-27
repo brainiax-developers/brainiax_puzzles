@@ -1,10 +1,13 @@
 import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
 import 'package:app/shared/auth/user_identity.dart';
+import 'package:app/shared/analytics/analytics_events.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../analytics/fake_analytics_service.dart';
 
 void main() {
   setUpAll(() {
@@ -14,14 +17,17 @@ void main() {
   group('FirebaseAuthRepository', () {
     late MockFirebaseAuth firebaseAuth;
     late MockGoogleSignInClient googleSignInClient;
+    late FakeAnalyticsService analyticsService;
     late FirebaseAuthRepository repository;
 
     setUp(() {
       firebaseAuth = MockFirebaseAuth();
       googleSignInClient = MockGoogleSignInClient();
+      analyticsService = FakeAnalyticsService();
       repository = FirebaseAuthRepository(
         firebaseAuth,
         googleSignInClient: googleSignInClient,
+        analyticsService: analyticsService,
       );
     });
 
@@ -104,6 +110,15 @@ void main() {
       expect(result.status, GoogleSignInResultStatus.linked);
       expect(result.authState?.identity?.uid, 'anon-user');
       expect(result.authState?.isAnonymous, isFalse);
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authLinkSucceeded)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'anonymous_link',
+        },
+      );
       verify(() => anonUser.linkWithCredential(any())).called(1);
       verifyNever(() => firebaseAuth.signInWithCredential(any()));
     });
@@ -127,6 +142,15 @@ void main() {
 
       expect(result.status, GoogleSignInResultStatus.signedIn);
       expect(result.authState?.identity?.uid, 'google-user');
+      expect(
+        analyticsService
+            .lastEventNamed(AnalyticsEvents.authLinkSucceeded)
+            ?.parameters,
+        <String, Object?>{
+          'provider': 'google',
+          'upgrade_path': 'direct_sign_in',
+        },
+      );
       verify(() => firebaseAuth.signInWithCredential(any())).called(1);
     });
 

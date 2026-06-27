@@ -1,11 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../shared/config/app_environment.dart';
 import '../../shared/models/models.dart';
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
@@ -73,8 +71,6 @@ Future<void> startRandomPuzzleFlow({
   if (!context.mounted) {
     return;
   }
-
-
 
   showDialog<void>(
     context: context,

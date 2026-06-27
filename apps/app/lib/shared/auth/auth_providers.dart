@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart' as google_sign_in;
 
+import '../analytics/analytics_providers.dart';
 import 'auth_repository.dart';
 import 'auth_state.dart';
 import 'user_identity.dart';
@@ -27,6 +28,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
     return FirebaseAuthRepository(
       firebase_auth.FirebaseAuth.instance,
       googleSignInClient: ref.watch(googleSignInClientProvider),
+      analyticsService: ref.watch(analyticsServiceProvider),
     );
   } catch (error) {
     return UnavailableAuthRepository('FirebaseAuth is unavailable: $error');

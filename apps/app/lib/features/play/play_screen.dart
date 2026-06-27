@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
+import '../../shared/analytics/analytics_providers.dart';
 import '../../shared/models/models.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/providers/game_state_provider.dart';
@@ -78,6 +79,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
   final Set<int> _sudokuHintFilled = <int>{};
   bool _shownSolvedDialog = false;
   String? _routeSeedOverride;
+  String? _trackedAnalyticsStartKey;
+  bool _trackedCompletionAnalytics = false;
 
   @override
   void initState() {
@@ -555,6 +558,121 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           (routeSeed != null && gameState.seed == routeSeed);
     }
     return true;
+  }
+
+  core.PuzzleMetadata? _analyticsPuzzleMeta(GameState? gameState) {
+    if (gameState != null) {
+      return gameState.puzzle.meta;
+    }
+    final routePuzzle = widget.puzzleInstance;
+    if (routePuzzle is core.GeneratedPuzzle<dynamic>) {
+      return routePuzzle.meta;
+    }
+    return null;
+  }
+
+  String _analyticsDifficulty(GameState? gameState) {
+    final String difficulty = gameState?.difficulty.isNotEmpty == true
+        ? gameState!.difficulty
+        : _analyticsPuzzleMeta(gameState)?.difficulty.level ??
+              widget.difficulty ??
+              '';
+    return difficulty.isEmpty ? 'unknown' : difficulty;
+  }
+
+  String _analyticsSize(GameState? gameState) {
+    final String size = gameState?.size.isNotEmpty == true
+        ? gameState!.size
+        : _analyticsPuzzleMeta(gameState)?.size.id ?? '';
+    return size.isEmpty ? 'unknown' : size;
+  }
+
+  void _maybeTrackStartForState(GameState? gameState) {
+    if (gameState == null ||
+        !_matchesRouteState(gameState) ||
+        gameState.isSolved ||
+        _dailyBlocked ||
+        _dailyCompletedView) {
+      return;
+    }
+
+    final String eventKey =
+        '${widget.mode.key}:${widget.puzzleType.key}:${gameState.seed}';
+    if (_trackedAnalyticsStartKey == eventKey) {
+      return;
+    }
+    _trackedAnalyticsStartKey = eventKey;
+
+    final analytics = ref.read(analyticsServiceProvider);
+    final String difficulty = _analyticsDifficulty(gameState);
+    final String size = _analyticsSize(gameState);
+    if (widget.mode == PuzzleMode.daily) {
+      unawaited(
+        analytics.dailyStarted(
+          puzzleType: widget.puzzleType,
+          difficulty: difficulty,
+          size: size,
+        ),
+      );
+      return;
+    }
+
+    unawaited(
+      analytics.puzzleStarted(
+        puzzleType: widget.puzzleType,
+        mode: widget.mode,
+        difficulty: difficulty,
+        size: size,
+      ),
+    );
+  }
+
+  Future<void> _trackHintUsed(GameState? gameState, {required int hintsUsed}) {
+    if (gameState == null || !_matchesRouteState(gameState)) {
+      return Future<void>.value();
+    }
+    return ref
+        .read(analyticsServiceProvider)
+        .hintUsed(
+          puzzleType: widget.puzzleType,
+          mode: widget.mode,
+          difficulty: _analyticsDifficulty(gameState),
+          size: _analyticsSize(gameState),
+          hintsUsed: hintsUsed,
+        );
+  }
+
+  Future<void> _trackCompletion(GameState gameState, Duration elapsed) async {
+    if (_trackedCompletionAnalytics) {
+      return;
+    }
+    _trackedCompletionAnalytics = true;
+
+    final analytics = ref.read(analyticsServiceProvider);
+    final String difficulty = _analyticsDifficulty(gameState);
+    final String size = _analyticsSize(gameState);
+
+    if (widget.mode == PuzzleMode.daily) {
+      await analytics.dailyCompleted(
+        puzzleType: widget.puzzleType,
+        difficulty: difficulty,
+        size: size,
+        elapsed: elapsed,
+        moveCount: _movesCount,
+        hintsUsed: _hintsUsed,
+      );
+      return;
+    }
+
+    await analytics.puzzleCompleted(
+      puzzleType: widget.puzzleType,
+      mode: widget.mode,
+      difficulty: difficulty,
+      size: size,
+      elapsed: elapsed,
+      moveCount: _movesCount,
+      hintsUsed: _hintsUsed,
+    );
   }
 
   Future<void> _clearPersistedProgress() async {
@@ -1083,6 +1201,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       _hintsUsed++;
     });
     await _persistSessionStats();
+    await _trackHintUsed(ref.read(gameStateProvider), hintsUsed: _hintsUsed);
   }
 
   ({int row, int col, int digit})? _computeSudokuHint(core.SudokuBoard board) {
@@ -1269,6 +1388,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         _isPaused = false;
         _isPlaying = true;
         _hasRecordedCompletion = false;
+        _trackedCompletionAnalytics = false;
         _completionStatus = null;
         _selectedSudokuCell = null;
         _statsLoaded = true;
@@ -1365,6 +1485,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         _isPaused = false;
         _isPlaying = true;
         _hasRecordedCompletion = false;
+        _trackedCompletionAnalytics = false;
         _completionStatus = null;
         _selectedSudokuCell = null;
         _statsLoaded = true;
@@ -1411,7 +1532,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: colors.primary.withOpacity(0.1),
+                        color: colors.primary.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.celebration, color: colors.primary),
@@ -1431,7 +1552,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                           Text(
                             'You solved ${widget.puzzleType.displayName}.',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurface.withOpacity(0.75),
+                              color: colors.onSurface.withValues(alpha: 0.75),
                             ),
                           ),
                         ],
@@ -1443,14 +1564,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 Text(
                   'Time $timeText - $_movesCount moves - ${_currentDifficultyLabel(next)}',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurface.withOpacity(0.65),
+                    color: colors.onSurface.withValues(alpha: 0.65),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _completionStatsText(next, timeText),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurface.withOpacity(0.65),
+                    color: colors.onSurface.withValues(alpha: 0.65),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1590,6 +1711,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       _hasRecordedCompletion = true;
       await _recordCompletion(next, elapsed);
     }
+    await _trackCompletion(next, elapsed);
 
     // Clear in-progress persistence after completion recording has been
     // attempted so resume state is not lost before durable stats are written.
@@ -2244,6 +2366,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               _selectedSudokuCell = null;
             });
           }
+          _maybeTrackStartForState(next);
         }
         final bool wasSolved = prev?.isSolved ?? false;
         final bool isSolved = next?.isSolved ?? false;
@@ -2252,6 +2375,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           unawaited(_handleCompletion(next));
         }
       });
+      _maybeTrackStartForState(ref.read(gameStateProvider));
     }
 
     return Scaffold(
@@ -2284,7 +2408,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         color: colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: colorScheme.outline.withOpacity(0.2),
+            color: colorScheme.outline.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -2364,7 +2488,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                 Text(
                   difficultyLabel,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.7),
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
             ],
@@ -2443,10 +2567,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
             decoration: BoxDecoration(
-              color: effectiveColor.withOpacity(enabled ? 0.1 : 0.06),
+              color: effectiveColor.withValues(alpha: enabled ? 0.1 : 0.06),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: effectiveColor.withOpacity(enabled ? 0.3 : 0.18),
+                color: effectiveColor.withValues(alpha: enabled ? 0.3 : 0.18),
                 width: 1,
               ),
             ),
@@ -2467,7 +2591,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                             vertical: 1,
                           ),
                           decoration: BoxDecoration(
-                            color: effectiveColor.withOpacity(0.9),
+                            color: effectiveColor.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -2507,7 +2631,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
           width: 2,
         ),
       ),
@@ -2605,7 +2729,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             Text(
               'Generating puzzle...',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -2640,14 +2764,14 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(
                       context,
-                    ).colorScheme.onSurface.withOpacity(0.8),
+                    ).colorScheme.onSurface.withValues(alpha: 0.8),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Switch(
                   value: _isCrossMode,
                   onChanged: (v) => setState(() => _isCrossMode = v),
-                  activeColor: Theme.of(context).colorScheme.primary,
+                  activeThumbColor: Theme.of(context).colorScheme.primary,
                 ),
               ],
             ),
@@ -2942,7 +3066,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.1),
+                    color: colorScheme.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -2958,7 +3082,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           Text(
             'Puzzle Canvas',
             style: theme.textTheme.titleLarge?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.7),
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -2966,7 +3090,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           Text(
             'Game logic will be implemented here',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.5),
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ),
           if (widget.puzzleInstance is core.GeneratedPuzzle) ...[
@@ -2974,7 +3098,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withOpacity(0.3),
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -3063,7 +3187,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         color: colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: colorScheme.outline.withOpacity(0.2),
+            color: colorScheme.outline.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -3080,10 +3204,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(colorScheme).withOpacity(0.1),
+                  color: _getStatusColor(colorScheme).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _getStatusColor(colorScheme).withOpacity(0.3),
+                    color: _getStatusColor(colorScheme).withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -3134,7 +3258,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
               child: Text(
                 _buildCompletionSummary(theme),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.7),
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -3164,12 +3288,16 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: colorScheme.onSurface.withOpacity(0.7)),
+          Icon(
+            icon,
+            size: 14,
+            color: colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
           const SizedBox(width: 4),
           Text(
             value,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.7),
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
             ),
           ),

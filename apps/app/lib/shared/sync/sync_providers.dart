@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../analytics/analytics_providers.dart';
 import '../auth/auth_providers.dart';
 import '../auth/auth_repository.dart';
+import '../crash/crash_reporting_providers.dart';
+import '../crash/crash_reporting_service.dart';
 import '../firestore/firestore_providers.dart';
 import '../models/puzzle_completion_record.dart';
 import '../models/puzzle_type.dart';
@@ -41,17 +42,10 @@ final firestoreSyncRepositoryProvider = Provider<SyncRepository?>((ref) {
 });
 
 final syncFailureReporterProvider = Provider<SyncFailureReporter?>((ref) {
-  if (Firebase.apps.isEmpty) {
-    // TODO(BX-0415): Provide a platform-safe Crashlytics abstraction.
-    return null;
-  }
-
-  try {
-    return _CrashlyticsSyncFailureReporter(FirebaseCrashlytics.instance);
-  } catch (_) {
-    // TODO(BX-0415): Surface Crashlytics availability through app services.
-    return null;
-  }
+  final CrashReportingService crashReporting = ref.watch(
+    crashReportingServiceProvider,
+  );
+  return _CrashReportingSyncFailureReporter(crashReporting);
 });
 
 final syncEngineProvider = FutureProvider<SyncEngine?>((ref) async {
@@ -69,6 +63,7 @@ final syncEngineProvider = FutureProvider<SyncEngine?>((ref) async {
     queue: queue,
     repository: repository,
     authRepository: authRepository,
+    analyticsService: ref.watch(analyticsServiceProvider),
     failureReporter: failureReporter,
   );
 });
@@ -206,10 +201,10 @@ class SyncController {
 
 final syncControllerProvider = Provider<SyncController>(SyncController.new);
 
-class _CrashlyticsSyncFailureReporter implements SyncFailureReporter {
-  const _CrashlyticsSyncFailureReporter(this._crashlytics);
+class _CrashReportingSyncFailureReporter implements SyncFailureReporter {
+  const _CrashReportingSyncFailureReporter(this._crashReporting);
 
-  final FirebaseCrashlytics _crashlytics;
+  final CrashReportingService _crashReporting;
 
   @override
   Future<void> recordSyncFailure(
@@ -218,18 +213,16 @@ class _CrashlyticsSyncFailureReporter implements SyncFailureReporter {
     SyncQueueItem? item,
     String? operation,
   }) {
-    return _crashlytics.recordError(
-      error,
-      stackTrace,
-      reason: operation == null
-          ? 'Brainiax sync failure'
-          : 'Brainiax sync failure: $operation',
-      information: <Object>[
-        if (item != null) 'syncItemId=${item.id}',
-        if (item != null) 'syncItemType=${item.type.key}',
-        if (item != null) 'syncItemAttempts=${item.attempts}',
-      ],
-      fatal: false,
+    return _crashReporting.reportNonFatal(
+      reason: 'sync_failure',
+      error: error,
+      stackTrace: stackTrace,
+      context: <String, Object?>{
+        'operation': operation,
+        'syncItemId': item?.id,
+        'syncItemType': item?.type.key,
+        'syncItemAttempts': item?.attempts,
+      },
     );
   }
 }

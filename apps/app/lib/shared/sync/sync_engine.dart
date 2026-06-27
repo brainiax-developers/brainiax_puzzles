@@ -1,3 +1,4 @@
+import '../analytics/analytics_service.dart';
 import '../auth/auth_repository.dart';
 import '../auth/user_identity.dart';
 import '../models/puzzle_type.dart';
@@ -44,12 +45,14 @@ class SyncEngine {
     required SyncQueue queue,
     required SyncRepository repository,
     required AuthRepository authRepository,
+    AnalyticsService? analyticsService,
     SyncFailureReporter? failureReporter,
     Duration authTimeout = const Duration(seconds: 5),
     DateTime Function()? nowUtc,
   }) : _queue = queue,
        _repository = repository,
        _authRepository = authRepository,
+       _analyticsService = analyticsService ?? const NoopAnalyticsService(),
        _failureReporter = failureReporter,
        _authTimeout = authTimeout,
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc());
@@ -57,6 +60,7 @@ class SyncEngine {
   final SyncQueue _queue;
   final SyncRepository _repository;
   final AuthRepository _authRepository;
+  final AnalyticsService _analyticsService;
   final SyncFailureReporter? _failureReporter;
   final Duration _authTimeout;
   final DateTime Function() _nowUtc;
@@ -93,6 +97,11 @@ class SyncEngine {
           operation: 'ensure-user-profile',
         );
         await _markItemsFailed(items, error, failedAtUtc: _nowUtc().toUtc());
+        await _analyticsService.syncFailed(
+          attempted: items.length,
+          failed: items.length,
+          reason: 'ensure_user_profile_failed',
+        );
         return SyncEngineResult(
           attempted: items.length,
           synced: 0,
@@ -128,6 +137,19 @@ class SyncEngine {
           );
           await _markItemFailed(item.id, error, failedAtUtc: _nowUtc().toUtc());
         }
+      }
+
+      if (failed > 0) {
+        await _analyticsService.syncFailed(
+          attempted: items.length,
+          failed: failed,
+          reason: 'item_upload_failed',
+        );
+      } else if (synced > 0) {
+        await _analyticsService.syncSucceeded(
+          attempted: items.length,
+          synced: synced,
+        );
       }
 
       return SyncEngineResult(

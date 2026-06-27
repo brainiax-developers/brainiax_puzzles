@@ -1,6 +1,7 @@
 import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
 import 'package:app/shared/auth/user_identity.dart';
+import 'package:app/shared/analytics/analytics_events.dart';
 import 'package:app/shared/models/models.dart';
 import 'package:app/shared/stats/puzzle_run_result.dart';
 import 'package:app/shared/stats/stats_models.dart';
@@ -10,6 +11,8 @@ import 'package:app/shared/sync/sync_queue.dart';
 import 'package:app/shared/sync/sync_queue_item.dart';
 import 'package:app/shared/sync/sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../analytics/fake_analytics_service.dart';
 
 void main() {
   test(
@@ -59,10 +62,12 @@ void main() {
       _completionItem(queueId: 'completion:run-success', runId: 'run-success'),
     ]);
     final repository = _FakeSyncRepository();
+    final analytics = FakeAnalyticsService();
     final engine = SyncEngine(
       queue: queue,
       repository: repository,
       authRepository: _authenticatedRepository(),
+      analyticsService: analytics,
       nowUtc: () => DateTime.utc(2026, 6, 21, 12),
     );
 
@@ -78,6 +83,10 @@ void main() {
     expect(item.status, SyncQueueItemStatus.synced);
     expect(item.attempts, 1);
     expect(item.lastError, isNull);
+    expect(
+      analytics.lastEventNamed(AnalyticsEvents.syncSucceeded)?.parameters,
+      <String, Object?>{'attempted': 1, 'synced': 1},
+    );
   });
 
   test(
@@ -122,10 +131,12 @@ void main() {
         ),
       ]);
       final reporter = _FakeFailureReporter();
+      final analytics = FakeAnalyticsService();
       final engine = SyncEngine(
         queue: queue,
         repository: _FakeSyncRepository(failRunUploads: true),
         authRepository: _authenticatedRepository(),
+        analyticsService: analytics,
         failureReporter: reporter,
         nowUtc: () => DateTime.utc(2026, 6, 21, 12),
       );
@@ -141,6 +152,14 @@ void main() {
       expect(
         reporter.operations,
         contains(SyncQueueItemType.puzzleCompletion.key),
+      );
+      expect(
+        analytics.lastEventNamed(AnalyticsEvents.syncFailed)?.parameters,
+        <String, Object?>{
+          'attempted': 1,
+          'failed': 1,
+          'reason': 'item_upload_failed',
+        },
       );
     },
   );

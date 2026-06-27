@@ -1,9 +1,13 @@
 import 'package:app/features/profile/profile_screen.dart';
 import 'package:app/shared/account/account_upgrade_prompt_service.dart';
+import 'package:app/shared/analytics/analytics_events.dart';
+import 'package:app/shared/analytics/analytics_providers.dart';
 import 'package:app/shared/auth/auth_providers.dart';
 import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
 import 'package:app/shared/auth/user_identity.dart';
+import 'package:app/shared/crash/crash_reporting_providers.dart';
+import 'package:app/shared/crash/crash_reporting_service.dart';
 import 'package:app/shared/models/puzzle_type.dart';
 import 'package:app/shared/providers/puzzle_local_store_providers.dart';
 import 'package:app/shared/stats/puzzle_run_result.dart';
@@ -20,6 +24,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../shared/analytics/fake_analytics_service.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -33,6 +39,7 @@ void main() {
   testWidgets('renders an offline-first empty profile safely', (
     WidgetTester tester,
   ) async {
+    final analytics = FakeAnalyticsService();
     final TargetPlatform? previousTargetPlatform =
         debugDefaultTargetPlatformOverride;
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -40,6 +47,7 @@ void main() {
     try {
       await tester.pumpWidget(
         buildSubject([
+          analyticsServiceProvider.overrideWithValue(analytics),
           authRepositoryProvider.overrideWithValue(
             const UnavailableAuthRepository('auth disabled'),
           ),
@@ -79,6 +87,10 @@ void main() {
         findsNothing,
       );
       expect(find.text('Leaderboard'), findsNothing);
+      expect(
+        analytics.lastEventNamed(AnalyticsEvents.profileViewed),
+        isNotNull,
+      );
     } finally {
       debugDefaultTargetPlatformOverride = previousTargetPlatform;
     }
@@ -227,9 +239,11 @@ void main() {
   testWidgets('shows and dismisses the anonymous account upgrade prompt', (
     WidgetTester tester,
   ) async {
+    final analytics = FakeAnalyticsService();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await tester.pumpWidget(
       buildSubject([
+        analyticsServiceProvider.overrideWithValue(analytics),
         authRepositoryProvider.overrideWithValue(
           const _FakeAuthRepository(
             AuthState.authenticated(
@@ -279,6 +293,12 @@ void main() {
     expect(find.text('Save progress with an account'), findsOneWidget);
     expect(find.text('3 completions'), findsOneWidget);
     expect(find.text('3 day streak'), findsOneWidget);
+    expect(
+      analytics
+          .lastEventNamed(AnalyticsEvents.authUpgradePromptShown)
+          ?.parameters,
+      <String, Object?>{'total_completions': 3, 'current_daily_streak': 3},
+    );
 
     await tester.tap(find.text('Dismiss'));
     await tester.pumpAndSettle();
@@ -290,6 +310,62 @@ void main() {
     expect(
       prefs.getString(AccountUpgradePromptService.dismissedUntilKey),
       isNotNull,
+    );
+  });
+
+  testWidgets('reports recoverable Google sign-in failures as non-fatal', (
+    WidgetTester tester,
+  ) async {
+    final _RecordingCrashReportingService crashReporting =
+        _RecordingCrashReportingService();
+    const _ConfigurableAuthRepository repository = _ConfigurableAuthRepository(
+      state: AuthState.signedOut(),
+      googleResult: GoogleSignInResult.recoverableFailure(
+        failure: GoogleSignInFailure(
+          code: 'network-request-failed',
+          message: 'offline',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildSubject([
+        crashReportingServiceProvider.overrideWithValue(crashReporting),
+        authRepositoryProvider.overrideWithValue(repository),
+        homeStatsProvider.overrideWith(
+          (ref) async => const HomeStatsSnapshot(
+            totalSolved: 0,
+            todayCompleted: 0,
+            completedThisWeek: 0,
+          ),
+        ),
+        localStatsAggregateProvider.overrideWith(
+          (ref) async => PuzzleStatsAggregate.empty,
+        ),
+        dailyStreakStatusProvider.overrideWith(
+          (ref) async => DailyStreakStatus.empty,
+        ),
+        syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
+        pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
+        failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-google-sign-in-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(crashReporting.calls, hasLength(1));
+    expect(crashReporting.calls.single.reason, 'auth_link_failure');
+    expect(
+      crashReporting.calls.single.context,
+      containsPair('provider', 'google'),
+    );
+    expect(
+      crashReporting.calls.single.context,
+      containsPair('failureCode', 'network-request-failed'),
     );
   });
 }
@@ -406,4 +482,69 @@ class _FakeSyncRepository implements SyncRepository {
 
   @override
   Future<void> upsertStats(String uid, PuzzleStatsAggregate stats) async {}
+}
+
+class _ConfigurableAuthRepository implements AuthRepository {
+  const _ConfigurableAuthRepository({required this.state, this.googleResult});
+
+  final AuthState state;
+  final GoogleSignInResult? googleResult;
+
+  @override
+  AuthState get currentAuthState => state;
+
+  @override
+  Stream<AuthState> authStateChanges() => Stream<AuthState>.value(state);
+
+  @override
+  Future<AuthState> signInAnonymously({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    return state;
+  }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    return googleResult ?? GoogleSignInResult.signedIn(state);
+  }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(state);
+  }
+}
+
+class _RecordingCrashReportingService implements CrashReportingService {
+  final List<_CrashReportingCall> calls = <_CrashReportingCall>[];
+
+  @override
+  Future<void> reportNonFatal({
+    required String reason,
+    required Object error,
+    required StackTrace stackTrace,
+    Map<String, Object?> context = const <String, Object?>{},
+  }) async {
+    calls.add(
+      _CrashReportingCall(
+        reason: reason,
+        error: error,
+        stackTrace: stackTrace,
+        context: Map<String, Object?>.from(context),
+      ),
+    );
+  }
+}
+
+class _CrashReportingCall {
+  const _CrashReportingCall({
+    required this.reason,
+    required this.error,
+    required this.stackTrace,
+    required this.context,
+  });
+
+  final String reason;
+  final Object error;
+  final StackTrace stackTrace;
+  final Map<String, Object?> context;
 }

@@ -436,22 +436,22 @@ void main() {
       expect(service.isFavourite(PuzzleType.sudokuClassic), isFalse);
       expect(service.updatedAtUtc(), isNull);
       expect(await service.toggle(PuzzleType.sudokuClassic), isTrue);
-      expect(await service.toggle(PuzzleType.kakuroClassic), isTrue);
+      expect(await service.toggle(PuzzleType.kakuro), isTrue);
       expect(service.favourites(), [
         PuzzleType.sudokuClassic,
-        PuzzleType.kakuroClassic,
+        PuzzleType.kakuro,
       ]);
       expect(
         service.updatedAtUtc(),
         DateTime.utc(2026, 6, 27, 12, 34, 56),
       );
       expect(await service.toggle(PuzzleType.sudokuClassic), isFalse);
-      expect(service.favourites(), [PuzzleType.kakuroClassic]);
+      expect(service.favourites(), [PuzzleType.kakuro]);
 
       SharedPreferences.setMockInitialValues(snapshotPrefs(prefs));
       final reloadedPrefs = await SharedPreferences.getInstance();
       final reloaded = FavouritePuzzleService(reloadedPrefs);
-      expect(reloaded.favourites(), [PuzzleType.kakuroClassic]);
+      expect(reloaded.favourites(), [PuzzleType.kakuro]);
       expect(
         reloaded.updatedAtUtc(),
         DateTime.utc(2026, 6, 27, 12, 34, 56),

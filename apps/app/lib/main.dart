@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_router.dart';
+import 'shared/analytics/analytics_providers.dart';
 import 'shared/auth/auth_providers.dart';
 import 'shared/firebase/firebase_init.dart';
 import 'shared/theme/app_theme.dart';
@@ -77,6 +78,14 @@ class BrainiaxApp extends ConsumerStatefulWidget {
 }
 
 class _BrainiaxAppState extends ConsumerState<BrainiaxApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(ref.read(analyticsServiceProvider).appOpen());
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentTheme = ref.watch(currentThemeProvider);

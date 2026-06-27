@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../shared/analytics/analytics_providers.dart';
 import '../../shared/navigation/app_routes.dart';
 import '../../shared/account/account_upgrade_prompt_providers.dart';
 import '../../shared/account/account_upgrade_prompt_service.dart';
 import '../../shared/auth/auth_providers.dart';
 import '../../shared/auth/auth_repository.dart';
 import '../../shared/auth/auth_state.dart';
+import '../../shared/crash/crash_reporting_providers.dart';
 import '../../shared/models/puzzle_type.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/sync/sync_engine.dart';
@@ -28,6 +32,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isSyncing = false;
   bool _isSigningInWithGoogle = false;
   bool _isSigningInWithApple = false;
+  bool _trackedProfileView = false;
+  bool _trackedUpgradePromptShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _trackedProfileView) {
+        return;
+      }
+      _trackedProfileView = true;
+      unawaited(ref.read(analyticsServiceProvider).profileViewed());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +53,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final AccountUpgradePromptEligibility upgradePrompt = ref.watch(
       accountUpgradePromptEligibilityProvider,
     );
+    if (upgradePrompt.shouldShow && !_trackedUpgradePromptShown) {
+      _trackedUpgradePromptShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        unawaited(
+          ref
+              .read(analyticsServiceProvider)
+              .authUpgradePromptShown(upgradePrompt),
+        );
+      });
+    }
 
     return SafeArea(
       bottom: false,
@@ -107,12 +138,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
 
     try {
+      final bool wasAnonymous =
+          ref.read(currentUserIdentityProvider)?.isAnonymous ?? false;
       final GoogleSignInResult result = await ref
           .read(authRepositoryProvider)
           .signInWithGoogle();
 
+      if (result.status == GoogleSignInResultStatus.recoverableFailure) {
+        await _reportAuthLinkFailure(
+          provider: 'google',
+          stage: 'sign_in',
+          upgradePath: wasAnonymous ? 'anonymous_link' : 'direct_sign_in',
+          resultStatus: result.status.name,
+          failureCode: result.failure?.code,
+        );
+      }
+
       if (result.succeeded) {
-        await _triggerProfileSyncAfterAccountSignIn(result.authState);
+        await _triggerProfileSyncAfterAccountSignIn(
+          result.authState,
+          provider: 'google',
+        );
       }
 
       ref.invalidate(authStateProvider);
@@ -128,6 +174,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         SnackBar(content: Text(_googleSignInResultMessage(result))),
       );
     } catch (error, stackTrace) {
+      await _reportUnexpectedAuthLinkFailure(
+        provider: 'google',
+        stage: 'sign_in',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (kDebugMode) {
         debugPrint('Google sign-in failed unexpectedly: $error');
         debugPrint('$stackTrace');
@@ -161,12 +213,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
 
     try {
+      final bool wasAnonymous =
+          ref.read(currentUserIdentityProvider)?.isAnonymous ?? false;
       final AppleSignInResult result = await ref
           .read(authRepositoryProvider)
           .linkWithApple();
 
+      if (result.status == AppleSignInResultStatus.recoverableFailure) {
+        await _reportAuthLinkFailure(
+          provider: 'apple',
+          stage: 'link',
+          upgradePath: wasAnonymous ? 'anonymous_link' : 'direct_sign_in',
+          resultStatus: result.status.name,
+          failureCode: result.failure?.code,
+        );
+      }
+
       if (result.succeeded) {
-        await _triggerProfileSyncAfterAccountSignIn(result.authState);
+        await _triggerProfileSyncAfterAccountSignIn(
+          result.authState,
+          provider: 'apple',
+        );
       }
 
       ref.invalidate(authStateProvider);
@@ -182,6 +249,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         SnackBar(content: Text(_appleSignInResultMessage(result))),
       );
     } catch (error, stackTrace) {
+      await _reportUnexpectedAuthLinkFailure(
+        provider: 'apple',
+        stage: 'link',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (kDebugMode) {
         debugPrint('Apple sign-in failed unexpectedly: $error');
         debugPrint('$stackTrace');
@@ -206,8 +279,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _triggerProfileSyncAfterAccountSignIn(
-    AuthState? authState,
-  ) async {
+    AuthState? authState, {
+    required String provider,
+  }) async {
     final identity = authState?.identity;
     if (identity == null) {
       return;
@@ -219,11 +293,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ?.ensureUserProfile(identity);
       await ref.read(syncControllerProvider).processPending();
     } catch (error, stackTrace) {
+      await _reportUnexpectedAuthLinkFailure(
+        provider: provider,
+        stage: 'post_sign_in_sync',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (kDebugMode) {
         debugPrint('Post Google sign-in profile sync failed: $error');
         debugPrint('$stackTrace');
       }
     }
+  }
+
+  Future<void> _reportAuthLinkFailure({
+    required String provider,
+    required String stage,
+    required String upgradePath,
+    required String resultStatus,
+    String? failureCode,
+  }) {
+    return ref
+        .read(crashReportingServiceProvider)
+        .reportNonFatal(
+          reason: 'auth_link_failure',
+          error: StateError('Auth link failure'),
+          stackTrace: StackTrace.current,
+          context: <String, Object?>{
+            'provider': provider,
+            'stage': stage,
+            'upgradePath': upgradePath,
+            'resultStatus': resultStatus,
+            'failureCode': failureCode,
+          },
+        );
+  }
+
+  Future<void> _reportUnexpectedAuthLinkFailure({
+    required String provider,
+    required String stage,
+    required Object error,
+    required StackTrace stackTrace,
+  }) {
+    return ref
+        .read(crashReportingServiceProvider)
+        .reportNonFatal(
+          reason: 'auth_link_failure',
+          error: error,
+          stackTrace: stackTrace,
+          context: <String, Object?>{'provider': provider, 'stage': stage},
+        );
   }
 }
 
@@ -1148,7 +1267,7 @@ IconData _puzzleIcon(PuzzleType puzzleType) {
       return Icons.grid_on;
     case PuzzleType.nonogramMono:
       return Icons.crop_square;
-    case PuzzleType.kakuroClassic:
+    case PuzzleType.kakuro:
       return Icons.add_box;
     case PuzzleType.slitherlinkLoop:
       return Icons.circle_outlined;
@@ -1167,7 +1286,7 @@ Color _puzzleAccent(PuzzleType puzzleType) {
       return const Color(0xFF2196F3);
     case PuzzleType.nonogramMono:
       return const Color(0xFF4CAF50);
-    case PuzzleType.kakuroClassic:
+    case PuzzleType.kakuro:
       return const Color(0xFFFF9800);
     case PuzzleType.slitherlinkLoop:
       return const Color(0xFF9C27B0);

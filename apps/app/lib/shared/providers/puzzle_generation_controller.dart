@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../models/puzzle_type.dart' as app;
-import '../config/app_environment.dart';
+import '../crash/crash_reporting_providers.dart';
 import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import '../services/generated_puzzle_difficulty.dart';
@@ -53,17 +53,28 @@ class PuzzleGenerationController
         'Puzzle engine not registered for ${puzzleType.key}',
       );
       state = AsyncValue.error(error, StackTrace.current);
+      await ref
+          .read(crashReportingServiceProvider)
+          .reportNonFatal(
+            reason: 'puzzle_generation_failure',
+            error: error,
+            stackTrace: StackTrace.current,
+            context: <String, Object?>{
+              'puzzleType': puzzleType.key,
+              'engineId': puzzleType.key,
+              'difficulty': difficulty,
+            },
+          );
       throw error;
     }
 
     // Set loading state
     state = const AsyncValue.loading();
 
+    final difficultyScore = _parseDifficulty(difficulty);
     final core.SizeOpt resolvedSize = size != null
         ? _parseSize(size)
         : _getDefaultSizeForPuzzleTypeAndDifficulty(puzzleType, difficulty);
-
-
     final token = ++_generationToken;
 
     try {
@@ -226,6 +237,29 @@ class PuzzleGenerationController
       if (token == _generationToken) {
         state = AsyncValue.error(err, stackTrace);
       }
+      if (token == _generationToken) {
+        await ref
+            .read(crashReportingServiceProvider)
+            .reportNonFatal(
+              reason: 'puzzle_generation_failure',
+              error: err,
+              stackTrace: stackTrace,
+              context: <String, Object?>{
+                'puzzleType': puzzleType.key,
+                'engineId': puzzleType.key,
+                'difficulty': difficulty,
+                'requestedDifficulty': difficultyScore.level,
+                'size': resolvedSize.id,
+                'width': resolvedSize.width,
+                'height': resolvedSize.height,
+                'maxAttempts': _maxGenerationAttempts,
+                'timeoutMs': puzzleGenerationTimeoutFor(
+                  engineId: puzzleType.key,
+                ).inMilliseconds,
+                ..._safeGenerationFailureContext(err),
+              },
+            );
+      }
       rethrow;
     }
   }
@@ -372,9 +406,13 @@ class PuzzleGenerationController
     required app.PuzzleType puzzleType,
     required Duration elapsed,
   }) {
-
     return puzzleGenerationTimeoutFor(engineId: puzzleType.key);
   }
 
-
+  Map<String, Object?> _safeGenerationFailureContext(Object error) {
+    if (error is PuzzleGenerationTimeoutException) {
+      return <String, Object?>{'timeoutMs': error.duration?.inMilliseconds};
+    }
+    return const <String, Object?>{};
+  }
 }

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart' as google_sign_in;
 
+import '../analytics/analytics_service.dart';
 import 'auth_state.dart';
 import 'user_identity.dart';
 
@@ -187,12 +188,15 @@ class FirebaseAuthRepository implements AuthRepository {
   FirebaseAuthRepository(
     this._firebaseAuth, {
     GoogleSignInClient? googleSignInClient,
+    AnalyticsService? analyticsService,
   }) : _googleSignInClient =
            googleSignInClient ??
-           GoogleSignInPluginClient(google_sign_in.GoogleSignIn.instance);
+           GoogleSignInPluginClient(google_sign_in.GoogleSignIn.instance),
+       _analyticsService = analyticsService ?? const NoopAnalyticsService();
 
   final firebase_auth.FirebaseAuth _firebaseAuth;
   final GoogleSignInClient _googleSignInClient;
+  final AnalyticsService _analyticsService;
 
   @override
   AuthState get currentAuthState => _mapUser(_firebaseAuth.currentUser);
@@ -269,6 +273,10 @@ class FirebaseAuthRepository implements AuthRepository {
       if (currentUser != null && currentUser.isAnonymous) {
         final firebase_auth.UserCredential linkedCredential = await currentUser
             .linkWithCredential(credential);
+        await _analyticsService.authLinkSucceeded(
+          provider: 'google',
+          upgradePath: 'anonymous_link',
+        );
         return GoogleSignInResult.linked(
           _mapUser(linkedCredential.user ?? _firebaseAuth.currentUser),
         );
@@ -276,6 +284,10 @@ class FirebaseAuthRepository implements AuthRepository {
 
       final firebase_auth.UserCredential signedInCredential =
           await _firebaseAuth.signInWithCredential(credential);
+      await _analyticsService.authLinkSucceeded(
+        provider: 'google',
+        upgradePath: 'direct_sign_in',
+      );
       return GoogleSignInResult.signedIn(
         _mapUser(signedInCredential.user ?? _firebaseAuth.currentUser),
       );

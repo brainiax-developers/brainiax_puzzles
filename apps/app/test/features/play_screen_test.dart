@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app/features/daily/daily_seed_generator.dart';
 import 'package:app/features/play/play_screen.dart';
 import 'package:app/features/daily/daily_providers.dart';
+import 'package:app/shared/analytics/analytics_events.dart';
+import 'package:app/shared/analytics/analytics_providers.dart';
 import 'package:app/shared/providers/game_state_provider.dart';
 import 'package:app/shared/services/puzzle_local_store.dart';
 import 'package:app/shared/services/puzzle_progress_service.dart';
@@ -18,6 +20,7 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 import 'package:app/shared/models/models.dart';
 
 import '../helpers/test_puzzle_data.dart';
+import '../shared/analytics/fake_analytics_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +38,7 @@ void main() {
     tester,
   ) async {
     final engine = TestSudokuEngine();
+    final analytics = FakeAnalyticsService();
     core.EngineRegistry().register(engine);
 
     final solved = buildSudokuPuzzle(solved: true);
@@ -46,6 +50,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [analyticsServiceProvider.overrideWithValue(analytics)],
         child: MaterialApp(
           theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: PlayScreen(
@@ -80,6 +85,24 @@ void main() {
     expect(records.single.moveCount, 1);
     expect(await store.bestTime(PuzzleType.sudokuClassic, 'easy'), isNotNull);
     expect(find.textContaining('Random Play'), findsOneWidget);
+    expect(
+      analytics.events.map((event) => event.name),
+      containsAll(<String>[
+        AnalyticsEvents.puzzleStarted,
+        AnalyticsEvents.puzzleCompleted,
+      ]),
+    );
+    expect(
+      analytics
+          .lastEventNamed(AnalyticsEvents.puzzleCompleted)
+          ?.parameters
+          .keys,
+      isNot(
+        contains(
+          anyOf('board', 'solution', 'puzzle_json', 'player_state', 'notes'),
+        ),
+      ),
+    );
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PlayScreen)),
@@ -809,10 +832,12 @@ void main() {
   testWidgets('supported Sudoku hint applies and increments hints used', (
     tester,
   ) async {
+    final analytics = FakeAnalyticsService();
     core.EngineRegistry().register(HintingSudokuEngine());
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [analyticsServiceProvider.overrideWithValue(analytics)],
         child: MaterialApp(
           home: PlayScreen(
             puzzleType: PuzzleType.sudokuClassic,
@@ -832,6 +857,16 @@ void main() {
       prefs,
     ).loadActiveRunFor(type: PuzzleType.sudokuClassic, mode: PuzzleMode.random);
     expect(run?.hintsUsed, 1);
+    expect(
+      analytics.lastEventNamed(AnalyticsEvents.hintUsed)?.parameters,
+      <String, Object?>{
+        'puzzle_type': PuzzleType.sudokuClassic.key,
+        'mode': PuzzleMode.random.key,
+        'difficulty': 'easy',
+        'size': '9x9',
+        'hints_used': 1,
+      },
+    );
   });
 
 

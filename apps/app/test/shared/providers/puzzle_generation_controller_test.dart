@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
+import 'package:app/shared/crash/crash_reporting_providers.dart';
+import 'package:app/shared/crash/crash_reporting_service.dart';
 import 'package:app/shared/models/puzzle_type.dart';
 import 'package:app/shared/providers/puzzle_generation_controller.dart';
 import 'package:app/shared/services/generation_isolate.dart';
@@ -258,6 +260,48 @@ void main() {
   });
 
   test(
+    'reports non-fatal generation failures through crash reporting',
+    () async {
+      final worker = _QueuedPuzzleGenerationWorker();
+      final _RecordingCrashReportingService crashReporting =
+          _RecordingCrashReportingService();
+      worker.queueError(StateError('board={"cells":[1,2,3]}'));
+      worker.queueError(StateError('board={"cells":[1,2,3]}'));
+      worker.queueError(StateError('board={"cells":[1,2,3]}'));
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [
+          puzzleGenerationWorkerProvider.overrideWithValue(worker),
+          crashReportingServiceProvider.overrideWithValue(crashReporting),
+        ],
+      );
+      final controller = container.read(
+        puzzleGenerationControllerProvider.notifier,
+      );
+
+      await expectLater(
+        controller.generate(
+          puzzleType: PuzzleType.sudokuClassic,
+          difficulty: 'medium',
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(crashReporting.calls, hasLength(1));
+      expect(crashReporting.calls.single.reason, 'puzzle_generation_failure');
+      expect(
+        crashReporting.calls.single.context,
+        containsPair('puzzleType', PuzzleType.sudokuClassic.key),
+      );
+      expect(
+        crashReporting.calls.single.context,
+        containsPair('difficulty', 'medium'),
+      );
+      expect(crashReporting.calls.single.context.containsKey('board'), isFalse);
+    },
+  );
+
+  test(
     'passes the resolved seed into Slitherlink on-demand generation',
     () async {
       core.EngineRegistry().register(core.SlitherlinkEngine());
@@ -483,4 +527,39 @@ class _RecordingSlitherlinkOnDemandService extends SlitherlinkOnDemandService {
     lastSeed = seed;
     return result;
   }
+}
+
+class _RecordingCrashReportingService implements CrashReportingService {
+  final List<_CrashReportingCall> calls = <_CrashReportingCall>[];
+
+  @override
+  Future<void> reportNonFatal({
+    required String reason,
+    required Object error,
+    required StackTrace stackTrace,
+    Map<String, Object?> context = const <String, Object?>{},
+  }) async {
+    calls.add(
+      _CrashReportingCall(
+        reason: reason,
+        error: error,
+        stackTrace: stackTrace,
+        context: Map<String, Object?>.from(context),
+      ),
+    );
+  }
+}
+
+class _CrashReportingCall {
+  const _CrashReportingCall({
+    required this.reason,
+    required this.error,
+    required this.stackTrace,
+    required this.context,
+  });
+
+  final String reason;
+  final Object error;
+  final StackTrace stackTrace;
+  final Map<String, Object?> context;
 }
