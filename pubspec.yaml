@@ -31,7 +31,7 @@ dev_dependencies:
 melos:
   scripts:
     analyze: dart run bin/melos_analyze.dart
-    test: melos exec -c 1 -- flutter test --no-pub || dart test
+    test: dart run bin/melos_test.dart
     format: melos exec -c 1 -- dart format .
     coverage: melos exec --scope=app -- flutter test --no-pub --coverage
     check_coverage: dart bin/check_coverage.dart apps/app/coverage/lcov.info 0.8
