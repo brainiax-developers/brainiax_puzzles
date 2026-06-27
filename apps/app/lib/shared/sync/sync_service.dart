@@ -42,7 +42,7 @@ class SyncService {
     DateTime? createdAtUtc,
   }) {
     return enqueue(
-      favouritesSnapshotQueueItem(favourites, createdAtUtc: createdAtUtc),
+      favouritesUpdateQueueItem(favourites, createdAtUtc: createdAtUtc),
     );
   }
 
@@ -138,7 +138,7 @@ class SyncService {
     );
   }
 
-  SyncQueueItem favouritesSnapshotQueueItem(
+  SyncQueueItem favouritesUpdateQueueItem(
     List<PuzzleType> favourites, {
     DateTime? createdAtUtc,
   }) {
@@ -148,8 +148,8 @@ class SyncService {
         favourites.map((PuzzleType type) => type.key).toSet().toList()..sort();
 
     return SyncQueueItem(
-      id: 'favourites:${favouriteKeys.isEmpty ? 'empty' : favouriteKeys.join(',')}',
-      type: SyncQueueItemType.favouritesSnapshot,
+      id: 'favourites-update:${resolvedCreatedAt.microsecondsSinceEpoch}',
+      type: SyncQueueItemType.favouritesUpdate,
       payload: <String, dynamic>{
         'favourites': favouriteKeys,
         'updatedAtUtc': resolvedCreatedAt.toIso8601String(),

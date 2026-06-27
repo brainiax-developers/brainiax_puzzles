@@ -140,9 +140,15 @@ class SyncController {
     _invalidateQueueProviders();
   }
 
-  Future<void> enqueueFavouritesSnapshot(List<PuzzleType> favourites) async {
+  Future<void> enqueueFavouritesSnapshot(
+    List<PuzzleType> favourites, {
+    DateTime? createdAtUtc,
+  }) async {
     final SyncService service = await _ref.read(syncServiceProvider.future);
-    await service.enqueueFavouritesSnapshot(favourites);
+    await service.enqueueFavouritesSnapshot(
+      favourites,
+      createdAtUtc: createdAtUtc,
+    );
     _invalidateQueueProviders();
   }
 

@@ -33,7 +33,8 @@ class UserPreferences {
       favouritesUpdatedAtUtc: _dateTimeFromJson(
         mergedJson['favouritesUpdatedAtUtc'] ??
             mergedJson['favoritesUpdatedAtUtc'] ??
-            mergedJson['favouriteTypesUpdatedAtUtc'],
+            mergedJson['favouriteTypesUpdatedAtUtc'] ??
+            mergedJson['updatedAt'],
       ),
     );
   }

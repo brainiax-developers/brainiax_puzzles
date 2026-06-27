@@ -206,6 +206,43 @@ void main() {
     expect(queueItems, hasLength(2));
     expect(syncEngine.calls, 1);
   });
+
+  test('favourite toggle updates local state and enqueues a favourites update', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final ProviderContainer container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(AsyncValue.data(prefs)),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final FavouritePuzzleController controller = container.read(
+      favouritePuzzleControllerProvider,
+    );
+
+    expect(
+      await container.read(favouritePuzzleTypesProvider.future),
+      isEmpty,
+    );
+
+    expect(await controller.toggle(PuzzleType.sudokuClassic), isTrue);
+
+    final List<PuzzleType> favourites = await container.read(
+      favouritePuzzleTypesProvider.future,
+    );
+    final List<SyncQueueItem> queueItems = await container.read(
+      pendingSyncQueueItemsProvider.future,
+    );
+    final SyncQueueItem item = queueItems.single;
+
+    expect(favourites, <PuzzleType>[PuzzleType.sudokuClassic]);
+    expect(item.type, SyncQueueItemType.favouritesUpdate);
+    expect(item.payload['favourites'], <String>['sudoku_classic']);
+    expect(item.payload['updatedAtUtc'], isA<String>());
+    expect(item.payload.containsKey('board'), isFalse);
+    expect(item.payload.containsKey('solution'), isFalse);
+  });
 }
 
 class _ThrowingSyncEngine extends SyncEngine {
@@ -257,7 +294,9 @@ class _UnusedSyncRepository implements SyncRepository {
   @override
   Future<void> upsertFavourites(
     String uid,
-    List<PuzzleType> favourites,
+    List<PuzzleType> favourites, {
+    required DateTime updatedAtUtc,
+  }
   ) async {}
 
   @override

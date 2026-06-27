@@ -150,6 +150,10 @@ void main() {
       PuzzleType.nonogramMono,
       PuzzleType.sudokuClassic,
     ]);
+    expect(
+      repository.favouritesUpdatedAtUtc,
+      DateTime.utc(2026, 6, 21, 12),
+    );
     expect(await queue.failed(), isEmpty);
   });
 }
@@ -287,6 +291,7 @@ class _FakeSyncRepository implements SyncRepository {
   final List<PuzzleStatsAggregate> statsUploads = <PuzzleStatsAggregate>[];
   DailyStreakStatus? dailyStreak;
   List<PuzzleType>? favourites;
+  DateTime? favouritesUpdatedAtUtc;
 
   @override
   Future<void> ensureUserProfile(UserIdentity identity) async {
@@ -313,8 +318,13 @@ class _FakeSyncRepository implements SyncRepository {
   }
 
   @override
-  Future<void> upsertFavourites(String uid, List<PuzzleType> favourites) async {
+  Future<void> upsertFavourites(
+    String uid,
+    List<PuzzleType> favourites, {
+    required DateTime updatedAtUtc,
+  }) async {
     this.favourites = List<PuzzleType>.unmodifiable(favourites);
+    favouritesUpdatedAtUtc = updatedAtUtc.toUtc();
   }
 }
 

@@ -79,4 +79,49 @@ void main() {
       expect(items.single.payload['recordId'], 'record-2');
     },
   );
+
+  test('favourites update queue item uses timestamp id and metadata payload', () {
+    final DateTime updatedAtUtc = DateTime.utc(2026, 6, 21, 14, 15, 16);
+
+    final SyncQueueItem item = service.favouritesUpdateQueueItem(
+      <PuzzleType>[
+        PuzzleType.sudokuClassic,
+        PuzzleType.nonogramMono,
+        PuzzleType.sudokuClassic,
+      ],
+      createdAtUtc: updatedAtUtc,
+    );
+
+    expect(
+      item.id,
+      'favourites-update:${updatedAtUtc.microsecondsSinceEpoch}',
+    );
+    expect(item.type, SyncQueueItemType.favouritesUpdate);
+    expect(item.payload, <String, dynamic>{
+      'favourites': <String>['nonogram_mono', 'sudoku_classic'],
+      'updatedAtUtc': '2026-06-21T14:15:16.000Z',
+    });
+  });
+
+  test('duplicate favourites update id stays idempotent through the queue', () async {
+    final DateTime updatedAtUtc = DateTime.utc(2026, 6, 21, 14, 15, 16);
+
+    await service.enqueue(
+      service.favouritesUpdateQueueItem(
+        <PuzzleType>[PuzzleType.sudokuClassic],
+        createdAtUtc: updatedAtUtc,
+      ),
+    );
+    await service.enqueue(
+      service.favouritesUpdateQueueItem(
+        <PuzzleType>[PuzzleType.nonogramMono],
+        createdAtUtc: updatedAtUtc,
+      ),
+    );
+
+    final List<SyncQueueItem> items = await service.pending();
+
+    expect(items, hasLength(1));
+    expect(items.single.payload['favourites'], <String>['sudoku_classic']);
+  });
 }

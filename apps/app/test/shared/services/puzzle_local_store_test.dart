@@ -427,23 +427,35 @@ void main() {
   });
 
   group('FavouritePuzzleService', () {
-    test('toggles and persists favourite puzzle types', () async {
-      final service = FavouritePuzzleService(prefs);
+    test('toggles, timestamps, and persists favourite puzzle types', () async {
+      final service = FavouritePuzzleService(
+        prefs,
+        nowUtc: () => DateTime.utc(2026, 6, 27, 12, 34, 56),
+      );
 
       expect(service.isFavourite(PuzzleType.sudokuClassic), isFalse);
+      expect(service.updatedAtUtc(), isNull);
       expect(await service.toggle(PuzzleType.sudokuClassic), isTrue);
-      expect(await service.toggle(PuzzleType.slitherlinkLoop), isTrue);
+      expect(await service.toggle(PuzzleType.kakuroClassic), isTrue);
       expect(service.favourites(), [
         PuzzleType.sudokuClassic,
-        PuzzleType.slitherlinkLoop,
+        PuzzleType.kakuroClassic,
       ]);
+      expect(
+        service.updatedAtUtc(),
+        DateTime.utc(2026, 6, 27, 12, 34, 56),
+      );
       expect(await service.toggle(PuzzleType.sudokuClassic), isFalse);
-      expect(service.favourites(), [PuzzleType.slitherlinkLoop]);
+      expect(service.favourites(), [PuzzleType.kakuroClassic]);
 
       SharedPreferences.setMockInitialValues(snapshotPrefs(prefs));
       final reloadedPrefs = await SharedPreferences.getInstance();
       final reloaded = FavouritePuzzleService(reloadedPrefs);
-      expect(reloaded.favourites(), [PuzzleType.slitherlinkLoop]);
+      expect(reloaded.favourites(), [PuzzleType.kakuroClassic]);
+      expect(
+        reloaded.updatedAtUtc(),
+        DateTime.utc(2026, 6, 27, 12, 34, 56),
+      );
     });
   });
 }

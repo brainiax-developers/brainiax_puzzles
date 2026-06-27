@@ -95,6 +95,24 @@ void main() {
       );
     });
 
+    test('reads Firestore preferences updatedAt as favourites timestamp', () {
+      final preferences = UserPreferences.fromJson(<String, dynamic>{
+        'preferences': <String, dynamic>{
+          'favoritePuzzleTypes': <String>['sudoku_classic'],
+          'updatedAt': '2026-06-21T14:15:16Z',
+        },
+      });
+
+      expect(
+        preferences.favouritePuzzleTypes,
+        <PuzzleType>[PuzzleType.sudokuClassic],
+      );
+      expect(
+        preferences.favouritesUpdatedAtUtc,
+        DateTime.utc(2026, 6, 21, 14, 15, 16),
+      );
+    });
+
     test('rejects malformed required fields and ignores bad list entries', () {
       final preferences = UserPreferences.fromJson(<String, dynamic>{
         'favouritePuzzleTypes': <Object?>[

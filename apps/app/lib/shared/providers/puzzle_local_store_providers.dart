@@ -13,10 +13,7 @@ import '../stats/puzzle_run_result.dart';
 import '../stats/stats_models.dart';
 import '../streak/daily_streak_providers.dart';
 import '../streak/daily_streak_service.dart';
-import '../sync/sync_queue.dart';
 import '../sync/sync_providers.dart';
-import '../sync/sync_service.dart';
-import '../sync/sync_triggers.dart';
 import 'shared_preferences_provider.dart';
 
 export 'shared_preferences_provider.dart';
@@ -151,23 +148,37 @@ class FavouritePuzzleController {
     final service = await _ref.read(favouritePuzzleServiceProvider.future);
     final result = await service.toggle(puzzleType);
     final List<PuzzleType> favourites = service.favourites();
+    final DateTime? updatedAtUtc = service.updatedAtUtc();
     _ref.invalidate(favouritePuzzleTypesProvider);
     _ref.invalidate(isFavouritePuzzleTypeProvider(puzzleType));
-    await _enqueueFavouritesSync(favourites);
+    await _enqueueFavouritesSync(
+      favourites,
+      updatedAtUtc: updatedAtUtc,
+    );
     return result;
   }
 
-  Future<void> _enqueueFavouritesSync(List<PuzzleType> favourites) async {
+  Future<void> _enqueueFavouritesSync(
+    List<PuzzleType> favourites, {
+    DateTime? updatedAtUtc,
+  }) async {
     try {
-      final SharedPreferences prefs = await _ref.read(
-        sharedPreferencesProvider.future,
+      final SyncController syncController = _ref.read(syncControllerProvider);
+      await syncController.enqueueFavouritesSnapshot(
+        favourites,
+        createdAtUtc: updatedAtUtc,
       );
-      final SyncTriggers triggers = SyncTriggers(
-        syncService: SyncService(SharedPreferencesSyncQueue(prefs)),
-      );
-      await triggers.afterFavouritesChanged(favourites);
+      unawaited(_syncPending(syncController));
     } catch (_) {
       // TODO(BX-0415): Report sync trigger failures through Crashlytics.
+    }
+  }
+
+  Future<void> _syncPending(SyncController syncController) async {
+    try {
+      await syncController.processPending();
+    } catch (_) {
+      // Background sync failures must never block local favourites UX.
     }
   }
 }

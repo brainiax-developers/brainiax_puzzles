@@ -18,7 +18,11 @@ abstract interface class SyncRepository {
 
   Future<void> upsertDailyStreak(String uid, DailyStreakStatus status);
 
-  Future<void> upsertFavourites(String uid, List<PuzzleType> favourites);
+  Future<void> upsertFavourites(
+    String uid,
+    List<PuzzleType> favourites, {
+    required DateTime updatedAtUtc,
+  });
 }
 
 class FirestoreSyncRepository implements SyncRepository {
@@ -130,20 +134,42 @@ class FirestoreSyncRepository implements SyncRepository {
   }
 
   @override
-  Future<void> upsertFavourites(String uid, List<PuzzleType> favourites) {
+  Future<void> upsertFavourites(
+    String uid,
+    List<PuzzleType> favourites, {
+    required DateTime updatedAtUtc,
+  }) async {
     final List<String> favouriteKeys =
         favourites.map((PuzzleType type) => type.key).toSet().toList()..sort();
     final DateTime nowUtc = _nowUtc().toUtc();
+    final DateTime resolvedUpdatedAtUtc = updatedAtUtc.toUtc();
+    final DocumentReference<Map<String, dynamic>> document = _firestore.doc(
+      FirestorePaths.user(uid),
+    );
 
-    return _firestore.doc(FirestorePaths.user(uid)).set(<String, dynamic>{
-      'schemaVersion': firestoreSchemaVersion,
-      'uid': uid,
-      'lastSeenAt': FirestoreTimestamp.toTimestamp(nowUtc),
-      'preferences': <String, dynamic>{
-        'favoritePuzzleTypes': favouriteKeys,
-        'updatedAt': FirestoreTimestamp.toTimestamp(nowUtc),
-      },
-    }, SetOptions(merge: true));
+    await _firestore.runTransaction((transaction) async {
+      final DocumentSnapshot<Map<String, dynamic>> snapshot = await transaction
+          .get(document);
+      final Map<String, dynamic> profile = snapshot.data() ?? <String, dynamic>{};
+      final FavouritePreferencesMergeResult resolved =
+          resolveFavouritePreferencesForSync(
+            remotePreferences: _jsonMap(profile['preferences']),
+            localFavouriteKeys: favouriteKeys,
+            localUpdatedAtUtc: resolvedUpdatedAtUtc,
+          );
+
+      transaction.set(document, <String, dynamic>{
+        'schemaVersion': firestoreSchemaVersion,
+        'uid': uid,
+        'lastSeenAt': FirestoreTimestamp.toTimestamp(nowUtc),
+        'preferences': <String, dynamic>{
+          'favoritePuzzleTypes': resolved.favouriteKeys,
+          'updatedAt': FirestoreTimestamp.toTimestamp(
+            resolved.updatedAtUtc,
+          ),
+        },
+      }, SetOptions(merge: true));
+    });
   }
 
   StatsAggregateFirestoreModel _statsAggregateModel({
@@ -190,4 +216,92 @@ class FirestoreSyncRepository implements SyncRepository {
       lastCompletedAtUtc: stats.lastCompletedAtUtc,
     );
   }
+}
+
+FavouritePreferencesMergeResult resolveFavouritePreferencesForSync({
+  required Map<String, dynamic> remotePreferences,
+  required List<String> localFavouriteKeys,
+  required DateTime localUpdatedAtUtc,
+}) {
+  final List<String> remoteFavouriteKeys = _stringList(
+    remotePreferences['favoritePuzzleTypes'] ??
+        remotePreferences['favouritePuzzleTypes'] ??
+        remotePreferences['favourites'],
+  ).toSet().toList()
+    ..sort();
+  final DateTime? remoteUpdatedAtUtc = FirestoreTimestamp.toNullableDateTime(
+    remotePreferences['updatedAt'],
+  );
+  final List<String> normalizedLocalKeys =
+      localFavouriteKeys.toSet().toList()..sort();
+  final DateTime normalizedLocalUpdatedAtUtc = localUpdatedAtUtc.toUtc();
+
+  if (remoteFavouriteKeys.isEmpty) {
+    return FavouritePreferencesMergeResult(
+      favouriteKeys: normalizedLocalKeys,
+      updatedAtUtc: normalizedLocalUpdatedAtUtc,
+    );
+  }
+
+  if (remoteUpdatedAtUtc == null) {
+    return FavouritePreferencesMergeResult(
+      favouriteKeys: <String>{
+        ...remoteFavouriteKeys,
+        ...normalizedLocalKeys,
+      }.toList()
+        ..sort(),
+      updatedAtUtc: normalizedLocalUpdatedAtUtc,
+    );
+  }
+
+  if (normalizedLocalUpdatedAtUtc.isBefore(remoteUpdatedAtUtc)) {
+    return FavouritePreferencesMergeResult(
+      favouriteKeys: remoteFavouriteKeys,
+      updatedAtUtc: remoteUpdatedAtUtc,
+    );
+  }
+
+  return FavouritePreferencesMergeResult(
+    favouriteKeys: normalizedLocalKeys,
+    updatedAtUtc: normalizedLocalUpdatedAtUtc,
+  );
+}
+
+class FavouritePreferencesMergeResult {
+  const FavouritePreferencesMergeResult({
+    required this.favouriteKeys,
+    required this.updatedAtUtc,
+  });
+
+  final List<String> favouriteKeys;
+  final DateTime updatedAtUtc;
+}
+
+Map<String, dynamic> _jsonMap(Object? value) {
+  if (value == null) {
+    return const <String, dynamic>{};
+  }
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map<String, dynamic>(
+      (dynamic key, dynamic value) =>
+          MapEntry<String, dynamic>(key.toString(), value),
+    );
+  }
+  throw FormatException('Expected JSON map: $value');
+}
+
+List<String> _stringList(Object? value) {
+  if (value == null) {
+    return const <String>[];
+  }
+  if (value is String) {
+    return <String>[value];
+  }
+  if (value is Iterable) {
+    return List<String>.unmodifiable(value.map((item) => item.toString()));
+  }
+  throw FormatException('Expected string list: $value');
 }

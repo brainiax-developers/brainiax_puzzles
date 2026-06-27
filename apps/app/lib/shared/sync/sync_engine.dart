@@ -161,8 +161,12 @@ class SyncEngine {
           uid,
           _dailyStreakFromPayload(item),
         );
-      case SyncQueueItemType.favouritesSnapshot:
-        return _repository.upsertFavourites(uid, _favouritesFromPayload(item));
+      case SyncQueueItemType.favouritesUpdate:
+        return _repository.upsertFavourites(
+          uid,
+          _favouritesFromPayload(item),
+          updatedAtUtc: _favouritesUpdatedAtUtcFromPayload(item),
+        );
     }
   }
 
@@ -281,6 +285,11 @@ class SyncEngine {
       }
     }
     return List<PuzzleType>.unmodifiable(favourites);
+  }
+
+  DateTime _favouritesUpdatedAtUtcFromPayload(SyncQueueItem item) {
+    final DateTime? updatedAtUtc = _dateTimeOrNull(item.payload['updatedAtUtc']);
+    return updatedAtUtc ?? item.createdAtUtc.toUtc();
   }
 
   Future<void> _markItemsFailed(
