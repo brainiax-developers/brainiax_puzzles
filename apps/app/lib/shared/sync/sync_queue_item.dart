@@ -1,6 +1,8 @@
 enum SyncQueueItemType {
   puzzleCompletion('puzzle_completion'),
-  statsSnapshot('stats_snapshot');
+  statsSnapshot('stats_snapshot'),
+  dailyStreakSnapshot('daily_streak_snapshot'),
+  favouritesSnapshot('favourites_snapshot');
 
   const SyncQueueItemType(this.key);
 

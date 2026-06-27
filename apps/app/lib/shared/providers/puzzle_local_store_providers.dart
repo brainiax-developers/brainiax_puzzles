@@ -6,8 +6,13 @@ import '../services/favourite_puzzle_service.dart';
 import '../services/difficulty_preference_service.dart';
 import '../services/puzzle_local_store.dart';
 import '../services/puzzle_progress_service.dart';
+import '../stats/local_stats_service.dart';
+import '../stats/stats_models.dart';
 import '../streak/daily_streak_providers.dart';
 import '../streak/daily_streak_service.dart';
+import '../sync/sync_queue.dart';
+import '../sync/sync_service.dart';
+import '../sync/sync_triggers.dart';
 
 export '../streak/daily_streak_providers.dart';
 export '../streak/daily_streak_models.dart';
@@ -145,9 +150,25 @@ class FavouritePuzzleController {
   Future<bool> toggle(PuzzleType puzzleType) async {
     final service = await _ref.read(favouritePuzzleServiceProvider.future);
     final result = await service.toggle(puzzleType);
+    final List<PuzzleType> favourites = service.favourites();
     _ref.invalidate(favouritePuzzleTypesProvider);
     _ref.invalidate(isFavouritePuzzleTypeProvider(puzzleType));
+    await _enqueueFavouritesSync(favourites);
     return result;
+  }
+
+  Future<void> _enqueueFavouritesSync(List<PuzzleType> favourites) async {
+    try {
+      final SharedPreferences prefs = await _ref.read(
+        sharedPreferencesProvider.future,
+      );
+      final SyncTriggers triggers = SyncTriggers(
+        syncService: SyncService(SharedPreferencesSyncQueue(prefs)),
+      );
+      await triggers.afterFavouritesChanged(favourites);
+    } catch (_) {
+      // TODO(BX-0415): Report sync trigger failures through Crashlytics.
+    }
   }
 }
 
@@ -268,7 +289,7 @@ class PuzzleCompletionController {
     final store = await _ref.read(puzzleLocalStoreProvider.future);
     final timestamp = completedAt ?? DateTime.now();
     final String utcDayKey = dailyDateKeyUtc ?? DailyUtcDate.keyFor(timestamp);
-    await store.recordCompletion(
+    final PuzzleCompletionRecord record = await store.recordCompletion(
       puzzleType: puzzleType,
       difficulty: difficulty,
       completionTime: completionTime,
@@ -302,6 +323,11 @@ class PuzzleCompletionController {
         mode == PuzzleMode.daily &&
         await store.isDailyCompleted(puzzleType, utcDayKey);
     final DailyStreakStatus dailyStreak = await store.dailyStreakStatus();
+    await _enqueueCompletionSync(
+      store: store,
+      record: record,
+      dailyStreak: dailyStreak,
+    );
 
     return PuzzleCompletionStatus(
       bestTime: bestTime,
@@ -309,6 +335,31 @@ class PuzzleCompletionController {
       dailyStreak: dailyStreak.currentStreak,
       bestDailyStreak: dailyStreak.bestStreak,
     );
+  }
+
+  Future<void> _enqueueCompletionSync({
+    required PuzzleLocalStore store,
+    required PuzzleCompletionRecord record,
+    required DailyStreakStatus dailyStreak,
+  }) async {
+    try {
+      final PuzzleStatsAggregate stats = await LocalStatsService(
+        store,
+      ).aggregateStats();
+      final SharedPreferences prefs = await _ref.read(
+        sharedPreferencesProvider.future,
+      );
+      final SyncTriggers triggers = SyncTriggers(
+        syncService: SyncService(SharedPreferencesSyncQueue(prefs)),
+      );
+      await triggers.afterCompletionRecorded(
+        record: record,
+        stats: stats,
+        dailyStreak: dailyStreak,
+      );
+    } catch (_) {
+      // TODO(BX-0415): Report sync trigger failures through Crashlytics.
+    }
   }
 }
 
