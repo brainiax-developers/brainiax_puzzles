@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,7 +38,8 @@ void main() {
     );
 
     final frameTimings = <FrameTiming>[];
-    void timingsCallback(List<FrameTiming> timings) => frameTimings.addAll(timings);
+    void timingsCallback(List<FrameTiming> timings) =>
+        frameTimings.addAll(timings);
     tester.binding.addTimingsCallback(timingsCallback);
 
     await tester.pumpWidget(
@@ -71,7 +73,10 @@ void main() {
 
     expect(frameTimings, isNotEmpty);
     for (final timing in frameTimings) {
-      expect(timing.totalSpan, lessThanOrEqualTo(const Duration(milliseconds: 16)));
+      expect(
+        timing.totalSpan,
+        lessThanOrEqualTo(const Duration(milliseconds: 16)),
+      );
     }
   });
 
@@ -82,7 +87,9 @@ void main() {
     registry.initialize();
 
     final container = ProviderContainer();
-    final controller = container.read(puzzleGenerationControllerProvider.notifier);
+    final controller = container.read(
+      puzzleGenerationControllerProvider.notifier,
+    );
     final stopwatch = Stopwatch()..start();
     final puzzle = await controller.generate(
       puzzleType: PuzzleType.sudokuClassic,

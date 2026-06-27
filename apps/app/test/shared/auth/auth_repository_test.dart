@@ -2,6 +2,7 @@ import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
 import 'package:app/shared/auth/user_identity.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -183,6 +184,26 @@ void main() {
       expect(result.failure?.code, 'network-request-failed');
       expect(result.failure?.message, contains('network connection'));
     });
+
+    test(
+      'returns a recoverable Apple result on Android without touching Firebase',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() {
+          debugDefaultTargetPlatformOverride = null;
+        });
+
+        when(() => firebaseAuth.currentUser).thenReturn(null);
+
+        final result = await repository.linkWithApple();
+
+        expect(result.status, AppleSignInResultStatus.recoverableFailure);
+        expect(result.failure?.code, 'apple-unavailable');
+        expect(result.failure?.message, contains('Android'));
+        verifyNever(() => firebaseAuth.signInAnonymously());
+        verifyNever(() => firebaseAuth.signInWithCredential(any()));
+      },
+    );
   });
 }
 

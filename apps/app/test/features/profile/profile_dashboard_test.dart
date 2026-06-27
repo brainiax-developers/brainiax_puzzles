@@ -20,67 +20,70 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('profileDashboardProvider', () {
-    test('builds a guest local-only dashboard from offline providers', () async {
-      final container = ProviderContainer(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(
-            const UnavailableAuthRepository('auth disabled'),
-          ),
-          homeStatsProvider.overrideWith(
-            (ref) async => const HomeStatsSnapshot(
-              totalSolved: 3,
-              todayCompleted: 1,
-              completedThisWeek: 2,
+    test(
+      'builds a guest local-only dashboard from offline providers',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(
+              const UnavailableAuthRepository('auth disabled'),
             ),
-          ),
-          localStatsAggregateProvider.overrideWith(
-            (ref) async => PuzzleStatsAggregate(
-              totalCompletions: 3,
-              randomCompletions: 2,
-              dailyCompletions: 1,
-              totalElapsedMs: 0,
-              totalMoveCount: 0,
-              totalHintsUsed: 0,
-              firstCompletedAtUtc: null,
-              lastCompletedAtUtc: null,
-              byPuzzle: <PuzzleType, PuzzleTypeStats>{
-                PuzzleType.sudokuClassic: _puzzleStats(
-                  puzzleType: PuzzleType.sudokuClassic,
-                  totalCompletions: 3,
-                  randomCompletions: 2,
-                  dailyCompletions: 1,
-                  bestElapsedMs: 95 * 1000,
-                ),
-              },
+            homeStatsProvider.overrideWith(
+              (ref) async => const HomeStatsSnapshot(
+                totalSolved: 3,
+                todayCompleted: 1,
+                completedThisWeek: 2,
+              ),
             ),
-          ),
-          dailyStreakStatusProvider.overrideWith(
-            (ref) async => const DailyStreakStatus(
-              currentStreak: 4,
-              bestStreak: 9,
-              lastCompletedDateKeyUtc: '2026-06-26',
+            localStatsAggregateProvider.overrideWith(
+              (ref) async => PuzzleStatsAggregate(
+                totalCompletions: 3,
+                randomCompletions: 2,
+                dailyCompletions: 1,
+                totalElapsedMs: 0,
+                totalMoveCount: 0,
+                totalHintsUsed: 0,
+                firstCompletedAtUtc: null,
+                lastCompletedAtUtc: null,
+                byPuzzle: <PuzzleType, PuzzleTypeStats>{
+                  PuzzleType.sudokuClassic: _puzzleStats(
+                    puzzleType: PuzzleType.sudokuClassic,
+                    totalCompletions: 3,
+                    randomCompletions: 2,
+                    dailyCompletions: 1,
+                    bestElapsedMs: 95 * 1000,
+                  ),
+                },
+              ),
             ),
-          ),
-          syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
-          pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
-          failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
-        ],
-      );
-      addTearDown(container.dispose);
+            dailyStreakStatusProvider.overrideWith(
+              (ref) async => const DailyStreakStatus(
+                currentStreak: 4,
+                bestStreak: 9,
+                lastCompletedDateKeyUtc: '2026-06-26',
+              ),
+            ),
+            syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
+            pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
+            failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
+          ],
+        );
+        addTearDown(container.dispose);
 
-      final dashboard = await container.read(profileDashboardProvider.future);
+        final dashboard = await container.read(profileDashboardProvider.future);
 
-      expect(dashboard.accountState, ProfileAccountState.guest);
-      expect(dashboard.authAvailable, isFalse);
-      expect(dashboard.syncSummary.state, ProfileSyncState.localOnly);
-      expect(dashboard.syncSummary.canSyncNow, isFalse);
-      expect(dashboard.overview.totalSolved, 3);
-      expect(dashboard.puzzleSummaries, hasLength(1));
-      expect(
-        dashboard.puzzleSummaries.single.bestTime,
-        const Duration(seconds: 95),
-      );
-    });
+        expect(dashboard.accountState, ProfileAccountState.guest);
+        expect(dashboard.authAvailable, isFalse);
+        expect(dashboard.syncSummary.state, ProfileSyncState.localOnly);
+        expect(dashboard.syncSummary.canSyncNow, isFalse);
+        expect(dashboard.overview.totalSolved, 3);
+        expect(dashboard.puzzleSummaries, hasLength(1));
+        expect(
+          dashboard.puzzleSummaries.single.bestTime,
+          const Duration(seconds: 95),
+        );
+      },
+    );
 
     test('builds an anonymous dashboard with pending sync work', () async {
       final container = ProviderContainer(
@@ -230,6 +233,11 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<GoogleSignInResult> signInWithGoogle() async {
     return GoogleSignInResult.signedIn(_state);
+  }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(_state);
   }
 }
 

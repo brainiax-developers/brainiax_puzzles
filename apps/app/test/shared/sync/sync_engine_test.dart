@@ -150,10 +150,7 @@ void main() {
       PuzzleType.nonogramMono,
       PuzzleType.sudokuClassic,
     ]);
-    expect(
-      repository.favouritesUpdatedAtUtc,
-      DateTime.utc(2026, 6, 21, 12),
-    );
+    expect(repository.favouritesUpdatedAtUtc, DateTime.utc(2026, 6, 21, 12));
     expect(await queue.failed(), isEmpty);
   });
 }
@@ -282,6 +279,11 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<GoogleSignInResult> signInWithGoogle() async {
     return GoogleSignInResult.signedIn(_currentState);
+  }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(_currentState);
   }
 }
 

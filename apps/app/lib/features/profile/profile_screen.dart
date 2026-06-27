@@ -8,6 +8,7 @@ import '../../shared/account/account_upgrade_prompt_providers.dart';
 import '../../shared/account/account_upgrade_prompt_service.dart';
 import '../../shared/auth/auth_providers.dart';
 import '../../shared/auth/auth_repository.dart';
+import '../../shared/auth/auth_state.dart';
 import '../../shared/models/puzzle_type.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/sync/sync_engine.dart';
@@ -26,6 +27,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isSyncing = false;
   bool _isSigningInWithGoogle = false;
+  bool _isSigningInWithApple = false;
 
   @override
   Widget build(BuildContext context) {
@@ -42,11 +44,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           upgradePrompt: upgradePrompt,
           isSyncing: _isSyncing,
           isSigningInWithGoogle: _isSigningInWithGoogle,
+          isSigningInWithApple: _isSigningInWithApple,
           onSyncNow: dashboard.syncSummary.canSyncNow ? _handleSyncNow : null,
           onSignInWithGoogle:
               dashboard.authAvailable &&
                   dashboard.accountState != ProfileAccountState.signedIn
               ? _handleSignInWithGoogle
+              : null,
+          onSignInWithApple:
+              dashboard.authAvailable &&
+                  dashboard.accountState != ProfileAccountState.signedIn &&
+                  _supportsAppleSignIn()
+              ? _handleSignInWithApple
               : null,
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -103,7 +112,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .signInWithGoogle();
 
       if (result.succeeded) {
-        await _triggerProfileSyncAfterGoogleSignIn(result);
+        await _triggerProfileSyncAfterAccountSignIn(result.authState);
       }
 
       ref.invalidate(authStateProvider);
@@ -142,10 +151,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _triggerProfileSyncAfterGoogleSignIn(
-    GoogleSignInResult result,
+  Future<void> _handleSignInWithApple() async {
+    if (_isSigningInWithApple) {
+      return;
+    }
+
+    setState(() {
+      _isSigningInWithApple = true;
+    });
+
+    try {
+      final AppleSignInResult result = await ref
+          .read(authRepositoryProvider)
+          .linkWithApple();
+
+      if (result.succeeded) {
+        await _triggerProfileSyncAfterAccountSignIn(result.authState);
+      }
+
+      ref.invalidate(authStateProvider);
+      ref.invalidate(currentUserIdentityProvider);
+      ref.invalidate(profileDashboardProvider);
+      ref.invalidate(accountUpgradePromptEligibilityProvider);
+
+      if (!mounted || result.status == AppleSignInResultStatus.cancelled) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_appleSignInResultMessage(result))),
+      );
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Apple sign-in failed unexpectedly: $error');
+        debugPrint('$stackTrace');
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Apple sign-in is unavailable right now. You can keep playing normally.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSigningInWithApple = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _triggerProfileSyncAfterAccountSignIn(
+    AuthState? authState,
   ) async {
-    final identity = result.authState?.identity;
+    final identity = authState?.identity;
     if (identity == null) {
       return;
     }
@@ -170,16 +233,20 @@ class _ProfileBody extends StatelessWidget {
     required this.upgradePrompt,
     required this.isSyncing,
     required this.isSigningInWithGoogle,
+    required this.isSigningInWithApple,
     required this.onSyncNow,
     required this.onSignInWithGoogle,
+    required this.onSignInWithApple,
   });
 
   final ProfileDashboardData dashboard;
   final AccountUpgradePromptEligibility? upgradePrompt;
   final bool isSyncing;
   final bool isSigningInWithGoogle;
+  final bool isSigningInWithApple;
   final VoidCallback? onSyncNow;
   final VoidCallback? onSignInWithGoogle;
+  final VoidCallback? onSignInWithApple;
 
   @override
   Widget build(BuildContext context) {
@@ -194,8 +261,10 @@ class _ProfileBody extends StatelessWidget {
           dashboard: dashboard,
           isSyncing: isSyncing,
           isSigningInWithGoogle: isSigningInWithGoogle,
+          isSigningInWithApple: isSigningInWithApple,
           onSyncNow: onSyncNow,
           onSignInWithGoogle: onSignInWithGoogle,
+          onSignInWithApple: onSignInWithApple,
         ),
         SizedBox(height: spacing.l),
         _OverviewCard(overview: dashboard.overview),
@@ -238,15 +307,19 @@ class _AccountStatusCard extends StatelessWidget {
     required this.dashboard,
     required this.isSyncing,
     required this.isSigningInWithGoogle,
+    required this.isSigningInWithApple,
     required this.onSyncNow,
     required this.onSignInWithGoogle,
+    required this.onSignInWithApple,
   });
 
   final ProfileDashboardData dashboard;
   final bool isSyncing;
   final bool isSigningInWithGoogle;
+  final bool isSigningInWithApple;
   final VoidCallback? onSyncNow;
   final VoidCallback? onSignInWithGoogle;
+  final VoidCallback? onSignInWithApple;
 
   @override
   Widget build(BuildContext context) {
@@ -380,6 +453,33 @@ class _AccountStatusCard extends StatelessWidget {
                   isSigningInWithGoogle
                       ? 'Connecting...'
                       : 'Continue with Google',
+                ),
+              ),
+            ),
+          ],
+          if (onSignInWithApple != null) ...[
+            SizedBox(height: spacing.s),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const ValueKey('profile-apple-sign-in-button'),
+                onPressed: isSigningInWithApple ? null : onSignInWithApple,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: isSigningInWithApple
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.apple),
+                label: Text(
+                  isSigningInWithApple
+                      ? 'Connecting...'
+                      : 'Continue with Apple',
                 ),
               ),
             ),
@@ -992,6 +1092,37 @@ String _googleSignInResultMessage(GoogleSignInResult result) {
     case GoogleSignInResultStatus.recoverableFailure:
       return result.failure?.message ??
           'Google sign-in could not finish. You can keep playing normally.';
+  }
+}
+
+String _appleSignInResultMessage(AppleSignInResult result) {
+  switch (result.status) {
+    case AppleSignInResultStatus.linked:
+      return 'Apple account connected. Your existing progress stayed attached.';
+    case AppleSignInResultStatus.signedIn:
+      return 'Signed in with Apple. You can keep playing normally.';
+    case AppleSignInResultStatus.cancelled:
+      return '';
+    case AppleSignInResultStatus.recoverableFailure:
+      return result.failure?.message ??
+          'Apple sign-in could not finish. You can keep playing normally.';
+  }
+}
+
+bool _supportsAppleSignIn() {
+  if (kIsWeb) {
+    return false;
+  }
+
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.iOS:
+    case TargetPlatform.macOS:
+      return true;
+    case TargetPlatform.android:
+    case TargetPlatform.fuchsia:
+    case TargetPlatform.linux:
+    case TargetPlatform.windows:
+      return false;
   }
 }
 

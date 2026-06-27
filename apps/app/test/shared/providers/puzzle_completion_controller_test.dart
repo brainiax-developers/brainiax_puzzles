@@ -207,42 +207,45 @@ void main() {
     expect(syncEngine.calls, 1);
   });
 
-  test('favourite toggle updates local state and enqueues a favourites update', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final ProviderContainer container = ProviderContainer(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(AsyncValue.data(prefs)),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'favourite toggle updates local state and enqueues a favourites update',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final ProviderContainer container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(AsyncValue.data(prefs)),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final FavouritePuzzleController controller = container.read(
-      favouritePuzzleControllerProvider,
-    );
+      final FavouritePuzzleController controller = container.read(
+        favouritePuzzleControllerProvider,
+      );
 
-    expect(
-      await container.read(favouritePuzzleTypesProvider.future),
-      isEmpty,
-    );
+      expect(
+        await container.read(favouritePuzzleTypesProvider.future),
+        isEmpty,
+      );
 
-    expect(await controller.toggle(PuzzleType.sudokuClassic), isTrue);
+      expect(await controller.toggle(PuzzleType.sudokuClassic), isTrue);
 
-    final List<PuzzleType> favourites = await container.read(
-      favouritePuzzleTypesProvider.future,
-    );
-    final List<SyncQueueItem> queueItems = await container.read(
-      pendingSyncQueueItemsProvider.future,
-    );
-    final SyncQueueItem item = queueItems.single;
+      final List<PuzzleType> favourites = await container.read(
+        favouritePuzzleTypesProvider.future,
+      );
+      final List<SyncQueueItem> queueItems = await container.read(
+        pendingSyncQueueItemsProvider.future,
+      );
+      final SyncQueueItem item = queueItems.single;
 
-    expect(favourites, <PuzzleType>[PuzzleType.sudokuClassic]);
-    expect(item.type, SyncQueueItemType.favouritesUpdate);
-    expect(item.payload['favourites'], <String>['sudoku_classic']);
-    expect(item.payload['updatedAtUtc'], isA<String>());
-    expect(item.payload.containsKey('board'), isFalse);
-    expect(item.payload.containsKey('solution'), isFalse);
-  });
+      expect(favourites, <PuzzleType>[PuzzleType.sudokuClassic]);
+      expect(item.type, SyncQueueItemType.favouritesUpdate);
+      expect(item.payload['favourites'], <String>['sudoku_classic']);
+      expect(item.payload['updatedAtUtc'], isA<String>());
+      expect(item.payload.containsKey('board'), isFalse);
+      expect(item.payload.containsKey('solution'), isFalse);
+    },
+  );
 }
 
 class _ThrowingSyncEngine extends SyncEngine {
@@ -284,6 +287,11 @@ class _UnusedAuthRepository implements AuthRepository {
   Future<GoogleSignInResult> signInWithGoogle() async {
     return GoogleSignInResult.signedIn(currentAuthState);
   }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(currentAuthState);
+  }
 }
 
 class _UnusedSyncRepository implements SyncRepository {
@@ -301,8 +309,7 @@ class _UnusedSyncRepository implements SyncRepository {
     String uid,
     List<PuzzleType> favourites, {
     required DateTime updatedAtUtc,
-  }
-  ) async {}
+  }) async {}
 
   @override
   Future<void> upsertStats(String uid, PuzzleStatsAggregate stats) async {}

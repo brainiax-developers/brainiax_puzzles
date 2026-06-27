@@ -239,4 +239,9 @@ class _FakeAuthRepository implements AuthRepository {
   Future<GoogleSignInResult> signInWithGoogle() async {
     return GoogleSignInResult.signedIn(_state);
   }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(_state);
+  }
 }

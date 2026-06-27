@@ -14,6 +14,7 @@ import 'package:app/shared/sync/sync_engine.dart';
 import 'package:app/shared/sync/sync_providers.dart';
 import 'package:app/shared/sync/sync_queue.dart';
 import 'package:app/shared/sync/sync_queue_item.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,40 +33,55 @@ void main() {
   testWidgets('renders an offline-first empty profile safely', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(
-      buildSubject([
-        authRepositoryProvider.overrideWithValue(
-          const UnavailableAuthRepository('auth disabled'),
-        ),
-        homeStatsProvider.overrideWith(
-          (ref) async => const HomeStatsSnapshot(
-            totalSolved: 0,
-            todayCompleted: 0,
-            completedThisWeek: 0,
-          ),
-        ),
-        localStatsAggregateProvider.overrideWith(
-          (ref) async => PuzzleStatsAggregate.empty,
-        ),
-        dailyStreakStatusProvider.overrideWith(
-          (ref) async => DailyStreakStatus.empty,
-        ),
-        syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
-        pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
-        failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
-      ]),
-    );
-    await tester.pumpAndSettle();
+    final TargetPlatform? previousTargetPlatform =
+        debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
 
-    expect(find.text('Profile'), findsOneWidget);
-    expect(find.text('Guest'), findsOneWidget);
-    expect(find.text('Local only'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('No puzzle history yet'), 300);
-    await tester.pumpAndSettle();
-    expect(find.text('No puzzle history yet'), findsOneWidget);
-    expect(find.text('Settings'), findsWidgets);
-    expect(find.byKey(const ValueKey('profile-sync-now-button')), findsNothing);
-    expect(find.text('Leaderboard'), findsNothing);
+    try {
+      await tester.pumpWidget(
+        buildSubject([
+          authRepositoryProvider.overrideWithValue(
+            const UnavailableAuthRepository('auth disabled'),
+          ),
+          homeStatsProvider.overrideWith(
+            (ref) async => const HomeStatsSnapshot(
+              totalSolved: 0,
+              todayCompleted: 0,
+              completedThisWeek: 0,
+            ),
+          ),
+          localStatsAggregateProvider.overrideWith(
+            (ref) async => PuzzleStatsAggregate.empty,
+          ),
+          dailyStreakStatusProvider.overrideWith(
+            (ref) async => DailyStreakStatus.empty,
+          ),
+          syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
+          pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
+          failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Guest'), findsOneWidget);
+      expect(find.text('Local only'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('No puzzle history yet'), 300);
+      await tester.pumpAndSettle();
+      expect(find.text('No puzzle history yet'), findsOneWidget);
+      expect(find.text('Settings'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('profile-sync-now-button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('profile-apple-sign-in-button')),
+        findsNothing,
+      );
+      expect(find.text('Leaderboard'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = previousTargetPlatform;
+    }
   });
 
   testWidgets('shows signed-in sync error state and puzzle breakdown', (
@@ -274,6 +290,11 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<GoogleSignInResult> signInWithGoogle() async {
     return GoogleSignInResult.signedIn(_state);
+  }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.signedIn(_state);
   }
 }
 

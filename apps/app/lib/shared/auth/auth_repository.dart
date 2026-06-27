@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart' as google_sign_in;
 
 import 'auth_state.dart';
@@ -16,6 +17,8 @@ abstract interface class AuthRepository {
   });
 
   Future<GoogleSignInResult> signInWithGoogle();
+
+  Future<AppleSignInResult> linkWithApple();
 }
 
 enum GoogleSignInResultStatus {
@@ -61,6 +64,49 @@ class GoogleSignInResult {
 
 class GoogleSignInFailure {
   const GoogleSignInFailure({required this.code, required this.message});
+
+  final String code;
+  final String message;
+}
+
+enum AppleSignInResultStatus { linked, signedIn, cancelled, recoverableFailure }
+
+class AppleSignInResult {
+  const AppleSignInResult._({
+    required this.status,
+    this.authState,
+    this.failure,
+  });
+
+  const AppleSignInResult.linked(AuthState authState)
+    : this._(status: AppleSignInResultStatus.linked, authState: authState);
+
+  const AppleSignInResult.signedIn(AuthState authState)
+    : this._(status: AppleSignInResultStatus.signedIn, authState: authState);
+
+  const AppleSignInResult.cancelled()
+    : this._(status: AppleSignInResultStatus.cancelled);
+
+  const AppleSignInResult.recoverableFailure({
+    required AppleSignInFailure failure,
+    AuthState? authState,
+  }) : this._(
+         status: AppleSignInResultStatus.recoverableFailure,
+         authState: authState,
+         failure: failure,
+       );
+
+  final AppleSignInResultStatus status;
+  final AuthState? authState;
+  final AppleSignInFailure? failure;
+
+  bool get succeeded =>
+      status == AppleSignInResultStatus.linked ||
+      status == AppleSignInResultStatus.signedIn;
+}
+
+class AppleSignInFailure {
+  const AppleSignInFailure({required this.code, required this.message});
 
   final String code;
   final String message;
@@ -244,6 +290,25 @@ class FirebaseAuthRepository implements AuthRepository {
     }
   }
 
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    final AuthState currentState = currentAuthState;
+    final firebase_auth.User? currentUser = _firebaseAuth.currentUser;
+    if (currentUser != null && !currentUser.isAnonymous) {
+      return AppleSignInResult.signedIn(currentState);
+    }
+
+    // TODO(bx-0411): Wire up `sign_in_with_apple` and the Firebase credential
+    // exchange once the iOS/macOS setup is ready.
+    return AppleSignInResult.recoverableFailure(
+      authState: currentState,
+      failure: AppleSignInFailure(
+        code: 'apple-unavailable',
+        message: _appleSignInUnavailableMessage(),
+      ),
+    );
+  }
+
   AuthState _mapUser(firebase_auth.User? user) {
     if (user == null) {
       return const AuthState.signedOut();
@@ -305,6 +370,14 @@ class UnavailableAuthRepository implements AuthRepository {
       failure: GoogleSignInFailure(code: 'auth-unavailable', message: message),
     );
   }
+
+  @override
+  Future<AppleSignInResult> linkWithApple() async {
+    return AppleSignInResult.recoverableFailure(
+      authState: currentAuthState,
+      failure: AppleSignInFailure(code: 'auth-unavailable', message: message),
+    );
+  }
 }
 
 bool _isGoogleCancellation(google_sign_in.GoogleSignInException error) {
@@ -329,5 +402,23 @@ String _googleSignInFailureMessage(firebase_auth.FirebaseAuthException error) {
     default:
       return error.message ??
           'Google sign-in could not finish. Your local progress is still saved on this device.';
+  }
+}
+
+String _appleSignInUnavailableMessage() {
+  if (kIsWeb) {
+    return 'Apple sign-in is unavailable in this build.';
+  }
+
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.iOS:
+    case TargetPlatform.macOS:
+      return 'Apple sign-in is not wired up yet. You can keep playing normally.';
+    case TargetPlatform.android:
+      return 'Apple sign-in is unavailable on Android.';
+    case TargetPlatform.fuchsia:
+    case TargetPlatform.linux:
+    case TargetPlatform.windows:
+      return 'Apple sign-in is unavailable on this platform.';
   }
 }
