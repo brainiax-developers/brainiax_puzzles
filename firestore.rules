@@ -1,0 +1,374 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function hasField(data, field) {
+      return data.keys().hasAny([field]);
+    }
+
+    function blockedClientFields() {
+      return [
+        'admin',
+        'claims',
+        'config',
+        'customClaims',
+        'featureFlags',
+        'isAdmin',
+        'remoteConfig',
+        'roles',
+      ];
+    }
+
+    function gameplayPayloadFields() {
+      return [
+        'activeRunState',
+        'board',
+        'cells',
+        'clueGrid',
+        'generatedPuzzleJson',
+        'grid',
+        'moves',
+        'solution',
+      ];
+    }
+
+    function hasNoBlockedClientFields(data) {
+      return !data.keys().hasAny(blockedClientFields()) &&
+        !data.keys().hasAny(gameplayPayloadFields());
+    }
+
+    function hasSchemaVersion(data) {
+      return hasField(data, 'schemaVersion') && data.schemaVersion == 1;
+    }
+
+    function requiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function onlyFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function isNonEmptyString(value, maxSize) {
+      return value is string && value.size() > 0 && value.size() <= maxSize;
+    }
+
+    function isNullableString(value, maxSize) {
+      return value == null || (value is string && value.size() <= maxSize);
+    }
+
+    function optionalNullableString(data, field, maxSize) {
+      return !hasField(data, field) || isNullableString(data[field], maxSize);
+    }
+
+    function isDateKey(value) {
+      return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function optionalDateKey(data, field) {
+      return !hasField(data, field) || data[field] == null || isDateKey(data[field]);
+    }
+
+    function optionalTimestamp(data, field) {
+      return !hasField(data, field) || data[field] == null || data[field] is timestamp;
+    }
+
+    function optionalBool(data, field) {
+      return !hasField(data, field) || data[field] is bool;
+    }
+
+    function isIntInRange(value, minValue, maxValue) {
+      return value is int && value >= minValue && value <= maxValue;
+    }
+
+    function optionalIntInRange(data, field, minValue, maxValue) {
+      return !hasField(data, field) ||
+        data[field] == null ||
+        isIntInRange(data[field], minValue, maxValue);
+    }
+
+    function optionalList(data, field, maxItems) {
+      return !hasField(data, field) ||
+        (data[field] is list && data[field].size() <= maxItems);
+    }
+
+    function optionalStringMap(data, field, maxKeys) {
+      return !hasField(data, field) ||
+        (data[field] is map && data[field].keys().size() <= maxKeys);
+    }
+
+    function validPreferences(data) {
+      return !hasField(data, 'preferences') ||
+        (
+          data.preferences is map &&
+          onlyFields(data.preferences, [
+            'favoritePuzzleTypes',
+            'preferredDifficulties',
+            'updatedAt',
+          ]) &&
+          optionalList(data.preferences, 'favoritePuzzleTypes', 50) &&
+          optionalStringMap(data.preferences, 'preferredDifficulties', 50) &&
+          optionalTimestamp(data.preferences, 'updatedAt')
+        );
+    }
+
+    function validUserProfile(data, uid) {
+      return onlyFields(data, [
+          'createdAt',
+          'displayName',
+          'isAnonymous',
+          'lastSeenAt',
+          'preferences',
+          'providerIds',
+          'schemaVersion',
+          'uid',
+        ]) &&
+        requiredFields(data, ['schemaVersion', 'uid']) &&
+        hasNoBlockedClientFields(data) &&
+        hasSchemaVersion(data) &&
+        data.uid == uid &&
+        optionalTimestamp(data, 'createdAt') &&
+        optionalTimestamp(data, 'lastSeenAt') &&
+        optionalNullableString(data, 'displayName', 80) &&
+        optionalBool(data, 'isAnonymous') &&
+        optionalList(data, 'providerIds', 10) &&
+        validPreferences(data);
+    }
+
+    function validRun(data, uid, runId) {
+      return onlyFields(data, [
+          'completedAt',
+          'dailyDateKeyUtc',
+          'difficulty',
+          'elapsedMs',
+          'hintsUsed',
+          'mode',
+          'moveCount',
+          'puzzleType',
+          'runId',
+          'schemaVersion',
+          'sessionUpdatedAt',
+          'size',
+          'startedAt',
+          'uid',
+        ]) &&
+        requiredFields(data, [
+          'completedAt',
+          'difficulty',
+          'elapsedMs',
+          'hintsUsed',
+          'mode',
+          'moveCount',
+          'puzzleType',
+          'runId',
+          'schemaVersion',
+          'size',
+          'uid',
+        ]) &&
+        hasNoBlockedClientFields(data) &&
+        hasSchemaVersion(data) &&
+        data.uid == uid &&
+        data.runId == runId &&
+        isNonEmptyString(data.puzzleType, 64) &&
+        (data.mode == 'daily' || data.mode == 'random') &&
+        isNonEmptyString(data.difficulty, 48) &&
+        isNonEmptyString(data.size, 32) &&
+        (
+          (data.mode == 'daily' && hasField(data, 'dailyDateKeyUtc') && isDateKey(data.dailyDateKeyUtc)) ||
+          (data.mode == 'random' && (!hasField(data, 'dailyDateKeyUtc') || data.dailyDateKeyUtc == null))
+        ) &&
+        optionalTimestamp(data, 'startedAt') &&
+        data.completedAt is timestamp &&
+        optionalTimestamp(data, 'sessionUpdatedAt') &&
+        isIntInRange(data.elapsedMs, 0, 2592000000) &&
+        isIntInRange(data.moveCount, 0, 1000000) &&
+        isIntInRange(data.hintsUsed, 0, 10000);
+    }
+
+    function validStats(data, uid, puzzleType) {
+      return onlyFields(data, [
+          'bestElapsedMs',
+          'byDifficulty',
+          'dailyCompletions',
+          'firstCompletedAt',
+          'lastCompletedAt',
+          'puzzleType',
+          'randomCompletions',
+          'schemaVersion',
+          'totalCompletions',
+          'totalElapsedMs',
+          'totalHintsUsed',
+          'totalMoveCount',
+          'uid',
+        ]) &&
+        requiredFields(data, [
+          'byDifficulty',
+          'dailyCompletions',
+          'puzzleType',
+          'randomCompletions',
+          'schemaVersion',
+          'totalCompletions',
+          'totalElapsedMs',
+          'totalHintsUsed',
+          'totalMoveCount',
+          'uid',
+        ]) &&
+        hasNoBlockedClientFields(data) &&
+        hasSchemaVersion(data) &&
+        data.uid == uid &&
+        data.puzzleType == puzzleType &&
+        isIntInRange(data.totalCompletions, 0, 1000000) &&
+        isIntInRange(data.randomCompletions, 0, 1000000) &&
+        isIntInRange(data.dailyCompletions, 0, 1000000) &&
+        isIntInRange(data.totalElapsedMs, 0, 2592000000000) &&
+        isIntInRange(data.totalMoveCount, 0, 1000000000) &&
+        isIntInRange(data.totalHintsUsed, 0, 10000000) &&
+        optionalIntInRange(data, 'bestElapsedMs', 0, 2592000000) &&
+        optionalTimestamp(data, 'firstCompletedAt') &&
+        optionalTimestamp(data, 'lastCompletedAt') &&
+        data.byDifficulty is map &&
+        data.byDifficulty.keys().size() <= 50;
+    }
+
+    function validDailyStreak(data, uid) {
+      return onlyFields(data, [
+          'bestStreak',
+          'currentStreak',
+          'lastCompletedDateKeyUtc',
+          'schemaVersion',
+          'uid',
+          'updatedAt',
+        ]) &&
+        requiredFields(data, [
+          'bestStreak',
+          'currentStreak',
+          'schemaVersion',
+          'uid',
+        ]) &&
+        hasNoBlockedClientFields(data) &&
+        hasSchemaVersion(data) &&
+        data.uid == uid &&
+        isIntInRange(data.currentStreak, 0, 10000) &&
+        isIntInRange(data.bestStreak, 0, 10000) &&
+        optionalDateKey(data, 'lastCompletedDateKeyUtc') &&
+        optionalTimestamp(data, 'updatedAt');
+    }
+
+    function validLeaderboardEntry(data, periodId, puzzleType, entryId) {
+      return onlyFields(data, [
+          'completedAt',
+          'difficulty',
+          'displayName',
+          'elapsedMs',
+          'entryId',
+          'hintsUsed',
+          'moveCount',
+          'periodId',
+          'puzzleType',
+          'rank',
+          'schemaVersion',
+          'score',
+          'size',
+          'uid',
+          'updatedAt',
+        ]) &&
+        requiredFields(data, [
+          'completedAt',
+          'difficulty',
+          'elapsedMs',
+          'entryId',
+          'hintsUsed',
+          'moveCount',
+          'periodId',
+          'puzzleType',
+          'schemaVersion',
+          'score',
+          'size',
+          'uid',
+        ]) &&
+        hasNoBlockedClientFields(data) &&
+        hasSchemaVersion(data) &&
+        data.entryId == entryId &&
+        data.periodId == periodId &&
+        data.puzzleType == puzzleType &&
+        data.uid == request.auth.uid &&
+        isNonEmptyString(data.entryId, 128) &&
+        isNonEmptyString(data.periodId, 48) &&
+        isNonEmptyString(data.puzzleType, 64) &&
+        isNonEmptyString(data.uid, 128) &&
+        optionalNullableString(data, 'displayName', 80) &&
+        isIntInRange(data.score, 0, 1000000000000) &&
+        (!hasField(data, 'rank') || data.rank == null) &&
+        isIntInRange(data.elapsedMs, 0, 2592000000) &&
+        isIntInRange(data.moveCount, 0, 1000000) &&
+        isIntInRange(data.hintsUsed, 0, 10000) &&
+        isNonEmptyString(data.difficulty, 48) &&
+        isNonEmptyString(data.size, 32) &&
+        data.completedAt is timestamp &&
+        optionalTimestamp(data, 'updatedAt');
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validUserProfile(request.resource.data, uid);
+      allow delete: if isOwner(uid);
+
+      match /stats/{puzzleType} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validStats(request.resource.data, uid, puzzleType);
+        allow delete: if isOwner(uid);
+      }
+
+      match /runs/{runId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validRun(request.resource.data, uid, runId);
+        allow delete: if isOwner(uid);
+      }
+
+      match /dailyStreak/{streakDocId} {
+        allow read: if isOwner(uid) && streakDocId == 'state';
+        allow create, update: if isOwner(uid) &&
+          streakDocId == 'state' &&
+          validDailyStreak(request.resource.data, uid);
+        allow delete: if isOwner(uid) && streakDocId == 'state';
+      }
+    }
+
+    match /leaderboards/{periodId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /puzzleTypes/{puzzleType} {
+        allow read: if true;
+        allow write: if false;
+
+        match /entries/{entryId} {
+          allow read: if true;
+          allow create: if signedIn() &&
+            validLeaderboardEntry(request.resource.data, periodId, puzzleType, entryId);
+          allow update: if signedIn() &&
+            resource.data.uid == request.auth.uid &&
+            validLeaderboardEntry(request.resource.data, periodId, puzzleType, entryId);
+          allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+        }
+      }
+    }
+
+    match /config/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -8,6 +8,53 @@ reconstruct an in-progress or solved board.
 All documents include `schemaVersion`. The initial schema version is `1`.
 Timestamps are stored as Firestore `Timestamp` values in UTC.
 
+## Security Rules
+
+Rules live at the repository root in `firestore.rules`; root `firebase.json`
+points the Firebase CLI at `firestore.rules` and `firestore.indexes.json`.
+
+The V1 rule assumptions are:
+
+- `/users/{uid}` and its supported subcollections are private to
+  `request.auth.uid == uid`.
+- Client-writable user data is limited to the profile fields documented here,
+  `/stats/{puzzleType}`, `/runs/{runId}`, and `/dailyStreak/state`.
+- User preferences are stored as a `preferences` map on `/users/{uid}`, not as
+  a separate subcollection.
+- Client writes reject top-level admin/config fields such as `admin`, `isAdmin`,
+  `roles`, `claims`, `config`, `remoteConfig`, and `featureFlags`.
+- Client writes reject gameplay payload fields such as `board`, `cells`, `grid`,
+  `generatedPuzzleJson`, `solution`, `activeRunState`, and `moves`.
+- Leaderboard entries are publicly readable. Writes require authentication,
+  path fields matching the document path, and payload `uid` matching
+  `request.auth.uid`.
+- Leaderboard client writes must leave `rank` absent or `null`; any materialized
+  rank is treated as admin-maintained data.
+- `/config/**` is readable by clients and not writable by clients.
+
+`firestore.indexes.json` is intentionally empty for V1 because the current
+Firestore providers only create document references and collection references;
+no composite-query contract has been introduced yet.
+
+### Emulator Validation
+
+The repo includes a dependency-free Firestore rules probe:
+
+```sh
+firebase emulators:exec --only firestore --project demo-brainiax-puzzles "node bin/firestore_rules_probe.mjs"
+```
+
+If PowerShell splits the Firebase CLI wrapper arguments, call the Firebase CLI
+JavaScript entrypoint directly:
+
+```powershell
+node "$env:APPDATA\npm\node_modules\firebase-tools\lib\bin\firebase.js" emulators:exec --only firestore --project demo-brainiax-puzzles "node bin/firestore_rules_probe.mjs"
+```
+
+The probe validates that owners can write their own metadata, other users cannot
+read/write private metadata, `/config` writes are denied, leaderboard writes
+require matching auth and payload UIDs, and gameplay/admin fields are rejected.
+
 ## Collections
 
 ### `/users/{uid}`
