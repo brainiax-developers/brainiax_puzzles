@@ -1,4 +1,5 @@
 import 'package:app/features/profile/profile_screen.dart';
+import 'package:app/shared/account/account_upgrade_prompt_service.dart';
 import 'package:app/shared/auth/auth_providers.dart';
 import 'package:app/shared/auth/auth_repository.dart';
 import 'package:app/shared/auth/auth_state.dart';
@@ -16,6 +17,7 @@ import 'package:app/shared/sync/sync_queue_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,9 +25,7 @@ void main() {
   Widget buildSubject(List<Object> overrides) {
     return ProviderScope(
       overrides: overrides.cast(),
-      child: const MaterialApp(
-        home: Scaffold(body: ProfileScreen()),
-      ),
+      child: const MaterialApp(home: Scaffold(body: ProfileScreen())),
     );
   }
 
@@ -142,12 +142,84 @@ void main() {
       find.textContaining('Latest issue: sync failed for test'),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('profile-sync-now-button')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-sync-now-button')),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(find.text('Classic Sudoku'), 300);
     await tester.pumpAndSettle();
     expect(find.text('Classic Sudoku'), findsOneWidget);
     expect(find.text('2 completions'), findsOneWidget);
     expect(find.text('Best 1:35'), findsOneWidget);
+  });
+
+  testWidgets('shows and dismisses the anonymous account upgrade prompt', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await tester.pumpWidget(
+      buildSubject([
+        authRepositoryProvider.overrideWithValue(
+          const _FakeAuthRepository(
+            AuthState.authenticated(
+              UserIdentity(uid: 'anon-user', isAnonymous: true),
+            ),
+          ),
+        ),
+        homeStatsProvider.overrideWith(
+          (ref) async => const HomeStatsSnapshot(
+            totalSolved: 3,
+            todayCompleted: 1,
+            completedThisWeek: 2,
+          ),
+        ),
+        localStatsAggregateProvider.overrideWith(
+          (ref) async => const PuzzleStatsAggregate(
+            totalCompletions: 3,
+            randomCompletions: 2,
+            dailyCompletions: 1,
+            totalElapsedMs: 190000,
+            totalMoveCount: 0,
+            totalHintsUsed: 0,
+            firstCompletedAtUtc: null,
+            lastCompletedAtUtc: null,
+            byPuzzle: <PuzzleType, PuzzleTypeStats>{},
+          ),
+        ),
+        dailyStreakStatusProvider.overrideWith(
+          (ref) async => const DailyStreakStatus(
+            currentStreak: 3,
+            bestStreak: 4,
+            lastCompletedDateKeyUtc: '2026-06-27',
+          ),
+        ),
+        syncEngineProvider.overrideWithValue(const AsyncValue.data(null)),
+        pendingSyncQueueItemsProvider.overrideWith((ref) async => const []),
+        failedSyncQueueItemsProvider.overrideWith((ref) async => const []),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Save progress with an account'),
+      300,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Save progress with an account'), findsOneWidget);
+    expect(find.text('3 completions'), findsOneWidget);
+    expect(find.text('3 day streak'), findsOneWidget);
+
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save progress with an account'), findsNothing);
+    expect(find.text('Dismiss'), findsNothing);
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getString(AccountUpgradePromptService.dismissedUntilKey),
+      isNotNull,
+    );
   });
 }
 

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/navigation/app_routes.dart';
+import '../../shared/account/account_upgrade_prompt_providers.dart';
+import '../../shared/account/account_upgrade_prompt_service.dart';
 import '../../shared/models/puzzle_type.dart';
 import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/sync/sync_engine.dart';
@@ -24,12 +26,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileDashboardProvider);
+    final AccountUpgradePromptEligibility upgradePrompt = ref.watch(
+      accountUpgradePromptEligibilityProvider,
+    );
 
     return SafeArea(
       bottom: false,
       child: profileAsync.when(
         data: (dashboard) => _ProfileBody(
           dashboard: dashboard,
+          upgradePrompt: upgradePrompt,
           isSyncing: _isSyncing,
           onSyncNow: dashboard.syncSummary.canSyncNow ? _handleSyncNow : null,
         ),
@@ -60,9 +66,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_syncResultMessage(result))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_syncResultMessage(result))));
     } finally {
       if (mounted) {
         setState(() {
@@ -76,11 +82,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _ProfileBody extends StatelessWidget {
   const _ProfileBody({
     required this.dashboard,
+    required this.upgradePrompt,
     required this.isSyncing,
     required this.onSyncNow,
   });
 
   final ProfileDashboardData dashboard;
+  final AccountUpgradePromptEligibility? upgradePrompt;
   final bool isSyncing;
   final VoidCallback? onSyncNow;
 
@@ -91,12 +99,7 @@ class _ProfileBody extends StatelessWidget {
         theme.extension<AppSpacing>() ?? const AppSpacing();
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(
-        spacing.l,
-        spacing.m,
-        spacing.l,
-        spacing.xl,
-      ),
+      padding: EdgeInsets.fromLTRB(spacing.l, spacing.m, spacing.l, spacing.xl),
       children: [
         _AccountStatusCard(
           dashboard: dashboard,
@@ -108,6 +111,10 @@ class _ProfileBody extends StatelessWidget {
         SizedBox(height: spacing.l),
         _StreakCard(streak: dashboard.dailyStreak),
         SizedBox(height: spacing.l),
+        if (upgradePrompt?.shouldShow ?? false) ...[
+          const _AccountUpgradePromptCard(),
+          SizedBox(height: spacing.l),
+        ],
         if (dashboard.hasPuzzleHistory)
           _PuzzleBreakdownCard(summaries: dashboard.puzzleSummaries)
         else
@@ -186,10 +193,7 @@ class _AccountStatusCard extends StatelessWidget {
               IconButton(
                 tooltip: 'Settings',
                 onPressed: () => context.push(AppRoutes.settings),
-                icon: const Icon(
-                  Icons.settings_outlined,
-                  color: Colors.white,
-                ),
+                icon: const Icon(Icons.settings_outlined, color: Colors.white),
               ),
             ],
           ),
@@ -208,7 +212,9 @@ class _AccountStatusCard extends StatelessWidget {
                 icon: _syncIcon(dashboard.syncSummary.state),
                 label: _syncLabel(dashboard.syncSummary.state),
                 backgroundColor: _syncPillColor(dashboard.syncSummary.state),
-                foregroundColor: _syncPillForeground(dashboard.syncSummary.state),
+                foregroundColor: _syncPillForeground(
+                  dashboard.syncSummary.state,
+                ),
               ),
             ],
           ),
@@ -342,7 +348,8 @@ class _StreakCard extends StatelessWidget {
         children: [
           const SectionHeader(
             title: 'Daily Challenge',
-            subtitle: 'Current and best streaks from local Daily Challenge play.',
+            subtitle:
+                'Current and best streaks from local Daily Challenge play.',
           ),
           SizedBox(height: spacing.m),
           LayoutBuilder(
@@ -397,7 +404,8 @@ class _PuzzleBreakdownCard extends StatelessWidget {
         children: [
           const SectionHeader(
             title: 'Puzzle Breakdown',
-            subtitle: 'Completion counts and best times where local data exists.',
+            subtitle:
+                'Completion counts and best times where local data exists.',
           ),
           SizedBox(height: spacing.m),
           ...[
@@ -474,12 +482,8 @@ class _PuzzleSummaryTile extends StatelessWidget {
             spacing: spacing.s,
             runSpacing: spacing.s,
             children: [
-              _MetricChip(
-                label: '${summary.randomCompletions} random',
-              ),
-              _MetricChip(
-                label: '${summary.dailyCompletions} daily',
-              ),
+              _MetricChip(label: '${summary.randomCompletions} random'),
+              _MetricChip(label: '${summary.dailyCompletions} daily'),
               _MetricChip(
                 label: summary.bestTime == null
                     ? 'Best time unavailable'
@@ -533,10 +537,7 @@ class _FutureAccountCopyCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline,
-            color: colorScheme.primary,
-          ),
+          const Icon(Icons.info_outline),
           SizedBox(width: spacing.m),
           Expanded(
             child: Text(
@@ -549,6 +550,106 @@ class _FutureAccountCopyCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _AccountUpgradePromptCard extends ConsumerStatefulWidget {
+  const _AccountUpgradePromptCard();
+
+  @override
+  ConsumerState<_AccountUpgradePromptCard> createState() =>
+      _AccountUpgradePromptCardState();
+}
+
+class _AccountUpgradePromptCardState
+    extends ConsumerState<_AccountUpgradePromptCard> {
+  bool _isDismissing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final AccountUpgradePromptEligibility prompt = ref.watch(
+      accountUpgradePromptEligibilityProvider,
+    );
+    if (!prompt.shouldShow) {
+      return const SizedBox.shrink();
+    }
+
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final AppSpacing spacing =
+        theme.extension<AppSpacing>() ?? const AppSpacing();
+
+    return BrainiaxCard(
+      emphasized: true,
+      backgroundColor: const Color(0xFFFFF7E8),
+      borderColor: const Color(0xFFF1D08A),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.upgrade_outlined, color: colorScheme.primary),
+              SizedBox(width: spacing.m),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Save progress with an account',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      'You can keep playing anonymously. This reminder appears after a few completions or a streak milestone, and it never blocks gameplay.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.m),
+          Wrap(
+            spacing: spacing.s,
+            runSpacing: spacing.s,
+            children: [
+              _MetricChip(label: '${prompt.totalCompletions} completions'),
+              _MetricChip(label: '${prompt.currentDailyStreak} day streak'),
+              const _MetricChip(label: 'Dismiss for 7 days'),
+            ],
+          ),
+          SizedBox(height: spacing.m),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _isDismissing ? null : _handleDismiss,
+              child: Text(_isDismissing ? 'Dismissing...' : 'Dismiss'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleDismiss() async {
+    setState(() {
+      _isDismissing = true;
+    });
+
+    try {
+      await ref.read(accountUpgradePromptControllerProvider).dismiss();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDismissing = false;
+        });
+      }
+    }
   }
 }
 
@@ -725,7 +826,9 @@ String _syncCopy(ProfileSyncSummary summary) {
       final String itemLabel = summary.pendingCount == 1 ? 'item' : 'items';
       return '${summary.pendingCount} $itemLabel waiting to sync. Local progress is already saved on this device.';
     case ProfileSyncState.error:
-      final String itemLabel = summary.failedCount == 1 ? 'item needs' : 'items need';
+      final String itemLabel = summary.failedCount == 1
+          ? 'item needs'
+          : 'items need';
       return '${summary.failedCount} $itemLabel retry before cloud sync is current. Local stats are still safe.';
   }
 }
