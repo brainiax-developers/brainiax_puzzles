@@ -71,7 +71,7 @@ Overrides:
 | Screen purpose | Choose puzzle type only. |
 | Search | Remove. |
 | Filters | Use All, Numbers, Visual, Favourites. Hide Word until word puzzles exist. |
-| Categories | Numbers: Sudoku, Kakuro, MathDoku. Visual: Slitherlink, Killer Queens/Queens, Nonogram. |
+| Categories | Numbers: Sudoku, MathDoku. Visual: Slitherlink, Killer Queens/Queens, Nonogram. |
 | Difficulty display | Show available difficulties as chips/labels only: Easy, Medium, Hard, Expert as applicable. |
 | Difficulty selection | Do not select difficulty directly on the card. Difficulty selection happens in Puzzle Detail picker. |
 | Favourite | Keep star/favourite button on card. Tapping star toggles favourite without opening detail picker. |

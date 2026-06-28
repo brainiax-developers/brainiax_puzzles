@@ -65,11 +65,7 @@ class PuzzleGenerationController
         ? _parseSize(size)
         : _getSizeFor(puzzleType, difficulty);
     final difficultyScore = _parseDifficulty(difficulty);
-    _assertProfileAllowedForProduction(
-      puzzleType: puzzleType,
-      size: resolvedSize,
-      difficulty: difficultyScore.level,
-    );
+
 
     final token = ++_generationToken;
 
@@ -191,26 +187,6 @@ class PuzzleGenerationController
         }
       }
       if (lastDifficultyMismatch != null) {
-        if (puzzleType == app.PuzzleType.kakuroClassic) {
-          lastError = core.GenerationFailure(
-            message:
-                'Kakuro generation did not produce the requested difficulty '
-                'within the bounded retry budget.',
-            attempts: _maxGenerationAttempts,
-            elapsed: stopwatch.elapsed,
-            baseSeed: core.Seed.fromString(baseSeed),
-            lastError: lastError,
-            lastStackTrace: lastStack,
-            context: <String, Object?>{
-              'difficulty': difficultyScore.level,
-              'generatedDifficulty':
-                  lastDifficultyMismatch.meta.difficulty.level,
-              'size': resolvedSize.id,
-              'engineId': puzzleType.key,
-            },
-          );
-          lastStack ??= StackTrace.current;
-        } else {
           final normalized = normalizeGeneratedPuzzleDifficulty(
             puzzle: lastDifficultyMismatch,
             requestedDifficulty: difficultyScore,
@@ -232,7 +208,6 @@ class PuzzleGenerationController
             );
           }
           return normalized;
-        }
       }
       // If we get here, all attempts failed.
       if (token == _generationToken) {
@@ -307,13 +282,7 @@ class PuzzleGenerationController
               height: 8,
             );
         }
-      case app.PuzzleType.kakuroClassic:
-        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
-        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
-          difficulty: difficulty,
-          surface: surface,
-        );
-        return _parseSize(sizeId);
+
       case app.PuzzleType.killerQueens:
         return killerQueensAppSizeForDifficulty(difficulty);
       default:
@@ -346,12 +315,7 @@ class PuzzleGenerationController
           width: 10,
           height: 10,
         );
-      case app.PuzzleType.kakuroClassic:
-        return _parseSize(
-          core.KakuroSupportedProfiles.appProfilesForSurface(
-            _activeKakuroAppSurface(),
-          ).first.sizeId,
-        );
+
       case app.PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
           id: '5x5',
@@ -440,58 +404,9 @@ class PuzzleGenerationController
     required app.PuzzleType puzzleType,
     required Duration elapsed,
   }) {
-    if (puzzleType == app.PuzzleType.kakuroClassic) {
-      final Duration remaining =
-          puzzleGenerationTimeoutFor(engineId: puzzleType.key) - elapsed;
-      return remaining <= Duration.zero ? Duration.zero : remaining;
-    }
+
     return puzzleGenerationTimeoutFor(engineId: puzzleType.key);
   }
 
-  void _assertProfileAllowedForProduction({
-    required app.PuzzleType puzzleType,
-    required core.SizeOpt size,
-    required String difficulty,
-  }) {
-    if (puzzleType != app.PuzzleType.kakuroClassic) {
-      return;
-    }
-    final String normalizedDifficulty =
-        core.KakuroSupportedProfiles.normalizeDifficulty(difficulty);
-    final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
-    final bool allowed = core.KakuroSupportedProfiles.isAppProfileAllowed(
-      sizeId: size.id,
-      difficulty: normalizedDifficulty,
-      surface: surface,
-    );
-    if (allowed) {
-      return;
-    }
-    if (surface == core.KakuroAppProfileSurface.nonProduction) {
-      throw StateError(
-        'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} '
-        'is not enabled for non-production random play.',
-      );
-    }
-    final core.KakuroProfileTier? tier = core.KakuroSupportedProfiles.tierFor(
-      sizeId: size.id,
-      difficulty: normalizedDifficulty,
-    );
-    final String reason = switch (tier) {
-      core.KakuroProfileTier.benchmarkOnly =>
-        'benchmark-only and not enabled for production random play',
-      core.KakuroProfileTier.experimental =>
-        'experimental and not enabled for production random play',
-      _ => 'unsupported by production policy',
-    };
-    throw StateError(
-      'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} is $reason.',
-    );
-  }
 
-  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
-    return AppEnvironment.isProduction
-        ? core.KakuroAppProfileSurface.production
-        : core.KakuroAppProfileSurface.nonProduction;
-  }
 }

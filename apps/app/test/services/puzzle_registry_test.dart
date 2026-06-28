@@ -118,40 +118,7 @@ void main() {
       expect(metadata!.supportsHints, isFalse);
     });
 
-    test('exposes only shipping-safe Kakuro profiles in app metadata', () {
-      core.EngineRegistry().register(
-        core.StubPuzzleEngine(engineId: 'kakuro_classic'),
-      );
 
-      registry.initialize();
-
-      final metadata = registry.getMetadata(app.PuzzleType.kakuroClassic);
-      final core.KakuroAppProfileSurface surface = AppEnvironment.isProduction
-          ? core.KakuroAppProfileSurface.production
-          : core.KakuroAppProfileSurface.nonProduction;
-      expect(metadata, isNotNull);
-      expect(metadata!.isAvailable, isFalse);
-      expect(metadata.availabilityBadgeLabel, 'Coming Soon');
-      expect(metadata.unavailableMessage, 'Kakuro is coming soon.');
-      expect(
-        metadata.supportedSizes,
-        equals(core.KakuroSupportedProfiles.appSizesForSurface(surface)),
-      );
-      expect(
-        metadata.supportedDifficulties,
-        equals(
-          core.KakuroSupportedProfiles.appDifficultiesForSurface(surface)
-              .map(
-                (String difficulty) =>
-                    core.KakuroSupportedProfiles.appDifficultyLabel(
-                      difficulty: difficulty,
-                      surface: surface,
-                    ),
-              )
-              .toList(growable: false),
-        ),
-      );
-    });
 
     test(
       'includes slitherlink and killer queens when their engines are registered',

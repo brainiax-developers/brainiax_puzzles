@@ -102,15 +102,7 @@ void main() {
         expect((await store.dailyStreakStatus()).currentStreak, 1);
         expect((await store.dailyStreakStatus()).bestStreak, 1);
 
-        await store.recordCompletion(
-          puzzleType: PuzzleType.kakuroClassic,
-          difficulty: 'normal',
-          completionTime: const Duration(minutes: 6),
-          mode: PuzzleMode.daily,
-          completedAt: day1.add(const Duration(hours: 1)),
-          dailyDateKeyUtc: DailyUtcDate.keyFor(day1),
-        );
-        expect((await store.dailyStreakStatus()).currentStreak, 1);
+
 
         await store.recordCompletion(
           puzzleType: PuzzleType.sudokuClassic,
@@ -339,9 +331,7 @@ void main() {
         expect(run.hintsUsed, 0);
         expect(run.seed, puzzle.meta.seedStr);
 
-        await prefs.setString('progress.v1.kakuro_classic', '{"bad": true}');
-        expect(await service.loadActiveRun(PuzzleType.kakuroClassic), isNull);
-        expect(prefs.containsKey('progress.v1.kakuro_classic'), isFalse);
+
       },
     );
 
@@ -442,18 +432,18 @@ void main() {
 
       expect(service.isFavourite(PuzzleType.sudokuClassic), isFalse);
       expect(await service.toggle(PuzzleType.sudokuClassic), isTrue);
-      expect(await service.toggle(PuzzleType.kakuroClassic), isTrue);
+      expect(await service.toggle(PuzzleType.slitherlinkLoop), isTrue);
       expect(service.favourites(), [
         PuzzleType.sudokuClassic,
-        PuzzleType.kakuroClassic,
+        PuzzleType.slitherlinkLoop,
       ]);
       expect(await service.toggle(PuzzleType.sudokuClassic), isFalse);
-      expect(service.favourites(), [PuzzleType.kakuroClassic]);
+      expect(service.favourites(), [PuzzleType.slitherlinkLoop]);
 
       SharedPreferences.setMockInitialValues(snapshotPrefs(prefs));
       final reloadedPrefs = await SharedPreferences.getInstance();
       final reloaded = FavouritePuzzleService(reloadedPrefs);
-      expect(reloaded.favourites(), [PuzzleType.kakuroClassic]);
+      expect(reloaded.favourites(), [PuzzleType.slitherlinkLoop]);
     });
   });
 }

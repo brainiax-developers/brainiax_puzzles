@@ -327,9 +327,7 @@ class AppThemeData {
       case PuzzleType.nonogramMono:
         seedColor = Colors.deepOrange;
         break;
-      case PuzzleType.kakuroClassic:
-        seedColor = Colors.purple;
-        break;
+
       case PuzzleType.slitherlinkLoop:
         seedColor = Colors.indigo;
         break;

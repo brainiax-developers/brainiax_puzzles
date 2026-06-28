@@ -272,8 +272,7 @@ class _PuzzleDetailSheetState extends ConsumerState<PuzzleDetailSheet> {
                           ),
                           SizedBox(height: spacing.s),
                           Text(
-                            widget.metadata.unavailableMessage ??
-                                'Kakuro is coming soon.',
+                                'Puzzle is coming soon.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -691,7 +690,7 @@ String _formatCountdown(Duration duration) {
 String _categoryLabelFor(PuzzleType puzzleType) {
   switch (puzzleType) {
     case PuzzleType.sudokuClassic:
-    case PuzzleType.kakuroClassic:
+
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return 'Number puzzle';

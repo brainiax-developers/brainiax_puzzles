@@ -123,10 +123,7 @@ void main() {
     expect(find.widgetWithText(ElevatedButton, 'Resume'), findsOneWidget);
     expect(find.widgetWithText(ElevatedButton, 'View'), findsWidgets);
     expect(find.text('Solved in 7m 12s'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('daily-puzzle-kakuro_classic')),
-      findsNothing,
-    );
+
   });
 
   testWidgets('renders filters and hides old tab or fake social UI', (
@@ -167,7 +164,6 @@ void main() {
 
     expect(find.text('Classic Sudoku'), findsOneWidget);
     expect(find.text('Monochrome Nonogram'), findsOneWidget);
-    expect(find.text('Classic Kakuro'), findsNothing);
     expect(find.text('Slitherlink Loop'), findsNothing);
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Completed'));
@@ -177,7 +173,6 @@ void main() {
     expect(find.text('Monochrome Nonogram'), findsNothing);
     expect(find.text('Slitherlink Loop'), findsOneWidget);
     expect(find.text('Classic Mathdoku'), findsNothing);
-    expect(find.text('Classic Kakuro'), findsNothing);
   });
 
   testWidgets('empty filter state renders safely', (WidgetTester tester) async {

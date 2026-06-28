@@ -4,7 +4,6 @@ enum PuzzleType {
   mathdoku,
   killerQueens,
   slitherlink,
-  kakuro,
   takuzu,
   crosswordMini,
   wordSearch,

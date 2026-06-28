@@ -24,7 +24,6 @@ The app is Android-first until feature-complete. iOS support is post-feature-com
 - V1 has one streak model: the Daily Challenge streak. Completing at least one Daily Challenge puzzle in the UTC daily window secures or advances it. Random Play never affects streaks.
 - Do not add fake ranks, fake “people playing,” fake attempts, fake social proof, or placeholder competitive data.
 - Futoshiki is not planned for V1. Queens / Killer Queens is the accepted replacement unless a future explicit product decision reverses it.
-- Kakuro exists in the codebase but is benched for new product work until the generator is improved. Maintain/fix it when needed, but do not expand or foreground it unless explicitly asked.
 - Wordle-style gameplay is excluded because of IP concerns.
 - Do not expose unfinished/deferred features as working UI. Hide them or show a safe placeholder only when that is explicitly acceptable.
 
@@ -59,7 +58,6 @@ Treat these as the current logic-puzzle roster unless a task explicitly changes 
 - Slitherlink
 - Takuzu
 - Queens / Killer Queens
-- Kakuro: maintenance only while benched
 
 Word puzzles are future expansion work unless explicitly scoped.
 
@@ -159,7 +157,6 @@ Update docs when behavior changes. Keep these product decisions reflected in doc
 - Firebase metadata-only sync
 - Daily Challenge streak only
 - Futoshiki excluded / Queens accepted
-- Kakuro benched pending generator improvements
 - no fake leaderboard/social proof data
 
 If documentation conflicts with code, inspect both. Prefer current implementation for mechanics and current product decision docs for scope.

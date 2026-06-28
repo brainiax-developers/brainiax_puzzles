@@ -234,11 +234,10 @@ void main() {
     });
 
     test('Slitherlink deterministic generation has no day-long budget', () {
-      final String apiSource = File(
-        'packages/puzzle_core/lib/src/generators/slitherlink/api.dart',
-      ).readAsStringSync();
+      final String apiSource = File('lib/src/generators/slitherlink/api.dart')
+          .readAsStringSync();
       final String generatorSource = File(
-        'packages/puzzle_core/lib/src/generators/slitherlink/generator.dart',
+        'lib/src/generators/slitherlink/generator.dart',
       ).readAsStringSync();
 
       expect(apiSource, isNot(contains('Duration(days: 1)')));

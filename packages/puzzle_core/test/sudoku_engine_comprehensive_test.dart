@@ -21,7 +21,7 @@ void main() {
     group('Seed Reproducibility', () {
       test('same seed produces identical puzzles', () async {
         const seed = 'test:sudoku_classic:0';
-        const seed64 = seed.hashCode;
+        final seed64 = seed.hashCode;
         const difficulty = DifficultyScore(value: 0.6, level: 'medium');
         const size = SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
 
@@ -50,7 +50,7 @@ void main() {
       });
 
       test('daily seeds work correctly', () async {
-        final date = DateTime(2024, 1, 1).toUtc();
+        final date = DateTime.utc(2024, 1, 1);
         final seed = TestUtilities.generateDailySeed('sudoku_classic', date);
         const difficulty = DifficultyScore(value: 0.6, level: 'medium');
         const size = SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
@@ -96,7 +96,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Verify board dimensions
         expect(board.cells.length, equals(81)); // 9x9 = 81 cells
@@ -127,7 +127,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Check rows for duplicates
         for (int row = 0; row < 9; row++) {
@@ -189,7 +189,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Find an empty cell
         int emptyIndex = -1;
@@ -227,7 +227,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Try to place a digit in a fixed cell
         int fixedIndex = -1;
@@ -265,7 +265,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Try invalid row
         final invalidRowMove = SudokuMove(row: 9, col: 0, digit: 1);
@@ -388,7 +388,7 @@ void main() {
             difficulty: difficulty,
           );
 
-          final board = puzzle.state as SudokuBoard;
+          final board = puzzle.state;
           
           // Property: All generated puzzles should be valid Sudoku boards
           expect(board.cells.length, equals(81));
@@ -414,7 +414,7 @@ void main() {
           difficulty: difficulty,
         );
 
-        final board = puzzle.state as SudokuBoard;
+        final board = puzzle.state;
         
         // Serialize
         final json = board.toJson();

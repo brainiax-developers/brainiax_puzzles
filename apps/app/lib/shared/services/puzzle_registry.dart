@@ -164,37 +164,6 @@ class PuzzleRegistry {
           category: PuzzleCategory.logic,
         );
 
-      case app.PuzzleType.kakuroClassic:
-        final core.KakuroAppProfileSurface surface = AppEnvironment.isProduction
-            ? core.KakuroAppProfileSurface.production
-            : core.KakuroAppProfileSurface.nonProduction;
-        final List<String> kakuroSizes =
-            core.KakuroSupportedProfiles.appSizesForSurface(surface);
-        final List<String> kakuroDifficulties =
-            core.KakuroSupportedProfiles.appDifficultiesForSurface(surface)
-                .map(
-                  (String difficulty) =>
-                      core.KakuroSupportedProfiles.appDifficultyLabel(
-                        difficulty: difficulty,
-                        surface: surface,
-                      ),
-                )
-                .toList(growable: false);
-        return PuzzleMetadata(
-          type: type,
-          displayName: type.displayName,
-          description:
-              'Place digits so each clue group adds correctly without repeats.',
-          icon: Icons.add_box,
-          accentColors: const [Color(0xFFFF9800), Color(0xFFF57C00)],
-          supportedSizes: kakuroSizes,
-          supportedDifficulties: kakuroDifficulties,
-          supportsHints: engine.capabilities.supportsHints,
-          category: PuzzleCategory.logic,
-          isAvailable: false,
-          availabilityBadgeLabel: type.availabilityBadgeLabel,
-          unavailableMessage: type.unavailableMessage,
-        );
 
       case app.PuzzleType.slitherlinkLoop:
         return PuzzleMetadata(

@@ -15,6 +15,10 @@ class EngineRegistryService {
 
     final registry = EngineRegistry();
 
+    // Register stub engines for testing
+    registry.register(StubPuzzleEngine());
+    registry.register(StubSudokuEngine());
+
     // Helper to register a real engine and fall back to registering a stub
     // with the same engineId if the real engine couldn't be registered.
     Future<void> _registerWithPerEngineFallback({
@@ -56,11 +60,6 @@ class EngineRegistryService {
       fallbackEngineName: 'Monochrome Nonogram',
     );
 
-    await _registerWithPerEngineFallback(
-      realEngineFactory: () => KakuroEngine(),
-      fallbackEngineId: 'kakuro_classic',
-      fallbackEngineName: 'Classic Kakuro',
-    );
 
     await _registerWithPerEngineFallback(
       realEngineFactory: () => SlitherlinkEngine(),

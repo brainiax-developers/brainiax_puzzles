@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 const Duration defaultPuzzleGenerationTimeout = Duration(seconds: 2);
-const Duration kakuroPuzzleGenerationTimeout = Duration(seconds: 8);
+
 const Duration killerQueensPuzzleGenerationTimeout = Duration(seconds: 12);
 
 Duration puzzleGenerationTimeoutFor({
@@ -14,10 +14,7 @@ Duration puzzleGenerationTimeoutFor({
   bool preload = false,
 }) {
   switch (engineId) {
-    case 'kakuro_classic':
-      return preload
-          ? const Duration(seconds: 3)
-          : kakuroPuzzleGenerationTimeout;
+
     case 'killer_queens':
       return killerQueensPuzzleGenerationTimeout;
     default:
@@ -180,8 +177,7 @@ core.PipelinePuzzleEngine<dynamic, dynamic> _createEngine(String engineId) {
       return core.SudokuEngine();
     case 'nonogram_mono':
       return core.NonogramEngine();
-    case 'kakuro_classic':
-      return core.KakuroEngine();
+
     case 'slitherlink_loop':
       return core.SlitherlinkEngine();
     case 'mathdoku_classic':

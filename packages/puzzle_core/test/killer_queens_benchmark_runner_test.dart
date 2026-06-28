@@ -9,7 +9,7 @@ void main() {
     () async {
       final ProcessResult result = await Process.run('dart', <String>[
         'run',
-        'packages/puzzle_core/bin/benchmark_runner.dart',
+        'bin/benchmark_runner.dart',
         '--engine',
         'killer_queens',
         '--count',
@@ -20,7 +20,7 @@ void main() {
         '6x6',
         '--iteration-cap-ms',
         '8000',
-      ]);
+      ], runInShell: true);
 
       expect(result.exitCode, equals(0), reason: '${result.stderr}');
       final Map<String, Object?> json = Map<String, Object?>.from(
@@ -91,7 +91,7 @@ void main() {
     () async {
       final ProcessResult result = await Process.run('dart', <String>[
         'run',
-        'packages/puzzle_core/bin/benchmark_runner.dart',
+        'bin/benchmark_runner.dart',
         '--engine',
         'killer_queens',
         '--count',
@@ -102,7 +102,7 @@ void main() {
         'app',
         '--iteration-cap-ms',
         '8000',
-      ]);
+      ], runInShell: true);
 
       expect(result.exitCode, equals(0), reason: '${result.stderr}');
       final Map<String, Object?> json = Map<String, Object?>.from(

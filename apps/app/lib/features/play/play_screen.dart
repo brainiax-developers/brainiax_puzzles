@@ -448,8 +448,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return '9x9';
       case PuzzleType.nonogramMono:
         return '10x10';
-      case PuzzleType.kakuroClassic:
-        return '7x9';
+
       case PuzzleType.slitherlinkLoop:
         return '7x7';
       case PuzzleType.mathdokuClassic:
@@ -530,8 +529,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return board is core.SudokuBoard;
       case PuzzleType.nonogramMono:
         return board is core.NonogramBoard;
-      case PuzzleType.kakuroClassic:
-        return board is core.KakuroBoard;
+
       case PuzzleType.slitherlinkLoop:
         return board is core.SlitherlinkBoard;
       case PuzzleType.mathdokuClassic:
@@ -824,36 +822,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           return;
         }
 
-        // If the engine supplies a concrete digit/value and we know how to apply it,
-        // auto-fill the cell instead of only highlighting.
-        if (board is core.KakuroBoard && hint.cells.isNotEmpty) {
-          final core.PuzzleHintCell cell = hint.cells.first;
-          final Object? raw = cell.metadata['digit'] ?? cell.metadata['value'];
-          final int? digit = raw is int && raw >= 1 && raw <= 9 ? raw : null;
-          if (digit != null) {
-            final core.KakuroMove move = core.KakuroMove(
-              row: cell.row,
-              col: cell.column,
-              digit: digit,
-            );
-            final bool changed = await _applyMoveAndPersist(
-              move,
-              handleCompletion: false,
-            );
-            if (!changed) {
-              _showSnackBar('No hint available for this board yet.');
-              return;
-            }
-            if (!mounted) return;
-            await _incrementHintCountPersistent();
-            // Ensure completion is surfaced even if the listener misses a frame.
-            final GameState? latest = ref.read(gameStateProvider);
-            if (latest != null && latest.isSolved && !_shownSolvedDialog) {
-              unawaited(_handleCompletion(latest));
-            }
-            return;
-          }
-        }
+
 
         if (board is core.MathdokuBoard && hint.cells.isNotEmpty) {
           final core.PuzzleHintCell cell = hint.cells.first;
@@ -1686,15 +1655,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         digit: move.digit,
       );
     }
-    if (move is core.KakuroMove &&
-        move.digit > 0 &&
-        nextBoard is core.KakuroBoard) {
-      notifier.cleanupKakuroNotesForPlacement(
-        row: move.row,
-        col: move.col,
-        digit: move.digit,
-      );
-    }
+
     if (move is core.MathdokuMove &&
         move.value > 0 &&
         nextBoard is core.MathdokuBoard) {
@@ -1949,142 +1910,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     });
   }
 
-  // Kakuro: place digits in selected playable cell. If Note mode is on, toggle a local notes map.
-  void _onKakuroDigitPressed(int digit) {
-    if (_dailyCompletedView || _dailyBlocked) {
-      return;
-    }
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
-      return;
-    }
-    final Offset? selection = _selectedSudokuCell; // reuse selection storage
-    if (selection == null) {
-      _showSnackBar('Select a cell to place $digit');
-      return;
-    }
-    final int row = selection.dy.toInt();
-    final int col = selection.dx.toInt();
-    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
-    if (!board.isPlayable(row, col)) {
-      _onError('Select a playable cell');
-      return;
-    }
 
-    if (_isNoteMode) {
-      _toggleKakuroNote(board, row: row, col: col, digit: digit);
-      return;
-    }
-
-    // Validate only immediate contradictions. Sum/combination mismatches are
-    // allowed as partial states and surfaced through visual feedback.
-    // Check across entry
-    final acrossIdx = board.acrossEntryForCell[row * board.width + col];
-    if (acrossIdx != -1) {
-      final entry = board.entries[acrossIdx];
-      final cells = entry.cells;
-      // Check for repeats (excluding current cell)
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        if (cellRow == row && cellCol == col) continue;
-        if (board.valueAt(cellRow, cellCol) == digit) {
-          _onError('Digit $digit already used in this across sum');
-          return;
-        }
-      }
-    }
-
-    // Check down entry
-    final downIdx = board.downEntryForCell[row * board.width + col];
-    if (downIdx != -1) {
-      final entry = board.entries[downIdx];
-      final cells = entry.cells;
-      // Check for repeats (excluding current cell)
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        if (cellRow == row && cellCol == col) continue;
-        if (board.valueAt(cellRow, cellCol) == digit) {
-          _onError('Digit $digit already used in this down sum');
-          return;
-        }
-      }
-    }
-
-    final core.KakuroMove move = core.KakuroMove(
-      row: row,
-      col: col,
-      digit: digit,
-    );
-    _onMove(move);
-  }
-
-  void _onKakuroClearPressed() {
-    if (_dailyCompletedView || _dailyBlocked) {
-      return;
-    }
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
-      return;
-    }
-    final Offset? selection = _selectedSudokuCell;
-    if (selection == null) {
-      _showSnackBar('Select a cell to clear');
-      return;
-    }
-    final int row = selection.dy.toInt();
-    final int col = selection.dx.toInt();
-    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
-    if (!board.isPlayable(row, col)) {
-      _onError('Select a playable cell');
-      return;
-    }
-    final int index = row * board.width + col;
-    final bool hasValue = board.valueAt(row, col) != 0;
-    final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
-    if (!hasValue && !hasNotes) {
-      return;
-    }
-    if (!hasValue) {
-      final notifier = ref.read(gameStateProvider.notifier);
-      notifier.clearNotesForCell(index);
-      unawaited(_saveActiveRunForCurrentState());
-      return;
-    }
-    final core.KakuroMove move = core.KakuroMove(row: row, col: col, digit: 0);
-    _applyMoveAndPersist(move)
-        .then((bool changed) {
-          if (!changed || !mounted) return;
-          final notifier = ref.read(gameStateProvider.notifier);
-          notifier.clearNotesForCell(index, recordHistory: false);
-          unawaited(_saveActiveRunForCurrentState());
-        })
-        .catchError((Object error) {
-          final String message = error.toString().startsWith('Exception: ')
-              ? error.toString().substring('Exception: '.length)
-              : error.toString();
-          _onError(message);
-        });
-  }
-
-  void _toggleKakuroNote(
-    core.KakuroBoard board, {
-    required int row,
-    required int col,
-    required int digit,
-  }) {
-    final int index = row * board.width + col;
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null) return;
-
-    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
-    final bool isAdding = !currentNotes.contains(digit);
-
-    final notifier = ref.read(gameStateProvider.notifier);
-    notifier.recordNoteAction(index, digit, isAdding);
-    unawaited(_saveActiveRunForCurrentState());
-  }
 
   // Mathdoku: place digits in selected cell. If Note mode is on, toggle notes.
   void _onMathdokuDigitPressed(int digit) {
@@ -2745,42 +2571,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       );
     }
 
-    // Kakuro
-    if (puzzle.state is core.KakuroBoard) {
-      return Column(
-        children: [
-          // Puzzle renderer
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: KakuroRendererWidget(
-                puzzle: puzzle,
-                gameState: gameState,
-                onCellSelected: _onCellSelected,
-                onMove: _onMove,
-                onError: _onError,
-                hintCells: _hintPositions,
-                hintAnimationValue: _hintAnimationValue,
-                notes: Map.unmodifiable(
-                  gameState?.notes ?? const <int, Set<int>>{},
-                ),
-              ),
-            ),
-          ),
 
-          // Number pad (single row with 1..9), with note toggle and clear
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: SudokuNumberPad(
-              onDigitPressed: _onKakuroDigitPressed,
-              onClearPressed: _onKakuroClearPressed,
-              onNotePressed: _onNotePressed,
-              isNoteMode: _isNoteMode,
-            ),
-          ),
-        ],
-      );
-    }
 
     // Slitherlink
     if (puzzle.state is core.SlitherlinkBoard) {

@@ -48,7 +48,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
     final int solverSeedBase = context.rng.nextInt64();
     int solverInvocation = 0;
 
-    (_SolveCheckResult, ValidationSummary) _solveCheck() {
+    (_SolveCheckResult, ValidationSummary) solveCheck() {
       final TakuzuBoard puzzle = TakuzuBoard(size: width, cells: puzzleCells, fixed: fixed);
       final SolverContext solverContext = SolverContext(
         rng: SeededRng(solverSeedBase ^ solverInvocation++),
@@ -65,7 +65,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
       return (_SolveCheckResult(unique: ok && vs.isValid, longestChain: longestChain), vs);
     }
 
-    final (_SolveCheckResult initialCheck, ValidationSummary initialVs) = _solveCheck();
+    final (_SolveCheckResult initialCheck, ValidationSummary initialVs) = solveCheck();
     if (!(initialCheck.unique && initialVs.isValid)) {
       throw StateError('Failed to produce solvable Takuzu board');
     }
@@ -84,7 +84,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
     final int minGivens = (totalCells * profile.minGivenRatio).ceil();
     final int maxGivens = (totalCells * profile.maxGivenRatio).ceil();
 
-    bool _ratioWithinBand(int givens) {
+    bool ratioWithinBand(int givens) {
       if (level == 'expert') {
         // Expert accepts any ratio <= max.
         return givens <= maxGivens;
@@ -92,7 +92,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
       return givens >= minGivens && givens <= maxGivens;
     }
 
-    int _currentGivens() => puzzleCells.where((int v) => v != TakuzuBoard.emptyValue).length;
+    int currentGivens0() => puzzleCells.where((int v) => v != TakuzuBoard.emptyValue).length;
 
     // Try to peel cells while ensuring uniqueness and matching difficulty targets.
     int passes = 0;
@@ -101,10 +101,10 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
       changed = false;
       passes++;
       for (final int index in removalOrder) {
-        final int currentGivens = _currentGivens();
+        final int currentGivens = currentGivens0();
         // Stop early if we are already in the desired ratio band and (for non-easy)
         // we achieved minimum chain depth.
-        if (_ratioWithinBand(currentGivens) &&
+        if (ratioWithinBand(currentGivens) &&
             (level == 'easy' || acceptedLongestChain >= profile.minChain)) {
           break;
         }
@@ -118,14 +118,14 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
         fixed[index] = false;
 
         // Do not allow dropping below min givens for non-expert levels.
-        final int afterGivens = _currentGivens();
+        final int afterGivens = currentGivens0();
         if (level != 'expert' && afterGivens < minGivens) {
           puzzleCells[index] = previous;
           fixed[index] = true;
           continue;
         }
 
-        final (_SolveCheckResult check, ValidationSummary vs) = _solveCheck();
+        final (_SolveCheckResult check, ValidationSummary vs) = solveCheck();
         if (!(check.unique && vs.isValid)) {
           // Revert removal – uniqueness or validity broke.
           puzzleCells[index] = previous;
@@ -140,7 +140,7 @@ class TakuzuGenerator extends PuzzleGenerator<TakuzuBoard> {
         changed = true;
       }
       // Shuffle order for the next pass to explore other candidates.
-      if (!(_ratioWithinBand(_currentGivens()) &&
+      if (!(ratioWithinBand(currentGivens0()) &&
           (level == 'easy' || acceptedLongestChain >= profile.minChain))) {
         removalOrder = context.rng.permute(removalOrder);
       }

@@ -173,13 +173,7 @@ class PuzzlePreloadService {
               height: 8,
             );
         }
-      case PuzzleType.kakuroClassic:
-        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
-        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
-          difficulty: difficulty,
-          surface: surface,
-        );
-        return _parseSize(sizeId);
+
       case PuzzleType.killerQueens:
         return killerQueensAppSizeForDifficulty(difficulty);
       default:
@@ -208,12 +202,7 @@ class PuzzlePreloadService {
           width: 10,
           height: 10,
         );
-      case PuzzleType.kakuroClassic:
-        return _parseSize(
-          core.KakuroSupportedProfiles.appProfilesForSurface(
-            _activeKakuroAppSurface(),
-          ).first.sizeId,
-        );
+
       case PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
           id: '7x7',
@@ -276,11 +265,7 @@ class PuzzlePreloadService {
     }
   }
 
-  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
-    return AppEnvironment.isProduction
-        ? core.KakuroAppProfileSurface.production
-        : core.KakuroAppProfileSurface.nonProduction;
-  }
+
 }
 
 /// Riverpod provider exposing a singleton preload service.

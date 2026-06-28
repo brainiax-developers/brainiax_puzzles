@@ -23,7 +23,7 @@ Seeds are strings that provide deterministic input for puzzle generation. They e
 ```
 sudoku:20240101
 nonogram:20240101
-kakuro:20240101
+mathdoku:20240101
 ```
 
 **Implementation**:
@@ -63,7 +63,7 @@ final seed = generateDailySeed('nonogram', specificDate);
 ```
 sudoku:user123:session456
 nonogram:user789:session101
-kakuro:user456:session202
+mathdoku:user456:session202
 ```
 
 **Implementation**:
@@ -91,7 +91,7 @@ final seed = generateRandomPlaySeed('sudoku', userId, sessionNonce);
 ```
 test:sudoku:0
 test:nonogram:1
-test:kakuro:2
+test:mathdoku:2
 ```
 
 **Implementation**:

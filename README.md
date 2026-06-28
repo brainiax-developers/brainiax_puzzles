@@ -111,7 +111,7 @@ Multi-environment configuration with distinct Firebase projects and Android flav
 
 ### Number/Logic Puzzles
 - Sudoku
-- Kakuro
+
 - Nonogram (black & white)
 - Mathdoku (safe alt name for KenKen)
 - Killer Queens

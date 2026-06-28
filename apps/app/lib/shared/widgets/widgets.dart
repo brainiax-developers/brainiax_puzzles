@@ -19,7 +19,7 @@ export 'sudoku_renderer.dart';
 export 'sudoku_number_pad.dart';
 export 'performance_optimizations.dart';
 export 'nonogram_renderer.dart';
-export 'kakuro_renderer.dart';
+
 export 'slitherlink_renderer.dart';
 export 'mathdoku_renderer.dart';
 export 'killer_queens_renderer.dart';

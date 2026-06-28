@@ -148,16 +148,6 @@ top-level `p50Ms`, `p95Ms`, and `p99Ms`, plus
 `extras.killerQueensMetrics.generationMs` with p50/p95/p99 generation times.
 `extras.killerQueensMetrics` also records accepted generation attempts, solver
 nodes, backtracks, branches, elapsed solve time, and outcome counts.
-
-## Kakuro Profile Perf Gate
-
-Run the comprehensive Kakuro profiles certification benchmark with:
-
-```bash
-dart bin/bench.dart --engines kakuro_profiles --count 50
-```
-
-The Kakuro benchmark will test all profiles defined in `KakuroSupportedProfiles.benchmarkEligibleProfiles`. 
 The benchmark enforces device-dependent reliability gates depending on the profile tier:
 
 - **Shipping Tier**: Requires >95% success rate, generation P95 < 5.5s, uniqueness solve P95 < 350ms, 0 `unknown` solver status results (indicating capped uniqueness), and >80% difficulty match rate.

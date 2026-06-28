@@ -48,8 +48,7 @@ IconData _defaultIconForPuzzleType(PuzzleType? puzzleType) {
       return Icons.grid_on;
     case PuzzleType.nonogramMono:
       return Icons.crop_square;
-    case PuzzleType.kakuroClassic:
-      return Icons.add_box;
+
     case PuzzleType.slitherlinkLoop:
       return Icons.circle_outlined;
     case PuzzleType.mathdokuClassic:
@@ -72,8 +71,7 @@ Color _defaultAccentForPuzzleType(
       return const Color(0xFF2196F3);
     case PuzzleType.nonogramMono:
       return const Color(0xFF4CAF50);
-    case PuzzleType.kakuroClassic:
-      return const Color(0xFFFF9800);
+
     case PuzzleType.slitherlinkLoop:
       return const Color(0xFF9C27B0);
     case PuzzleType.mathdokuClassic:

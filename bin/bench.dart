@@ -15,7 +15,7 @@ void main(List<String> arguments) async {
     ..addOption(
       'engines',
       abbr: 'e',
-      help: 'Comma-separated list of engine IDs to benchmark (e.g., kakuro_classic, kakuro_profiles, killer_queens)',
+      help: 'Comma-separated list of engine IDs to benchmark (e.g., mathdoku_classic, killer_queens)',
       defaultsTo: 'stub,stub_sudoku',
     )
     ..addOption(

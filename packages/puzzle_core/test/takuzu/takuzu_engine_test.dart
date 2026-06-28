@@ -8,6 +8,7 @@ import 'package:puzzle_core/src/takuzu/takuzu_solver.dart';
 import 'package:puzzle_core/src/takuzu/takuzu_validator.dart';
 import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:puzzle_core/src/validation/validator.dart';
+import 'package:puzzle_core/src/solver/solver.dart';
 
 void main() {
   group('TakuzuEngine', () {

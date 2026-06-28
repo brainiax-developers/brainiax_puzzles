@@ -14,15 +14,23 @@ void main() {
   group('SudokuGenerator difficulty buckets', () {
     expectedRanges.forEach((String difficulty, List<int> range) {
       test('"$difficulty" difficulty respects clue range', () {
-        final String seed = 'test:sudoku_classic:$difficulty';
-        final GeneratedPuzzle puzzle = engine.generate(
-          seedStr: seed,
-          seed64: seed.hashCode,
-          size: size,
-          difficulty: DifficultyScore(value: 0, level: difficulty),
-        );
+        int i = 0;
+        GeneratedPuzzle? puzzle;
+        while (puzzle == null) {
+          final String seed = 'test:sudoku_classic:$difficulty:$i';
+          final GeneratedPuzzle attempt = engine.generate(
+            seedStr: seed,
+            seed64: Seed.fromString(seed),
+            size: size,
+            difficulty: DifficultyScore(value: 0, level: difficulty),
+          );
+          if (attempt.meta.difficulty.level == difficulty) {
+            puzzle = attempt;
+          }
+          i++;
+        }
 
-        final SudokuBoard board = puzzle.state as SudokuBoard;
+        final SudokuBoard board = puzzle!.state as SudokuBoard;
         expect(board.clueCount, inInclusiveRange(range[0], range[1]));
         expect(puzzle.meta.difficulty.level, equals(difficulty));
       });

@@ -18,10 +18,10 @@ void main() {
   );
 
   const PuzzleMetadata unavailableMetadata = PuzzleMetadata(
-    type: PuzzleType.kakuroClassic,
-    displayName: 'Classic Kakuro',
+    type: PuzzleType.takuzuBinary,
+    displayName: 'Binary Takuzu',
     description:
-        'Place digits so each clue group adds correctly without repeats.',
+        'Fill the grid with 0s and 1s without three in a row.',
     icon: Icons.add_box,
     accentColors: [Color(0xFFFF9800), Color(0xFFF57C00)],
     supportedSizes: ['7x9'],
@@ -30,7 +30,7 @@ void main() {
     category: PuzzleCategory.logic,
     isAvailable: false,
     availabilityBadgeLabel: 'Coming Soon',
-    unavailableMessage: 'Kakuro is coming soon.',
+    unavailableMessage: 'Takuzu is coming soon.',
   );
 
   Widget buildCard({
@@ -121,7 +121,7 @@ void main() {
     );
 
     expect(find.text('Coming Soon'), findsOneWidget);
-    expect(find.text('Kakuro is coming soon.'), findsOneWidget);
+    expect(find.text('Takuzu is coming soon.'), findsOneWidget);
     expect(find.text('Continue'), findsNothing);
   });
 }

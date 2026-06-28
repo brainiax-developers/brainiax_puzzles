@@ -206,7 +206,7 @@ List<PuzzleMetadata> _applyFilter(
 bool _isNumbersPuzzle(PuzzleType type) {
   switch (type) {
     case PuzzleType.sudokuClassic:
-    case PuzzleType.kakuroClassic:
+
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return true;
@@ -224,7 +224,7 @@ bool _isVisualPuzzle(PuzzleType type) {
     case PuzzleType.killerQueens:
       return true;
     case PuzzleType.sudokuClassic:
-    case PuzzleType.kakuroClassic:
+
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return false;
@@ -245,7 +245,6 @@ int _librarySortKey(PuzzleType type) {
       return 11;
     case PuzzleType.killerQueens:
       return 12;
-    case PuzzleType.kakuroClassic:
-      return 99;
+
   }
 }

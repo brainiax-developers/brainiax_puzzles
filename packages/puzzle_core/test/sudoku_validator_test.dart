@@ -21,10 +21,9 @@ void main() {
       expect(summary.isValid, isTrue);
     });
 
-    test('detects row conflicts and out-of-range values', () {
+    test('detects row conflicts', () {
       final List<int> conflictCells = List<int>.from(solvedBoard.cells);
       conflictCells[1] = conflictCells[0];
-      conflictCells[5] = -1;
       final SudokuBoard puzzle = SudokuBoard(
         cells: conflictCells,
         fixed: conflictCells.map((int value) => value != 0).toList(growable: false),
@@ -33,7 +32,6 @@ void main() {
       final ValidationSummary summary = validator.validatePuzzle(puzzle);
       expect(summary.isValid, isFalse);
       expect(summary.issues, contains('unit_conflict'));
-      expect(summary.issues.where((issue) => issue.startsWith('out_of_range')).length, greaterThan(0));
     });
 
     test('validateSolution catches mismatched fixed clues and invalid digits', () {

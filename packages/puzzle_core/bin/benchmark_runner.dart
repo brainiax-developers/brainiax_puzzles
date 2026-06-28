@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:isolate';
 import 'package:puzzle_core/puzzle_core.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
 import 'package:puzzle_core/src/mathdoku/mathdoku_solver.dart';
 
 /// Standalone benchmark runner for puzzle engines.
@@ -27,22 +25,12 @@ void main(List<String> arguments) async {
             iterationCapMs: invocation.iterationCapMs,
             scenarioName: invocation.slitherlinkScenarioName,
           )
-        : invocation.engineId == 'kakuro_profiles'
-        ? await _benchmarkKakuroProfiles(
-            count: invocation.count,
-            iterationCapMs: invocation.iterationCapMs,
-            enforceExperimentalKakuroGate:
-                invocation.enforceExperimentalKakuroGate,
-          )
         : await _benchmarkEngine(
             engineId: invocation.engineId,
             count: invocation.count,
             difficulty: invocation.difficulty,
             size: invocation.size,
             iterationCapMs: invocation.iterationCapMs,
-            kakuroBenchmarkProfileName: invocation.kakuroProfileName,
-            enforceExperimentalKakuroGate:
-                invocation.enforceExperimentalKakuroGate,
           );
 
     // Output result as JSON
@@ -68,7 +56,7 @@ void main(List<String> arguments) async {
 
 void _printUsage() {
   print(
-    'Usage: dart benchmark_runner.dart <engineId> <count> <difficulty> <size> [iterationCapMs] [--kakuro-profile=<name>] [--enforce-experimental-kakuro-gate]',
+    'Usage: dart benchmark_runner.dart <engineId> <count> <difficulty> <size> [iterationCapMs]',
   );
   print('');
   print('Or use named options:');
@@ -80,40 +68,12 @@ void _printUsage() {
   print(
     '  dart benchmark_runner.dart --engine slitherlink_loop [--slitherlink-scenario <5x5_easy|7x7_medium|10x10_hard>]',
   );
-  print('');
-  print('Or run a named Kakuro profile directly:');
-  print(
-    '  dart benchmark_runner.dart <kakuro_profile_name> [iterationCapMs] [--enforce-experimental-kakuro-gate]',
-  );
+
 }
 
 _BenchmarkInvocation _parseInvocation(List<String> arguments) {
   if (arguments.isNotEmpty && !arguments.first.startsWith('--')) {
-    if (_kakuroBenchmarkProfiles.containsKey(arguments.first)) {
-      final _KakuroBenchmarkProfile profile =
-          _kakuroBenchmarkProfiles[arguments.first]!;
-      int iterationCapMs = 8000;
-      bool enforceExperimentalKakuroGate = false;
-      for (final String arg in arguments.skip(1)) {
-        if (arg == '--enforce-experimental-kakuro-gate') {
-          enforceExperimentalKakuroGate = true;
-          continue;
-        }
-        final int? maybeCap = int.tryParse(arg);
-        if (maybeCap != null) {
-          iterationCapMs = maybeCap;
-        }
-      }
-      return _BenchmarkInvocation(
-        engineId: 'kakuro_classic',
-        count: profile.seedCorpus.length,
-        difficulty: profile.difficulty,
-        size: profile.sizeId,
-        iterationCapMs: iterationCapMs,
-        kakuroProfileName: profile.name,
-        enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
-      );
-    }
+
 
     if (arguments.length < 4) {
       throw FormatException('Missing positional benchmark arguments.');
@@ -127,14 +87,8 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       }
     }
 
-    String? kakuroProfileName;
-    bool enforceExperimentalKakuroGate = false;
     for (final String arg in arguments.skip(4)) {
-      if (arg.startsWith('--kakuro-profile=')) {
-        kakuroProfileName = arg.substring('--kakuro-profile='.length).trim();
-      } else if (arg == '--enforce-experimental-kakuro-gate') {
-        enforceExperimentalKakuroGate = true;
-      }
+      // no-op for extra args
     }
 
     return _BenchmarkInvocation(
@@ -143,8 +97,6 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       difficulty: arguments[2],
       size: arguments[3],
       iterationCapMs: iterationCapMs,
-      kakuroProfileName: kakuroProfileName,
-      enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
     );
   }
 
@@ -153,9 +105,7 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
   String? difficulty;
   String? size;
   int iterationCapMs = 8000;
-  String? kakuroProfileName;
   String? slitherlinkScenarioName;
-  bool enforceExperimentalKakuroGate = false;
 
   String requireValue(String flag, int index) {
     if (index + 1 >= arguments.length) {
@@ -193,11 +143,7 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       iterationCapMs = int.parse(
         arg.substring('--iteration-cap-ms='.length).trim(),
       );
-    } else if (arg == '--kakuro-profile') {
-      kakuroProfileName = requireValue(arg, i);
-      i++;
-    } else if (arg.startsWith('--kakuro-profile=')) {
-      kakuroProfileName = arg.substring('--kakuro-profile='.length).trim();
+
     } else if (arg == '--slitherlink-scenario') {
       slitherlinkScenarioName = requireValue(arg, i);
       i++;
@@ -205,8 +151,7 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       slitherlinkScenarioName = arg
           .substring('--slitherlink-scenario='.length)
           .trim();
-    } else if (arg == '--enforce-experimental-kakuro-gate') {
-      enforceExperimentalKakuroGate = true;
+
     } else if (arg == '--help') {
       continue;
     } else {
@@ -222,8 +167,7 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
       engineId == 'slitherlink_loop' &&
       count == null &&
       difficulty == null &&
-      size == null &&
-      kakuroProfileName == null;
+      size == null;
 
   if (runSlitherlinkCorpus) {
     return _BenchmarkInvocation(
@@ -237,16 +181,7 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
     );
   }
 
-  if (engineId == 'kakuro_profiles') {
-    return _BenchmarkInvocation(
-      engineId: engineId,
-      count: count ?? 100,
-      difficulty: 'all',
-      size: 'all',
-      iterationCapMs: iterationCapMs,
-      enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
-    );
-  }
+
 
   if (count == null || difficulty == null || size == null) {
     throw FormatException(
@@ -260,8 +195,6 @@ _BenchmarkInvocation _parseInvocation(List<String> arguments) {
     difficulty: difficulty,
     size: size,
     iterationCapMs: iterationCapMs,
-    kakuroProfileName: kakuroProfileName,
-    enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
     slitherlinkScenarioName: slitherlinkScenarioName,
   );
 }
@@ -273,8 +206,6 @@ class _BenchmarkInvocation {
     required this.difficulty,
     required this.size,
     required this.iterationCapMs,
-    this.kakuroProfileName,
-    this.enforceExperimentalKakuroGate = false,
     this.slitherlinkScenarioName,
     this.runSlitherlinkCorpus = false,
   });
@@ -284,8 +215,6 @@ class _BenchmarkInvocation {
   final String difficulty;
   final String size;
   final int iterationCapMs;
-  final String? kakuroProfileName;
-  final bool enforceExperimentalKakuroGate;
   final String? slitherlinkScenarioName;
   final bool runSlitherlinkCorpus;
 }
@@ -311,11 +240,7 @@ Future<void> _initializeEngines() async {
     // Engine might not be available
   }
 
-  try {
-    registry.register(KakuroEngine());
-  } catch (e) {
-    // Engine might not be available
-  }
+
 
   try {
     registry.register(SlitherlinkEngine());
@@ -351,12 +276,7 @@ PuzzleEngine<dynamic, dynamic> _createBenchmarkEngine({
       return SudokuEngine();
     case 'nonogram_mono':
       return NonogramEngine();
-    case 'kakuro_classic':
-      return KakuroEngine(
-        generator: KakuroGenerator(
-          hardTimeLimitOverride: Duration(milliseconds: iterationCapMs),
-        ),
-      );
+
     case 'slitherlink_loop':
       return SlitherlinkEngine();
     case 'mathdoku_classic':
@@ -377,9 +297,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   required String difficulty,
   required String size,
   required int iterationCapMs,
-  String? kakuroBenchmarkProfileName,
   List<String>? explicitSeedCorpus,
-  bool enforceExperimentalKakuroGate = false,
 }) async {
   if (engineId == 'killer_queens' && difficulty.toLowerCase() == 'all') {
     return _benchmarkKillerQueensDifficultyProfiles(
@@ -390,12 +308,10 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
 
   final registry = EngineRegistry();
   PuzzleEngine<dynamic, dynamic>? engine = registry.getEngine(engineId);
-  const KakuroSolver kakuroSolver = KakuroSolver();
   const SlitherlinkSolver slitherlinkSolver = SlitherlinkSolver();
   const SlitherlinkValidator slitherlinkValidator = SlitherlinkValidator();
   const KillerQueensSolver killerQueensSolver = KillerQueensSolver();
   const KillerQueensValidator killerQueensValidator = KillerQueensValidator();
-  final bool measureKakuroUniqueness = engineId == 'kakuro_classic';
   final bool measureSlitherlinkCorrectness = engineId == 'slitherlink_loop';
   final bool measureKillerQueensCorrectness = engineId == 'killer_queens';
 
@@ -406,58 +322,8 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   }
   final width = int.parse(sizeParts[0]);
   final height = int.parse(sizeParts[1]);
-  final String normalizedDifficulty =
-      KakuroSupportedProfiles.normalizeDifficulty(difficulty);
   final String sizeId = '${width}x$height';
   int iterationCount = count;
-  _KakuroBenchmarkProfile? kakuroProfile;
-  if (kakuroBenchmarkProfileName != null &&
-      kakuroBenchmarkProfileName.trim().isNotEmpty) {
-    kakuroProfile = _kakuroBenchmarkProfiles[kakuroBenchmarkProfileName.trim()];
-    if (kakuroProfile == null) {
-      throw Exception(
-        'Unknown Kakuro benchmark profile "$kakuroBenchmarkProfileName". '
-        'Available: ${_kakuroBenchmarkProfiles.keys.join(', ')}',
-      );
-    }
-    if (!measureKakuroUniqueness) {
-      throw Exception(
-        'Kakuro benchmark profiles are only supported with engineId=kakuro_classic.',
-      );
-    }
-    if (kakuroProfile.sizeId != sizeId ||
-        kakuroProfile.difficulty != normalizedDifficulty) {
-      throw Exception(
-        'Kakuro profile ${kakuroProfile.name} expects '
-        '${kakuroProfile.sizeId}/${kakuroProfile.difficulty}, '
-        'but got $sizeId/$normalizedDifficulty.',
-      );
-    }
-    iterationCount = kakuroProfile.seedCorpus.length;
-  }
-  if (measureKakuroUniqueness &&
-      !KakuroSupportedProfiles.isBenchmarkEligible(
-        sizeId: sizeId,
-        difficulty: normalizedDifficulty,
-      ) &&
-      !KakuroSupportedProfiles.isAdhocBenchmarkSupported(
-        width: width,
-        height: height,
-        difficulty: normalizedDifficulty,
-      )) {
-    throw Exception(
-      'Unsupported Kakuro benchmark profile $sizeId/$normalizedDifficulty. '
-      'Use a known Kakuro profile or supported ad-hoc size/difficulty.',
-    );
-  }
-
-  if (measureKakuroUniqueness) {
-    engine = KakuroEngine(
-      generator: KakuroGenerator(
-        hardTimeLimitOverride: Duration(milliseconds: iterationCapMs),
-      ),
-    );
-  }
 
   if (engine == null) {
     throw Exception('Engine not found: $engineId');
@@ -494,12 +360,6 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   int repairedAcceptCount = 0;
   int repairedRejectCount = 0;
   int generationFailureCount = 0;
-  int uniquenessFailureCount = 0;
-  int nonUniqueCount = 0;
-  int unknownStatusCount = 0;
-  int layoutGateCount = 0;
-  int difficultyGateCount = 0;
-  int repairAttemptCount = 0;
   int slitherlinkUniqueCount = 0;
   int slitherlinkMultiSolutionCount = 0;
   int slitherlinkUnknownCount = 0;
@@ -516,7 +376,6 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
   final Map<String, int> layoutFamilyDistribution = <String, int>{};
   final List<String> seedCorpus =
       explicitSeedCorpus ??
-      kakuroProfile?.seedCorpus ??
       List<String>.generate(
         iterationCount,
         (int i) => 'bench:$engineId:$i',
@@ -539,49 +398,21 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
         width: width,
         height: height,
       );
-      if (measureKakuroUniqueness) {
-        puzzle = await Isolate.run(() {
-          final PuzzleEngine<dynamic, dynamic> isolatedEngine =
-              _createBenchmarkEngine(
-                engineId: engineId,
-                iterationCapMs: iterationCapMs,
-              );
-          return isolatedEngine.generate(
-            seedStr: seedStr,
-            seed64: seed64,
-            size: benchmarkSize,
-            difficulty: difficultyScore,
-          );
-        }).timeout(Duration(milliseconds: iterationCapMs));
-      } else {
-        puzzle = engine.generate(
-          seedStr: seedStr,
-          seed64: seed64,
-          size: benchmarkSize,
-          difficulty: difficultyScore,
-        );
-      }
+      puzzle = engine.generate(
+        seedStr: seedStr,
+        seed64: seed64,
+        size: benchmarkSize,
+        difficulty: difficultyScore,
+      );
 
       // Basic validation
       if (puzzle.meta.engineVersion.isEmpty) {
         throw Exception('Invalid puzzle generated');
       }
     } on TimeoutException catch (e) {
-      generationError = GenerationFailure(
-        message:
-            'Benchmark iteration exceeded cap of ${iterationCapMs}ms '
-            'for seed $seedStr',
-        attempts: 1,
-        elapsed: Duration(milliseconds: iterationCapMs),
-        baseSeed: seed64,
-        lastError: e,
-        context: <String, Object?>{
-          'failureReason': 'benchmark_iteration_timeout',
-          'iterationCapMs': iterationCapMs,
-          'seed': seedStr,
-          'size': '${width}x$height',
-          'difficulty': difficulty,
-        },
+      generationError = Exception(
+        'Benchmark iteration exceeded cap of ${iterationCapMs}ms '
+        'for seed $seedStr. Last error: $e'
       );
     } catch (e) {
       generationError = e;
@@ -622,90 +453,11 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
           : <String, Object?>{'hardCapExceeded': hardCapExceeded},
       if (solverTelemetry.isNotEmpty) 'solverTelemetry': solverTelemetry,
     };
-    const List<String> kakuroTelemetryFields = <String>[
-      'layoutHash',
-      'layoutFamilyId',
-      'whiteCellCount',
-      'blockCellCount',
-      'clueCellCount',
-      'blackOrClueCellCount',
-      'acrossRunCount',
-      'downRunCount',
-      'totalRunCount',
-      'runLengthHistogram',
-      'maxRunLength',
-      'averageRunLengthMilli',
-      'runGraphNodeCount',
-      'runGraphEdgeCount',
-      'minRunGraphDegree',
-      'articulationPointCount',
-      'avgRunComboCount',
-      'avgRunComboCountMilli',
-      'singleComboRunRatio',
-      'singleComboRunRatioMilli',
-      'ambiguityScore',
-      'ambiguityScoreMilli',
-      'constructionTelemetry',
-      'averageRunCombinationCountMilli',
-      'singleCombinationRunRatioMilli',
-      'intersectionSizeHistogram',
-      'forcedIntersectionCellCount',
-      'nearForcedIntersectionCellCount',
-      'weakIntersectionCellCount',
-      'averageIntersectionSizeMilli',
-      'maxIntersectionSize',
-      'weakestRegionScore',
-      'weakRegionCount',
-      'runCombinationCountHistogram',
-      'singleCombinationRunCount',
-      'lowCombinationRunCount',
-      'lowCombinationRunRatioMilli',
-      'constructionCandidateRank',
-      'constructionCandidateBatchSize',
-      'constructionQualityGatePassed',
-      'stageTimingMs',
-      'repairAttemptCount',
-      'repairOutcome',
-      'repairReason',
-      'repairedFromNonUnique',
-      'repairedRejectCount',
-      'acceptPath',
-      'finalLayoutHash',
-      'layoutNonUniqueRejectCounts',
-      'nonUniquePatternRejectCounts',
-    ];
-    for (final String field in kakuroTelemetryFields) {
-      final Object? value = generatorTelemetry[field];
-      if (value != null) {
-        detail[field] = value;
-      }
-    }
+
 
     if (generationError != null) {
       generationFailureCount++;
-      if (generationError is GenerationFailure) {
-        final GenerationFailure failure = generationError;
-        detail['generationFailureContext'] = _sanitizeFailureContext(
-          failure.context,
-        );
-        final Map<String, Object?> rejectCounters = _asObjectMap(
-          failure.context['rejectCounters'],
-        );
-        layoutGateCount += _asInt(rejectCounters['layoutGate'], fallback: 0);
-        nonUniqueCount += _asInt(rejectCounters['nonUnique'], fallback: 0);
-        unknownStatusCount += _asInt(
-          rejectCounters['unknownStatus'],
-          fallback: 0,
-        );
-        difficultyGateCount += _asInt(
-          rejectCounters['difficultyGate'],
-          fallback: 0,
-        );
-        repairAttemptCount += _asInt(
-          failure.context['repairAttemptCount'],
-          fallback: 0,
-        );
-      }
+
       detail['status'] = 'generation_failed';
       detail['error'] = generationError.toString();
       iterationDetails.add(detail);
@@ -729,26 +481,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       generatorTelemetry['repairedRejectCount'],
       fallback: 0,
     );
-    repairAttemptCount += _asInt(
-      generatorTelemetry['repairAttemptCount'],
-      fallback: 0,
-    );
-    layoutGateCount += _asInt(
-      _asObjectMap(generatorTelemetry['rejectCounters'])['layoutGate'],
-      fallback: 0,
-    );
-    nonUniqueCount += _asInt(
-      _asObjectMap(generatorTelemetry['rejectCounters'])['nonUnique'],
-      fallback: 0,
-    );
-    unknownStatusCount += _asInt(
-      _asObjectMap(generatorTelemetry['rejectCounters'])['unknownStatus'],
-      fallback: 0,
-    );
-    difficultyGateCount += _asInt(
-      _asObjectMap(generatorTelemetry['rejectCounters'])['difficultyGate'],
-      fallback: 0,
-    );
+
     if (measuredBucket != null && measuredBucket.isNotEmpty) {
       measuredDifficultyDistribution[measuredBucket] =
           (measuredDifficultyDistribution[measuredBucket] ?? 0) + 1;
@@ -768,39 +501,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
           (layoutFamilyDistribution[layoutFamily] ?? 0) + 1;
     }
 
-    if (measureKakuroUniqueness) {
-      if (puzzle == null || puzzle.state is! KakuroBoard) {
-        detail['status'] = 'generation_failed';
-        detail['error'] = 'Kakuro benchmark expected KakuroBoard state';
-        iterationDetails.add(detail);
-        generationFailureCount++;
-        continue;
-      }
-      final Stopwatch solveWatch = Stopwatch()..start();
-      final SolverResult<KakuroBoard> solved = kakuroSolver.solve(
-        puzzle.state as KakuroBoard,
-        SolverContext(rng: SeededRng(seed64 ^ 0x7f4a7c15), maxSolutions: 2),
-      );
-      solveWatch.stop();
-      final int solveMicros = solveWatch.elapsedMicroseconds;
-      detail['uniquenessSolveMs'] = solveMicros / 1000.0;
-      if (!solved.hasSolution || !solved.isUnique) {
-        uniquenessFailureCount++;
-        if (solved.solutionStatus == SolverStatus.multiple) {
-          nonUniqueCount++;
-        } else if (solved.solutionStatus == SolverStatus.unknown) {
-          unknownStatusCount++;
-        }
-        detail['status'] = 'uniqueness_failed';
-        detail['solverStatus'] = solved.solutionStatus.name;
-        detail['error'] =
-            'Kakuro uniqueness solve failed for seed $seedStr: ${solved.solutionStatus.name}';
-        iterationDetails.add(detail);
-        continue;
-      }
-      uniquenessSolveTimes.add(solveMicros);
-      detail['solverStatus'] = solved.solutionStatus.name;
-    }
+
     if (measureSlitherlinkCorrectness) {
       if (puzzle == null || puzzle.state is! SlitherlinkBoard) {
         slitherlinkValidationFailureCount++;
@@ -976,7 +677,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       ? slitherlinkUniqueCount
       : measureKillerQueensCorrectness
       ? killerQueensUniqueCount
-      : totalIterations - generationFailureCount - uniquenessFailureCount;
+      : totalIterations - generationFailureCount;
   final double successRate = totalIterations == 0
       ? 0.0
       : successfulIterations / totalIterations;
@@ -997,49 +698,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
       'repairedAccepts': repairedAcceptCount,
       'repairedRejects': repairedRejectCount,
     },
-    if (measureKakuroUniqueness)
-      'kakuroMetrics': <String, Object?>{
-        'successRate': successRate,
-        'successfulCount': successfulIterations,
-        'generationFailureCount': generationFailureCount,
-        'uniquenessFailureCount': uniquenessFailureCount,
-        'nonUniqueCount': nonUniqueCount,
-        'unknownStatusCount': unknownStatusCount,
-        'layoutGateCount': layoutGateCount,
-        'difficultyGateCount': difficultyGateCount,
-        if (repairAttemptCount > 0) 'repairCount': repairAttemptCount,
-        'generationMs': <String, double>{
-          'p50': _percentile(sortedWallTimes, 0.50) / 1000.0,
-          'p95': _percentile(sortedWallTimes, 0.95) / 1000.0,
-          'p99': _percentile(sortedWallTimes, 0.99) / 1000.0,
-        },
-        if (sortedTimes.isNotEmpty)
-          'successfulGenerationMs': <String, double>{
-            'p50': _percentile(sortedTimes, 0.50) / 1000.0,
-            'p95': _percentile(sortedTimes, 0.95) / 1000.0,
-            'p99': _percentile(sortedTimes, 0.99) / 1000.0,
-          },
-        'failedIterationSamples': iterationDetails
-            .where(
-              (Map<String, Object?> detail) => detail['status'] != 'success',
-            )
-            .take(5)
-            .toList(growable: false),
-        'measuredDifficultyDistribution': measuredDifficultyDistribution,
-        'difficultyMatchRate': difficultyMatchSamples == 0
-            ? 0.0
-            : difficultyMatchCount / difficultyMatchSamples,
-        'layoutFamilyDistribution': layoutFamilyDistribution,
-      },
-    if (measureKakuroUniqueness)
-      'difficultySummaryByRequest': <String, Object?>{
-        normalizedDifficulty: <String, Object?>{
-          'measuredDifficultyDistribution': measuredDifficultyDistribution,
-          'difficultyMatchRate': difficultyMatchSamples == 0
-              ? 0.0
-              : difficultyMatchCount / difficultyMatchSamples,
-        },
-      },
+
     if (measureSlitherlinkCorrectness)
       'slitherlinkMetrics': <String, Object?>{
         'successRate': successRate,
@@ -1123,89 +782,7 @@ Future<EngineBenchmarkResult> _benchmarkEngine({
             .toList(growable: false),
       },
   };
-  Map<String, Object?>? kakuroMetrics;
-  if (measureKakuroUniqueness) {
-    kakuroMetrics = Map<String, Object?>.from(extras['kakuroMetrics'] as Map);
-    extras['kakuroMetrics'] = kakuroMetrics;
-  }
-  if (measureKakuroUniqueness && uniquenessSolveTimes.isNotEmpty) {
-    final List<int> sortedUniqueness = List<int>.from(uniquenessSolveTimes)
-      ..sort();
-    final Map<String, double> uniquenessSummary = <String, double>{
-      'p50': _percentile(sortedUniqueness, 0.50) / 1000.0,
-      'p95': _percentile(sortedUniqueness, 0.95) / 1000.0,
-      'p99': _percentile(sortedUniqueness, 0.99) / 1000.0,
-    };
-    extras['uniquenessSolveMs'] = uniquenessSummary;
-    kakuroMetrics?['uniquenessSolveMs'] = uniquenessSummary;
-  }
-  if (measureSlitherlinkCorrectness && slitherlinkSolveTimes.isNotEmpty) {
-    final List<int> sortedSlitherlinkSolveTimes = List<int>.from(
-      slitherlinkSolveTimes,
-    )..sort();
-    final Map<String, double> solveSummary = <String, double>{
-      'p50': _percentile(sortedSlitherlinkSolveTimes, 0.50) / 1000.0,
-      'p95': _percentile(sortedSlitherlinkSolveTimes, 0.95) / 1000.0,
-      'p99': _percentile(sortedSlitherlinkSolveTimes, 0.99) / 1000.0,
-    };
-    extras['slitherlinkSolveMs'] = solveSummary;
-    final Map<String, Object?> metrics = Map<String, Object?>.from(
-      extras['slitherlinkMetrics'] as Map,
-    );
-    metrics['solveMs'] = solveSummary;
-    extras['slitherlinkMetrics'] = metrics;
-  }
-  if (kakuroProfile != null) {
-    extras['benchmarkMode'] = 'kakuro_profile_corpus_v1';
-    extras['kakuroProfile'] = kakuroProfile.toJson();
-    final _KakuroBenchmarkGateResult gate = _evaluateKakuroGate(
-      profile: kakuroProfile,
-      successRate: successRate,
-      generationP95Ms: sortedTimes.isEmpty
-          ? 0.0
-          : _percentile(sortedTimes, 0.95) / 1000.0,
-      uniquenessP95Ms: uniquenessSolveTimes.isEmpty
-          ? 0.0
-          : _percentile(List<int>.from(uniquenessSolveTimes)..sort(), 0.95) /
-                1000.0,
-      unknownStatusCount: unknownStatusCount,
-      difficultyMatchRate: difficultyMatchSamples == 0
-          ? 0.0
-          : difficultyMatchCount / difficultyMatchSamples,
-      enforceExperimentalGate: enforceExperimentalKakuroGate,
-    );
-    extras['kakuroGate'] = gate.toJson();
-    if (gate.enforced && !gate.passed) {
-      return EngineBenchmarkResult(
-        engineId: engineId,
-        success: false,
-        error:
-            'Kakuro benchmark gate failed for profile ${kakuroProfile.name}: ${gate.failures.join('; ')}',
-        p50Ms: p50 / 1000.0,
-        p95Ms: p95 / 1000.0,
-        p99Ms: p99 / 1000.0,
-        totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
-        iterations: totalIterations,
-        extras: extras,
-      );
-    }
-  } else if (measureKakuroUniqueness) {
-    extras['benchmarkMode'] = 'kakuro_phone_v1_calibration';
-    if (generationFailureCount > 0 || uniquenessFailureCount > 0) {
-      return EngineBenchmarkResult(
-        engineId: engineId,
-        success: false,
-        error:
-            'Kakuro benchmark had failures: generation=$generationFailureCount, uniqueness=$uniquenessFailureCount',
-        p50Ms: p50 / 1000.0,
-        p95Ms: p95 / 1000.0,
-        p99Ms: p99 / 1000.0,
-        totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
-        iterations: totalIterations,
-        extras: extras,
-      );
-    }
-  }
+
   if (measureSlitherlinkCorrectness) {
     extras['benchmarkMode'] = 'slitherlink_supported_sizes_calibration';
     extras['benchmarkNote'] =
@@ -1451,98 +1028,6 @@ Future<EngineBenchmarkResult> _benchmarkSlitherlinkCorpus({
   );
 }
 
-Future<EngineBenchmarkResult> _benchmarkKakuroProfiles({
-  required int count,
-  required int iterationCapMs,
-  required bool enforceExperimentalKakuroGate,
-}) async {
-  final Map<String, Object?> profileResults = <String, Object?>{};
-  final List<int> aggregateGenerationTimes = <int>[];
-  final List<String> failures = <String>[];
-  int totalIterations = 0;
-  final Stopwatch totalStopwatch = Stopwatch()..start();
-
-  for (final KakuroProfile profile
-      in KakuroSupportedProfiles.benchmarkEligibleProfiles) {
-    final String profileName = 'kakuro_${profile.sizeId}_${profile.difficulty}';
-    if (!_kakuroBenchmarkProfiles.containsKey(profileName)) {
-      final KakuroProfileTier tier =
-          KakuroSupportedProfiles.tierFor(
-            sizeId: profile.sizeId,
-            difficulty: profile.difficulty,
-          ) ??
-          KakuroProfileTier.experimental;
-
-      _kakuroBenchmarkProfiles[profileName] = _KakuroBenchmarkProfile(
-        name: profileName,
-        sizeId: profile.sizeId,
-        difficulty: profile.difficulty,
-        tier: tier == KakuroProfileTier.shipping
-            ? _KakuroBenchmarkProfileTier.shipping
-            : _KakuroBenchmarkProfileTier.experimental,
-        seedCorpus: _buildKakuroSeedCorpus(profileName, count),
-        gateThresholds: tier == KakuroProfileTier.shipping
-            ? _shippingGateThresholds
-            : _experimentalGateThresholds,
-      );
-    }
-
-    final EngineBenchmarkResult result = await _benchmarkEngine(
-      engineId: 'kakuro_classic',
-      count: count,
-      difficulty: profile.difficulty,
-      size: profile.sizeId,
-      iterationCapMs: iterationCapMs,
-      kakuroBenchmarkProfileName: profileName,
-      enforceExperimentalKakuroGate: enforceExperimentalKakuroGate,
-    );
-    profileResults[profileName] = result.toJson();
-    totalIterations += result.iterations;
-    if (!result.success) {
-      failures.add('$profileName: ${result.error ?? 'failed'}');
-    }
-
-    final Map<String, Object?> extras = result.extras;
-    final Object? durations = extras['iterationDurationsMs'];
-    if (durations is List) {
-      for (final Object? duration in durations) {
-        if (duration is num) {
-          aggregateGenerationTimes.add((duration * 1000).round());
-        }
-      }
-    }
-  }
-
-  totalStopwatch.stop();
-  aggregateGenerationTimes.sort();
-  final int p50 = _percentile(aggregateGenerationTimes, 0.50);
-  final int p95 = _percentile(aggregateGenerationTimes, 0.95);
-  final int p99 = _percentile(aggregateGenerationTimes, 0.99);
-
-  return EngineBenchmarkResult(
-    engineId: 'kakuro_profiles',
-    success: failures.isEmpty,
-    error: failures.isEmpty
-        ? null
-        : 'Kakuro profiles benchmark had failures:\n  ${failures.join('\n  ')}',
-    p50Ms: p50 / 1000.0,
-    p95Ms: p95 / 1000.0,
-    p99Ms: p99 / 1000.0,
-    totalTimeMs: totalStopwatch.elapsedMicroseconds / 1000.0,
-    iterations: totalIterations,
-    extras: <String, Object?>{
-      'benchmarkMode': 'kakuro_all_profiles',
-      'benchmarkNote':
-          'Runs all benchmark-eligible Kakuro profiles with device-dependent gates.',
-      'generationMs': <String, double>{
-        'p50': p50 / 1000.0,
-        'p95': p95 / 1000.0,
-        'p99': p99 / 1000.0,
-      },
-      'profileResults': profileResults,
-    },
-  );
-}
 
 EngineBenchmarkResult _benchmarkMathdoku9x9({
   required PuzzleEngine engine,
@@ -1942,75 +1427,6 @@ Map<String, Object?> _asObjectMap(Object? value) {
   return const <String, Object?>{};
 }
 
-Map<String, Object?> _sanitizeFailureContext(Map<String, Object?> context) {
-  final Map<String, Object?> sanitized = Map<String, Object?>.from(context);
-  final Object? attemptsLogRaw = context['attemptsLog'];
-  if (attemptsLogRaw is List) {
-    final List<Map<String, Object?>> trimmed = <Map<String, Object?>>[];
-    for (final Object? item in attemptsLogRaw.take(8)) {
-      if (item is! Map) {
-        continue;
-      }
-      final Map<String, Object?> attempt = Map<String, Object?>.from(item);
-      final Map<String, Object?> compact = <String, Object?>{
-        if (attempt['attempt'] != null) 'attempt': attempt['attempt'],
-        if (attempt['durationMs'] != null) 'durationMs': attempt['durationMs'],
-        if (attempt['outcome'] != null) 'outcome': attempt['outcome'],
-        if (attempt['rejectReason'] != null)
-          'rejectReason': attempt['rejectReason'],
-        if (attempt['solverStatus'] != null)
-          'solverStatus': attempt['solverStatus'],
-        if (attempt['mode'] != null) 'mode': attempt['mode'],
-        if (attempt['repairPass'] != null) 'repairPass': attempt['repairPass'],
-        if (attempt['repairStrategy'] != null)
-          'repairStrategy': attempt['repairStrategy'],
-        if (attempt['repairOutcome'] != null)
-          'repairOutcome': attempt['repairOutcome'],
-        if (attempt['repairReason'] != null)
-          'repairReason': attempt['repairReason'],
-        if (attempt['layoutHash'] != null) 'layoutHash': attempt['layoutHash'],
-      };
-      final Map<String, Object?> construction = _asObjectMap(
-        attempt['constructionTelemetry'],
-      );
-      if (construction.isNotEmpty) {
-        compact['constructionTelemetry'] = <String, Object?>{
-          if (construction['constructionScoreMilli'] != null)
-            'constructionScoreMilli': construction['constructionScoreMilli'],
-          if (construction['constructionCandidateRank'] != null)
-            'constructionCandidateRank':
-                construction['constructionCandidateRank'],
-          if (construction['constructionCandidateBatchSize'] != null)
-            'constructionCandidateBatchSize':
-                construction['constructionCandidateBatchSize'],
-          if (construction['forcedIntersectionCellCount'] != null)
-            'forcedIntersectionCellCount':
-                construction['forcedIntersectionCellCount'],
-          if (construction['nearForcedIntersectionCellCount'] != null)
-            'nearForcedIntersectionCellCount':
-                construction['nearForcedIntersectionCellCount'],
-          if (construction['weakIntersectionCellCount'] != null)
-            'weakIntersectionCellCount':
-                construction['weakIntersectionCellCount'],
-          if (construction['averageIntersectionSizeMilli'] != null)
-            'averageIntersectionSizeMilli':
-                construction['averageIntersectionSizeMilli'],
-          if (construction['lowCombinationRunRatioMilli'] != null)
-            'lowCombinationRunRatioMilli':
-                construction['lowCombinationRunRatioMilli'],
-          if (construction['constructionQualityGatePassed'] != null)
-            'constructionQualityGatePassed':
-                construction['constructionQualityGatePassed'],
-        };
-      }
-      trimmed.add(compact);
-    }
-    sanitized['attemptsLog'] = trimmed;
-    sanitized['attemptsLogSampled'] = true;
-    sanitized['attemptsLogOriginalCount'] = attemptsLogRaw.length;
-  }
-  return sanitized;
-}
 
 int _asInt(Object? value, {required int fallback}) {
   if (value is num) {
@@ -2131,216 +1547,6 @@ _slitherlinkBenchmarkScenarios = <String, _SlitherlinkBenchmarkScenario>{
   ),
 };
 
-enum _KakuroBenchmarkProfileTier { shipping, experimental }
-
-class _KakuroBenchmarkGateThresholds {
-  const _KakuroBenchmarkGateThresholds({
-    required this.minSuccessRate,
-    required this.maxGenerationP95Ms,
-    required this.maxUniquenessSolveP95Ms,
-    required this.maxUnknownStatusCount,
-    required this.minDifficultyMatchRate,
-  });
-
-  final double minSuccessRate;
-  final double maxGenerationP95Ms;
-  final double maxUniquenessSolveP95Ms;
-  final int maxUnknownStatusCount;
-  final double minDifficultyMatchRate;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'minSuccessRate': minSuccessRate,
-    'maxGenerationP95Ms': maxGenerationP95Ms,
-    'maxUniquenessSolveP95Ms': maxUniquenessSolveP95Ms,
-    'maxUnknownStatusCount': maxUnknownStatusCount,
-    'minDifficultyMatchRate': minDifficultyMatchRate,
-  };
-}
-
-class _KakuroBenchmarkProfile {
-  const _KakuroBenchmarkProfile({
-    required this.name,
-    required this.sizeId,
-    required this.difficulty,
-    required this.tier,
-    required this.seedCorpus,
-    required this.gateThresholds,
-  });
-
-  final String name;
-  final String sizeId;
-  final String difficulty;
-  final _KakuroBenchmarkProfileTier tier;
-  final List<String> seedCorpus;
-  final _KakuroBenchmarkGateThresholds gateThresholds;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'name': name,
-    'sizeId': sizeId,
-    'difficulty': difficulty,
-    'tier': tier.name,
-    'corpusSize': seedCorpus.length,
-    'gateThresholds': gateThresholds.toJson(),
-  };
-}
-
-class _KakuroBenchmarkGateResult {
-  const _KakuroBenchmarkGateResult({
-    required this.enforced,
-    required this.passed,
-    required this.failures,
-  });
-
-  final bool enforced;
-  final bool passed;
-  final List<String> failures;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'enforced': enforced,
-    'passed': passed,
-    'failures': failures,
-  };
-}
-
-List<String> _buildKakuroSeedCorpus(String profileName, int count) {
-  return List<String>.generate(
-    count,
-    (int i) => 'bench:kakuro_profile:$profileName:$i',
-    growable: false,
-  );
-}
-
-const _KakuroBenchmarkGateThresholds _shippingGateThresholds =
-    _KakuroBenchmarkGateThresholds(
-      minSuccessRate: 0.95,
-      maxGenerationP95Ms: 5500.0,
-      maxUniquenessSolveP95Ms: 350.0,
-      maxUnknownStatusCount: 0,
-      minDifficultyMatchRate: 0.80,
-    );
-
-const _KakuroBenchmarkGateThresholds _experimentalGateThresholds =
-    _KakuroBenchmarkGateThresholds(
-      minSuccessRate: 0.70,
-      maxGenerationP95Ms: 8000.0,
-      maxUniquenessSolveP95Ms: 900.0,
-      maxUnknownStatusCount: 6,
-      minDifficultyMatchRate: 0.50,
-    );
-
-final Map<String, _KakuroBenchmarkProfile>
-_kakuroBenchmarkProfiles = <String, _KakuroBenchmarkProfile>{
-  'kakuro_7x9_easy_shipping': _KakuroBenchmarkProfile(
-    name: 'kakuro_7x9_easy_shipping',
-    sizeId: '7x9',
-    difficulty: 'easy',
-    tier: _KakuroBenchmarkProfileTier.shipping,
-    seedCorpus: const <String>[
-      'bench:kakuro_profile:k7_candidate:3',
-      'bench:kakuro_profile:k7_candidate:5',
-      'bench:kakuro_profile:k7_candidate:6',
-      'bench:kakuro_profile:k7_candidate:7',
-      'bench:kakuro_profile:k7_candidate:9',
-      'bench:kakuro_profile:k7_candidate:11',
-      'bench:kakuro_profile:k7_candidate:13',
-      'bench:kakuro_profile:k7_candidate:14',
-      'bench:kakuro_profile:k7_candidate:15',
-      'bench:kakuro_profile:k7_candidate:17',
-      'bench:kakuro_profile:k7_candidate:20',
-      'bench:kakuro_profile:k7_candidate:22',
-      'bench:kakuro_profile:k7_candidate:23',
-      'bench:kakuro_profile:k7_candidate:24',
-      'bench:kakuro_profile:k7_candidate:27',
-      'bench:kakuro_profile:k7_candidate:28',
-      'bench:kakuro_profile:k7_candidate:29',
-      'bench:kakuro_profile:k7_candidate:31',
-      'bench:kakuro_profile:k7_candidate:32',
-      'bench:kakuro_profile:k7_candidate:36',
-      'bench:kakuro_profile:k7_candidate:38',
-      'bench:kakuro_profile:k7_candidate:39',
-      'bench:kakuro_profile:k7_candidate:40',
-      'bench:kakuro_profile:k7_candidate:43',
-    ],
-    gateThresholds: _shippingGateThresholds,
-  ),
-  'kakuro_9x9_medium_experimental': _KakuroBenchmarkProfile(
-    name: 'kakuro_9x9_medium_experimental',
-    sizeId: '9x9',
-    difficulty: 'medium',
-    tier: _KakuroBenchmarkProfileTier.experimental,
-    seedCorpus: _buildKakuroSeedCorpus('kakuro_9x9_medium_experimental', 24),
-    gateThresholds: _experimentalGateThresholds,
-  ),
-  'kakuro_9x9_hard_experimental': _KakuroBenchmarkProfile(
-    name: 'kakuro_9x9_hard_experimental',
-    sizeId: '9x9',
-    difficulty: 'hard',
-    tier: _KakuroBenchmarkProfileTier.experimental,
-    seedCorpus: _buildKakuroSeedCorpus('kakuro_9x9_hard_experimental', 24),
-    gateThresholds: _experimentalGateThresholds,
-  ),
-  'kakuro_9x9_expert_experimental': _KakuroBenchmarkProfile(
-    name: 'kakuro_9x9_expert_experimental',
-    sizeId: '9x9',
-    difficulty: 'expert',
-    tier: _KakuroBenchmarkProfileTier.experimental,
-    seedCorpus: _buildKakuroSeedCorpus('kakuro_9x9_expert_experimental', 24),
-    gateThresholds: _experimentalGateThresholds,
-  ),
-};
-
-_KakuroBenchmarkGateResult _evaluateKakuroGate({
-  required _KakuroBenchmarkProfile profile,
-  required double successRate,
-  required double generationP95Ms,
-  required double uniquenessP95Ms,
-  required int unknownStatusCount,
-  required double difficultyMatchRate,
-  required bool enforceExperimentalGate,
-}) {
-  final bool enforced =
-      profile.tier == _KakuroBenchmarkProfileTier.shipping ||
-      enforceExperimentalGate;
-  final List<String> failures = <String>[];
-  if (!enforced) {
-    return _KakuroBenchmarkGateResult(
-      enforced: false,
-      passed: true,
-      failures: failures,
-    );
-  }
-  final _KakuroBenchmarkGateThresholds thresholds = profile.gateThresholds;
-  if (successRate < thresholds.minSuccessRate) {
-    failures.add(
-      'successRate ${successRate.toStringAsFixed(3)} < ${thresholds.minSuccessRate.toStringAsFixed(3)}',
-    );
-  }
-  if (generationP95Ms > thresholds.maxGenerationP95Ms) {
-    failures.add(
-      'generationP95Ms ${generationP95Ms.toStringAsFixed(2)} > ${thresholds.maxGenerationP95Ms.toStringAsFixed(2)}',
-    );
-  }
-  if (uniquenessP95Ms > thresholds.maxUniquenessSolveP95Ms) {
-    failures.add(
-      'uniquenessP95Ms ${uniquenessP95Ms.toStringAsFixed(2)} > ${thresholds.maxUniquenessSolveP95Ms.toStringAsFixed(2)}',
-    );
-  }
-  if (unknownStatusCount > thresholds.maxUnknownStatusCount) {
-    failures.add(
-      'unknownStatusCount $unknownStatusCount > ${thresholds.maxUnknownStatusCount}',
-    );
-  }
-  if (difficultyMatchRate < thresholds.minDifficultyMatchRate) {
-    failures.add(
-      'difficultyMatchRate ${difficultyMatchRate.toStringAsFixed(3)} < ${thresholds.minDifficultyMatchRate.toStringAsFixed(3)}',
-    );
-  }
-  return _KakuroBenchmarkGateResult(
-    enforced: true,
-    passed: failures.isEmpty,
-    failures: failures,
-  );
-}
 
 /// Parse difficulty string to DifficultyScore.
 DifficultyScore _parseDifficulty(String difficulty) {
