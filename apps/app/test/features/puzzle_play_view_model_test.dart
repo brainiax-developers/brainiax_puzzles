@@ -95,6 +95,7 @@ void main() {
       fakeAsync((FakeAsync async) {
         final PuzzlePlaySession session = _createSession();
         final ProviderContainer container = ProviderContainer();
+        container.listen(puzzlePlayViewModelProvider(session), (_, __) {});
         final provider = puzzlePlayViewModelProvider;
         container.read(provider(session));
 
@@ -116,6 +117,7 @@ void main() {
         final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
         final PuzzlePlaySession session = _createSession(onSolved: events.add);
         final ProviderContainer container = ProviderContainer();
+        container.listen(puzzlePlayViewModelProvider(session), (_, __) {});
         final provider = puzzlePlayViewModelProvider;
         final PuzzlePlayViewModel viewModel = container.read(
           provider(session).notifier,
@@ -159,6 +161,7 @@ void main() {
         final List<PuzzleSolvedEvent> events = <PuzzleSolvedEvent>[];
         final PuzzlePlaySession session = _createSession(onSolved: events.add);
         final ProviderContainer container = ProviderContainer();
+        container.listen(puzzlePlayViewModelProvider(session), (_, __) {});
         final provider = puzzlePlayViewModelProvider;
         final PuzzlePlayViewModel viewModel = container.read(
           provider(session).notifier,
@@ -216,6 +219,7 @@ void main() {
       fakeAsync((FakeAsync async) {
         final PuzzlePlaySession session = _createSession();
         final ProviderContainer container = ProviderContainer();
+        container.listen(puzzlePlayViewModelProvider(session), (_, __) {});
         final provider = puzzlePlayViewModelProvider;
         final PuzzlePlayViewModel viewModel = container.read(
           provider(session).notifier,
@@ -382,14 +386,14 @@ void main() {
       final PuzzleSolvedEvent event = events.single;
       final PuzzleCompletionStatus? status = event.completionStatus;
       expect(status, isNotNull);
-      expect(status!.bestTime, event.elapsed);
+      expect(status!.bestTime?.inMilliseconds, event.elapsed.inMilliseconds);
       expect(status.isDailyCompleted, isTrue);
       expect(status.dailyStreak, greaterThanOrEqualTo(1));
 
       final store = await container.read(puzzleLocalStoreProvider.future);
       final String todayKey = DailyUtcDate.todayKey();
 
-      expect(await store.bestTime(session.puzzleType, 'daily'), event.elapsed);
+      expect((await store.bestTime(session.puzzleType, 'daily'))?.inMilliseconds, event.elapsed.inMilliseconds);
       expect(
         await store.isDailyCompleted(session.puzzleType, todayKey),
         isTrue,

@@ -412,6 +412,8 @@ class PuzzleProgressService {
         return (json) => core.KillerQueensBoard.fromJson(json);
       case 'takuzu_binary':
         return (json) => core.TakuzuBoard.fromJson(json);
+      case 'kakuro':
+        return (json) => core.KakuroBoard.fromJson(json);
       default:
         return null;
     }

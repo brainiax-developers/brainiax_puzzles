@@ -87,7 +87,7 @@ void main() {
         expect(gameState, isNotNull);
         expect(gameState!.engineId, equals('stub'));
         expect(gameState.seed, equals('test:stub:0'));
-        expect(gameState.difficulty, equals('medium'));
+        expect(gameState.difficulty, equals('easy'));
         expect(gameState.size, equals('9x9'));
         expect(gameState.isSolved, isFalse);
       });
@@ -192,7 +192,7 @@ void main() {
     group('Seed Service Integration', () {
       test('generates daily seeds correctly', () {
         final seedService = SeedService();
-        final date = DateTime(2024, 1, 1).toUtc();
+        final date = DateTime.utc(2024, 1, 1);
         
         final seed = seedService.generateDailySeed('sudoku', date);
         expect(seed, equals('sudoku:20240101'));
@@ -332,8 +332,8 @@ void main() {
         final json = gameStateNotifier.toJson();
         expect(json, isA<Map<String, dynamic>>());
         expect(json['gameState'], isNotNull);
-        expect(json['moveHistory'], isA<List>());
-        expect(json['currentMoveIndex'], equals(0));
+        expect(json['actionHistory'], isA<List>());
+        expect(json['currentActionIndex'], equals(0));
       });
     });
   });

@@ -5,6 +5,7 @@ enum PuzzleType {
   killerQueens,
   slitherlink,
   takuzu,
+  kakuro,
   crosswordMini,
   wordSearch,
   anagram,

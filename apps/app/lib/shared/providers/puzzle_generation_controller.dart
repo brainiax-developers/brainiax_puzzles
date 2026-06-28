@@ -345,6 +345,13 @@ class PuzzleGenerationController
           width: 8,
           height: 8,
         );
+      case app.PuzzleType.kakuro:
+        return const core.SizeOpt(
+          id: '7x7',
+          description: '7x7',
+          width: 7,
+          height: 7,
+        );
     }
   }
 

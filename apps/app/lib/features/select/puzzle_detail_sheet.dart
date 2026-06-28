@@ -690,7 +690,7 @@ String _formatCountdown(Duration duration) {
 String _categoryLabelFor(PuzzleType puzzleType) {
   switch (puzzleType) {
     case PuzzleType.sudokuClassic:
-
+    case PuzzleType.kakuro:
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return 'Number puzzle';

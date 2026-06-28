@@ -1,6 +1,7 @@
 /// Enum representing different puzzle types available in the app.
 enum PuzzleType {
   sudokuClassic('sudoku_classic', 'Classic Sudoku'),
+  kakuro('kakuro', 'Kakuro'),
   nonogramMono('nonogram_mono', 'Monochrome Nonogram'),
 
   slitherlinkLoop('slitherlink_loop', 'Slitherlink Loop'),
@@ -34,6 +35,7 @@ enum PuzzleType {
   /// Ordered list of puzzle types that participate in Daily Challenges.
   static const List<PuzzleType> dailyChallengeTypes = [
     sudokuClassic,
+    kakuro,
     nonogramMono,
     slitherlinkLoop,
     mathdokuClassic,

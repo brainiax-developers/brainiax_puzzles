@@ -186,6 +186,8 @@ core.PipelinePuzzleEngine<dynamic, dynamic> _createEngine(String engineId) {
       return core.KillerQueensEngine();
     case 'takuzu_binary':
       return core.TakuzuEngine();
+    case 'kakuro':
+      return core.KakuroEngine();
     default:
       // Fallback to a stub engine for unknown types to avoid crashes.
       return core.StubPuzzleEngine(engineId: engineId);

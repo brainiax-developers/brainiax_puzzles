@@ -324,6 +324,9 @@ class AppThemeData {
       case PuzzleType.sudokuClassic:
         seedColor = Colors.teal;
         break;
+      case PuzzleType.kakuro:
+        seedColor = Colors.purple;
+        break;
       case PuzzleType.nonogramMono:
         seedColor = Colors.deepOrange;
         break;

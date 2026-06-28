@@ -62,6 +62,12 @@ class EngineRegistryService {
 
 
     await _registerWithPerEngineFallback(
+      realEngineFactory: () => KakuroEngine(),
+      fallbackEngineId: 'kakuro',
+      fallbackEngineName: 'Kakuro',
+    );
+
+    await _registerWithPerEngineFallback(
       realEngineFactory: () => SlitherlinkEngine(),
       fallbackEngineId: 'slitherlink_loop',
       fallbackEngineName: 'Slitherlink Loop',

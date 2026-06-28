@@ -76,6 +76,15 @@ export 'src/takuzu/takuzu_board.dart';
 export 'src/takuzu/takuzu_move.dart';
 export 'src/takuzu/takuzu_engine.dart';
 
+// Kakuro engine implementation
+export 'src/kakuro/kakuro_board.dart';
+export 'src/kakuro/kakuro_move.dart';
+export 'src/kakuro/kakuro_engine.dart';
+export 'src/kakuro/kakuro_generator.dart';
+export 'src/kakuro/kakuro_solver.dart';
+export 'src/kakuro/kakuro_validator.dart';
+export 'src/kakuro/kakuro_dictionary.dart';
+
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';
 export 'src/puzzle_type.dart';

@@ -202,6 +202,13 @@ class PuzzlePreloadService {
           width: 10,
           height: 10,
         );
+      case PuzzleType.kakuro:
+        return const core.SizeOpt(
+          id: '7x7',
+          description: '7x7',
+          width: 7,
+          height: 7,
+        );
 
       case PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(

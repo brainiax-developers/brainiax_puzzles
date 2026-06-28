@@ -769,7 +769,8 @@ class GameStateNotifier extends Notifier<GameState?> {
   int? _calculateCellIndex(dynamic puzzleState, int row, int col) {
     if (puzzleState is SudokuBoard) {
       return (row * SudokuBoard.side + col).toInt();
-
+    } else if (puzzleState is KakuroBoard) {
+      return (row * puzzleState.width + col).toInt();
     }
     return null;
   }

@@ -98,6 +98,7 @@ _ActiveRunProgress? _computeProgress(ActivePuzzleRun run) {
 
     switch (run.puzzleType) {
       case PuzzleType.sudokuClassic:
+      case PuzzleType.kakuro:
       case PuzzleType.mathdokuClassic:
       case PuzzleType.killerQueens:
         return _filledCellProgress(board);

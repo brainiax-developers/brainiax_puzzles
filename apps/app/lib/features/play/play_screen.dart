@@ -448,6 +448,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return '9x9';
       case PuzzleType.nonogramMono:
         return '10x10';
+      case PuzzleType.kakuro:
+        return '7x7';
 
       case PuzzleType.slitherlinkLoop:
         return '7x7';
@@ -529,6 +531,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return board is core.SudokuBoard;
       case PuzzleType.nonogramMono:
         return board is core.NonogramBoard;
+      case PuzzleType.kakuro:
+        return board is core.KakuroBoard;
 
       case PuzzleType.slitherlinkLoop:
         return board is core.SlitherlinkBoard;
@@ -1583,8 +1587,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       ref.read(puzzleProgressControllerProvider).refresh();
     }
 
+    _timer?.cancel();
     if (widget.mode == PuzzleMode.daily && mounted) {
-      _timer?.cancel();
       setState(() {
         _dailyCompletedView = true;
         _dailyGateResolved = true;
@@ -2524,6 +2528,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
     }
 
+    // Kakuro
+    if (puzzle.state is core.KakuroBoard) {
+      return _buildKakuroGame(theme, colorScheme, puzzle, gameState);
+    }
+
     // Nonogram
     if (puzzle.state is core.NonogramBoard) {
       return Column(
@@ -2727,6 +2736,58 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       hintAnimationValue: _hintAnimationValue,
       notes: Map.unmodifiable(noteSnapshot),
       hintFilledCells: Set<int>.unmodifiable(_sudokuHintFilled),
+    );
+  }
+
+  Widget _buildKakuroGrid(core.GeneratedPuzzle puzzle) {
+    final gameState = ref.watch(gameStateProvider);
+    final Map<int, Set<int>> noteSnapshot =
+        gameState?.notes ?? const <int, Set<int>>{};
+    return KakuroRendererWidget(
+      puzzle: puzzle,
+      gameState: gameState,
+      onCellSelected: _onCellSelected,
+      onMove: _onMove,
+      onError: _onError,
+      hintCells: _hintPositions,
+      hintAnimationValue: _hintAnimationValue,
+      notes: Map.unmodifiable(noteSnapshot),
+    );
+  }
+
+  Widget _buildKakuroGame(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    core.GeneratedPuzzle puzzle,
+    GameState? gameState,
+  ) {
+    return PerformanceMonitor(
+      enabled: false,
+      child: Column(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _buildKakuroGrid(puzzle),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SudokuNumberPad(
+                  onDigitPressed: _onDigitPressed,
+                  onClearPressed: _onClearPressed,
+                  onNotePressed: _onNotePressed,
+                  isNoteMode: _isNoteMode,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

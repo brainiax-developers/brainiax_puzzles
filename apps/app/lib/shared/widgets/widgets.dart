@@ -16,6 +16,7 @@ export 'async_value_view.dart';
 export 'puzzle_renderer.dart';
 export 'painter_utils.dart';
 export 'sudoku_renderer.dart';
+export 'kakuro_renderer.dart';
 export 'sudoku_number_pad.dart';
 export 'performance_optimizations.dart';
 export 'nonogram_renderer.dart';

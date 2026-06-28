@@ -46,6 +46,8 @@ IconData _defaultIconForPuzzleType(PuzzleType? puzzleType) {
   switch (puzzleType) {
     case PuzzleType.sudokuClassic:
       return Icons.grid_on;
+    case PuzzleType.kakuro:
+      return Icons.looks_3;
     case PuzzleType.nonogramMono:
       return Icons.crop_square;
 
@@ -69,6 +71,8 @@ Color _defaultAccentForPuzzleType(
   switch (puzzleType) {
     case PuzzleType.sudokuClassic:
       return const Color(0xFF2196F3);
+    case PuzzleType.kakuro:
+      return const Color(0xFF8E24AA);
     case PuzzleType.nonogramMono:
       return const Color(0xFF4CAF50);
 
