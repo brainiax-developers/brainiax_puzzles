@@ -95,7 +95,7 @@ class KakuroRenderer extends PuzzleRenderer<KakuroRendererWidget>
 
     _blackCellBackgroundPaint = PerformanceOptimizations.getCachedPaint(
       key: 'kakuro_black_cell_bg',
-      color: colorScheme.onSurface.withOpacity(0.1),
+      color: colorScheme.onSurface,
       style: PaintingStyle.fill,
     );
 
@@ -443,6 +443,9 @@ class KakuroContentPainter extends CustomPainter {
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
+    debugPrint('KakuroContentPainter: cellTypes=${board.cellTypes.length}, first 10=${board.cellTypes.take(10).toList()}');
+
+
     for (int row = 0; row < board.height; row++) {
       for (int col = 0; col < board.width; col++) {
         final int cellIndex = row * board.width + col;
@@ -461,7 +464,17 @@ class KakuroContentPainter extends CustomPainter {
           );
           
           final value = board.cellValues[cellIndex];
-          if (value == 0) {
+          if (value != 0) {
+            final textStyle = theme.textTheme.headlineSmall?.copyWith(
+              color: colorScheme.primary,
+            );
+            PainterUtils.paintCellText(
+              canvas: canvas,
+              cellRect: cellRect,
+              text: value.toString(),
+              textStyle: textStyle ?? const TextStyle(),
+            );
+          } else {
             final Set<int> cellNotes = notes[cellIndex] ?? const <int>{};
             if (cellNotes.isNotEmpty) {
               const int noteGridSize = 3;
@@ -508,11 +521,16 @@ class KakuroContentPainter extends CustomPainter {
           final downClue = board.downClues[cellIndex];
           
           if (acrossClue != 0 || downClue != 0) {
+            final clueLinePaint = Paint()
+              ..color = colorScheme.surface.withOpacity(0.5)
+              ..strokeWidth = 1.0
+              ..style = PaintingStyle.stroke;
+
             // Draw diagonal line
-            canvas.drawLine(cellRect.topLeft, cellRect.bottomRight, outlinePaint);
+            canvas.drawLine(cellRect.topLeft, cellRect.bottomRight, clueLinePaint);
             
             final TextStyle clueStyle = theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurface,
+              color: colorScheme.surface,
               fontWeight: FontWeight.bold,
               fontSize: cellRect.height / 3.5,
             ) ?? const TextStyle();
