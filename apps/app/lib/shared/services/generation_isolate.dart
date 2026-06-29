@@ -17,6 +17,10 @@ Duration puzzleGenerationTimeoutFor({
 
     case 'killer_queens':
       return killerQueensPuzzleGenerationTimeout;
+    case 'kakuro':
+      // Kakuro solver DFS can hit 2+ seconds on the very first JIT compilation run.
+      // Large 9x9 grids may require extensive uniqueness checking across multiple attempts.
+      return const Duration(seconds: 12);
     default:
       return defaultPuzzleGenerationTimeout;
   }

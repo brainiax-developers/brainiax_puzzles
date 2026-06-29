@@ -54,11 +54,20 @@ void main() {
         SolverContext(rng: SeededRng(999), maxSolutions: 2)
       );
       
-      expect(
-        solverResult.solutionStatus == SolverStatus.unique || 
-        solverResult.solutionStatus == SolverStatus.multiple, 
-        isTrue
+      expect(solverResult.solutionStatus, equals(SolverStatus.unique));
+    });
+
+    test('Throws exception if it cannot generate a unique puzzle', () {
+      final generator = const KakuroGenerator();
+      final context = GeneratorContext(
+        rng: SeededRng(0),
+        seedStr: '0',
+        seed64: 0,
+        size: SizeOpt(id: '2x2', description: '2x2', width: 2, height: 2),
+        difficulty: DifficultyRequest(level: 'easy'),
       );
+      
+      expect(() => generator.generate(context), throwsException);
     });
   });
 }

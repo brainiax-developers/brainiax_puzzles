@@ -6,6 +6,8 @@ import 'kakuro_validator.dart';
 class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
   const KakuroGenerator();
 
+  static const _solver = KakuroSolver();
+
   @override
   PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
     int w = context.size.width;
@@ -15,11 +17,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     if (w <= 0) w = 7;
     if (h <= 0) h = 7;
     
-    int maxAttempts = 1000;
+    // We increase max attempts because Kakuro uniqueness is rare for low densities.
+    const int maxAttempts = 5000;
     
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       // 1. Generate Layout
-      final layout = _generateLayout(w, h, context.rng);
+      final layout = _generateLayout(w, h, context.rng, context.difficulty.level);
       if (layout == null) continue;
       
       // 2. Assign Solution
@@ -29,23 +32,12 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       // 3. Derive Clues
       final puzzle = _deriveClues(solution);
       
-      // 4. Validate Uniqueness
-      final solver = const KakuroSolver();
-      final result = solver.solve(
-        puzzle,
+      // 4. Check Uniqueness
+      final result = _solver.solve(
+        puzzle, 
         SolverContext(rng: context.rng, maxSolutions: 2),
       );
-      if (result.solutionStatus != SolverStatus.unique) {
-        if (attempt == maxAttempts - 1) {
-          return PuzzleGenerationResult<KakuroBoard>(
-            board: puzzle,
-            snapshot: GenerationSnapshot(
-              telemetry: {},
-            ),
-          );
-        }
-        continue;
-      }
+      if (result.solutionStatus != SolverStatus.unique) continue;
       
       return PuzzleGenerationResult<KakuroBoard>(
         board: puzzle,
@@ -61,7 +53,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     throw Exception('Failed to generate Kakuro puzzle after $maxAttempts attempts');
   }
   
-  KakuroBoard? _generateLayout(int width, int height, SeededRng rng) {
+  KakuroBoard? _generateLayout(int width, int height, SeededRng rng, String difficulty) {
     List<int> cellTypes = List<int>.filled(width * height, KakuroBoard.cellWhite);
     
     // Top and left edges are black
@@ -69,63 +61,41 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     for (int r = 0; r < height; r++) cellTypes[r * width] = KakuroBoard.cellBlack;
     
     int interiorCount = (width - 1) * (height - 1);
-    int blackCount = (interiorCount * 0.45).round(); // Increased for more constraints
     
-    int placed = 0;
-    while (placed < blackCount) {
+    // Using a fixed density of 0.35 for small grids ensures sufficient constraint for uniqueness
+    // while leaving 65% of the interior white (which feels open enough).
+    // For larger grids like 9x9, we increase density to 0.48 to break up excessively long runs,
+    // which would otherwise explode the solver search space and cause timeouts.
+    double density;
+    if (width >= 13) density = 0.68;
+    else if (width >= 11) density = 0.60;
+    else if (width >= 9) density = 0.48;
+    else density = 0.35;
+    
+    int targetBlack = (interiorCount * density).round();
+    
+    int currentBlack = 0;
+    int attempts = 0;
+    
+    while (currentBlack < targetBlack && attempts < 1000) {
       int r = rng.nextIntInRange(height - 1) + 1;
       int c = rng.nextIntInRange(width - 1) + 1;
       int idx = r * width + c;
+      
       if (cellTypes[idx] == KakuroBoard.cellWhite) {
         cellTypes[idx] = KakuroBoard.cellBlack;
-        placed++;
-      }
-    }
-    
-    // Repair 1-cell runs by turning them black
-    bool changed = true;
-    while (changed) {
-      changed = false;
-      // Check horizontal runs
-      for (int r = 0; r < height; r++) {
-        int runLen = 0;
-        int runStart = -1;
-        for (int c = 0; c <= width; c++) {
-          bool isBlack = c == width || cellTypes[r * width + c] == KakuroBoard.cellBlack;
-          if (!isBlack) {
-            if (runLen == 0) runStart = c;
-            runLen++;
-          } else {
-            if (runLen == 1) {
-              cellTypes[r * width + runStart] = KakuroBoard.cellBlack;
-              changed = true;
-            }
-            runLen = 0;
-          }
+        
+        if (_isValidIntermediateLayout(width, height, cellTypes)) {
+          currentBlack++;
+        } else {
+          cellTypes[idx] = KakuroBoard.cellWhite;
         }
       }
-      // Check vertical runs
-      for (int c = 0; c < width; c++) {
-        int runLen = 0;
-        int runStart = -1;
-        for (int r = 0; r <= height; r++) {
-          bool isBlack = r == height || cellTypes[r * width + c] == KakuroBoard.cellBlack;
-          if (!isBlack) {
-            if (runLen == 0) runStart = r;
-            runLen++;
-          } else {
-            if (runLen == 1) {
-              cellTypes[runStart * width + c] = KakuroBoard.cellBlack;
-              changed = true;
-            }
-            runLen = 0;
-          }
-        }
-      }
+      attempts++;
     }
     
-    // Verify layout rules: no 1-cell runs, all white cells have across and down runs
-    if (!_isValidLayout(width, height, cellTypes)) return null;
+    if (currentBlack < targetBlack * 0.5) return null;
+    if (!_isValidIntermediateLayout(width, height, cellTypes)) return null;
     
     return KakuroBoard(
       width: width,
@@ -137,25 +107,28 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     );
   }
   
-  bool _isValidLayout(int width, int height, List<int> cellTypes) {
-    // Check horizontal runs
+  bool _isValidIntermediateLayout(int width, int height, List<int> cellTypes) {
+    int whiteCount = 0;
+    int startWhite = -1;
+    
+    // Check horizontal 1-cell runs
     for (int r = 0; r < height; r++) {
       int runLen = 0;
       for (int c = 0; c < width; c++) {
         int idx = r * width + c;
         if (cellTypes[idx] == KakuroBoard.cellWhite) {
           runLen++;
+          whiteCount++;
+          startWhite = idx;
         } else {
           if (runLen == 1) return false;
-          if (runLen > 9) return false;
           runLen = 0;
         }
       }
       if (runLen == 1) return false;
-      if (runLen > 9) return false;
     }
     
-    // Check vertical runs
+    // Check vertical 1-cell runs
     for (int c = 0; c < width; c++) {
       int runLen = 0;
       for (int r = 0; r < height; r++) {
@@ -164,16 +137,42 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
           runLen++;
         } else {
           if (runLen == 1) return false;
-          if (runLen > 9) return false;
           runLen = 0;
         }
       }
       if (runLen == 1) return false;
-      if (runLen > 9) return false;
     }
     
-    // Check connectivity (optional, but good for Kakuro)
-    return true;
+    if (startWhite == -1) return false;
+    
+    List<bool> visited = List<bool>.filled(cellTypes.length, false);
+    List<int> queue = [startWhite];
+    visited[startWhite] = true;
+    int head = 0;
+    int visitedCount = 0;
+    
+    while (head < queue.length) {
+      int curr = queue[head++];
+      visitedCount++;
+      int r = curr ~/ width;
+      int c = curr % width;
+      
+      final List<int> neighbors = [
+        if (r > 0) curr - width,
+        if (r < height - 1) curr + width,
+        if (c > 0) curr - 1,
+        if (c < width - 1) curr + 1,
+      ];
+      
+      for (int n in neighbors) {
+        if (!visited[n] && cellTypes[n] == KakuroBoard.cellWhite) {
+          visited[n] = true;
+          queue.add(n);
+        }
+      }
+    }
+    
+    return visitedCount == whiteCount;
   }
   
   KakuroBoard? _assignSolution(KakuroBoard layout, SeededRng rng) {
@@ -182,7 +181,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
     int nodes = 0;
     
     bool solve(int index) {
-      if (nodes++ > 5000) return false;
+      if (nodes++ > 100000) return false;
       
       if (index == layout.cellCount) return true;
       
@@ -218,7 +217,7 @@ class KakuroGenerator extends PuzzleGenerator<KakuroBoard> {
       for (int val in candidates) {
         cells[index] = val;
         if (solve(index + 1)) return true;
-        if (nodes > 5000) return false;
+        if (nodes > 100000) return false;
         cells[index] = 0;
       }
       

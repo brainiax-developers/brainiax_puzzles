@@ -11,6 +11,19 @@ class KakuroSolver extends PuzzleSolver<KakuroBoard> {
     final solver = _KakuroInternalSolver(board, context.maxSolutions);
     final solutions = solver.solve();
     
+    if (solver.hitCap) {
+      return SolverResult<KakuroBoard>(
+        solutions: solutions,
+        elapsed: stopwatch.elapsed,
+        telemetry: {
+          'nodes': solver.nodes,
+          'backtracks': solver.backtracks,
+          'status': 'unknown',
+        },
+        status: SolverStatus.unknown,
+      );
+    }
+    
     return SolverResult<KakuroBoard>(
       solutions: solutions,
       elapsed: stopwatch.elapsed,
@@ -44,6 +57,7 @@ class _KakuroInternalSolver {
   
   int nodes = 0;
   int backtracks = 0;
+  bool hitCap = false;
   List<KakuroBoard> foundSolutions = [];
 
   _KakuroInternalSolver(this.initialBoard, this.maxSolutions) {
@@ -197,7 +211,10 @@ class _KakuroInternalSolver {
 
   void _search() {
     if (foundSolutions.length >= maxSolutions) return;
-    if (nodes++ > 100000) return; // Prevent intractable searches
+    if (nodes++ > 150000) {
+      hitCap = true;
+      return;
+    }
     
     if (!_initialPrune()) return;
     int minC = 10;
@@ -242,7 +259,11 @@ class _KakuroInternalSolver {
     var dRun = cellDownRun[bestCell];
     
     for (int d = 1; d <= 9; d++) {
-      if (nodes > 100000) break; // Abort the whole search!
+      // Periodically check cap during candidate generation to avoid deep stalls
+      if (nodes > 150000) {
+        hitCap = true;
+        break; // Abort the whole search!
+      }
       int bit = 1 << (d - 1);
       if ((mask & bit) != 0) {
         // Fast bounds check

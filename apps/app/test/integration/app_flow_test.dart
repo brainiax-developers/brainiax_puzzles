@@ -110,11 +110,13 @@ void main() {
 
     expect(find.text('Classic Sudoku'), findsOneWidget);
     await tester.tap(find.text('Classic Sudoku'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Random Play'), findsWidgets);
     await tester.tap(find.text('Random Play').first);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Start Random Puzzle'), findsOneWidget);
     await tester.tap(find.text('Start Random Puzzle'));
@@ -122,7 +124,8 @@ void main() {
 
     expect(find.textContaining('Generating'), findsOneWidget);
 
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
 
     expect(receivedExtra, equals(generatedPuzzle));
     expect(find.byType(PlayScreen), findsOneWidget);
@@ -146,7 +149,9 @@ void main() {
 
     await tester.ensureVisible(find.text('5').last);
     await tester.tap(find.text('5').last, warnIfMissed: false);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Solved'), findsOneWidget);
     expect(find.textContaining('streak'), findsOneWidget);

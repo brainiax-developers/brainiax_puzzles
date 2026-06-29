@@ -442,10 +442,6 @@ class KakuroContentPainter extends CustomPainter {
       ..color = colorScheme.outline.withOpacity(0.5)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-
-    debugPrint('KakuroContentPainter: cellTypes=${board.cellTypes.length}, first 10=${board.cellTypes.take(10).toList()}');
-
-
     for (int row = 0; row < board.height; row++) {
       for (int col = 0; col < board.width; col++) {
         final int cellIndex = row * board.width + col;

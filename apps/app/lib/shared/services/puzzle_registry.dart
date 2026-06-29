@@ -157,7 +157,7 @@ class PuzzleRegistry {
               'Fill the white cells with digits 1-9 so they sum to the clue. No digit can repeat in a run.',
           icon: Icons.looks_3, // Or something more fitting
           accentColors: const [Color(0xFF8E24AA), Color(0xFF6A1B9A)],
-          supportedSizes: ['7x7', '9x9'],
+          supportedSizes: ['6x6', '7x7', '8x8', '9x9'],
           supportedDifficulties: ['Easy', 'Medium', 'Hard', 'Expert'],
           supportsHints: engine.capabilities.supportsHints,
           category: PuzzleCategory.logic,

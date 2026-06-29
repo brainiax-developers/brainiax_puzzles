@@ -14,16 +14,22 @@ class KakuroDifficultyScorer implements DifficultyScorer<KakuroBoard> {
     required KakuroBoard solution,
     required DifficultyContext context,
   }) {
-    // Simple mock scoring based on telemetry from generator
     final nodes = (context.generatorTelemetry['solver_nodes'] as int?) ?? 1;
     final backtracks = (context.generatorTelemetry['solver_backtracks'] as int?) ?? 1;
 
-    double score = (nodes * 1.0) + (backtracks * 2.0);
+    int whiteCount = 0;
+    for (int i = 0; i < puzzle.cellCount; i++) {
+      if (puzzle.isWhite(i)) whiteCount++;
+    }
+
+    // Combine solver computational difficulty with board size (white cells).
+    // Larger boards are cognitively harder for humans regardless of solver efficiency.
+    double score = (nodes * 1.0) + (backtracks * 5.0) + (whiteCount * 40.0);
     
     String bucket = 'easy';
-    if (score > 100000) bucket = 'expert';
-    else if (score > 10000) bucket = 'hard';
-    else if (score > 1000) bucket = 'medium';
+    if (score > 2100) bucket = 'expert';
+    else if (score > 1550) bucket = 'hard';
+    else if (score > 1100) bucket = 'medium';
 
     return DifficultyTelemetry(
       rawScore: score,
@@ -44,9 +50,9 @@ class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
           difficultyScorer: const KakuroDifficultyScorer(),
           difficultyConfig: const DifficultyBucketConfig(
             buckets: [
-              DifficultyBucketThreshold(id: 'easy', maxInclusive: 1000),
-              DifficultyBucketThreshold(id: 'medium', maxInclusive: 10000),
-              DifficultyBucketThreshold(id: 'hard', maxInclusive: 100000),
+              DifficultyBucketThreshold(id: 'easy', maxInclusive: 1100),
+              DifficultyBucketThreshold(id: 'medium', maxInclusive: 1550),
+              DifficultyBucketThreshold(id: 'hard', maxInclusive: 2100),
               DifficultyBucketThreshold(id: 'expert', maxInclusive: 9999999),
             ],
           ),
@@ -54,7 +60,7 @@ class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
 
   @override
   PuzzleCapabilities get capabilities => const PuzzleCapabilities(
-        supportsHints: false, // Hints omitted for now
+        supportsHints: true,
       );
 
   @override
@@ -89,6 +95,27 @@ class KakuroEngine extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
     required KakuroBoard currentState,
     PuzzleHintRequest? request,
   }) {
+    final SolverContext context = SolverContext(
+      rng: SeededRng(Seed.fromString('hint')),
+      maxSolutions: 1,
+    );
+    final result = solver.solve(currentState, context);
+    if (result.solutions.isEmpty) return null;
+    
+    final KakuroBoard solution = result.solutions.first;
+    for (int i = 0; i < currentState.cellTypes.length; i++) {
+      if (currentState.cellTypes[i] == KakuroBoard.cellWhite) {
+        if (currentState.cellValues[i] == 0) {
+          return PuzzleHint(cells: [
+            PuzzleHintCell(
+              row: i ~/ currentState.width,
+              column: i % currentState.width,
+              metadata: {'digit': solution.cellValues[i]},
+            )
+          ]);
+        }
+      }
+    }
     return null;
   }
 }
