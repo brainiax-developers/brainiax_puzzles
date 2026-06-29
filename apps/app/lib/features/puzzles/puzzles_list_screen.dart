@@ -6,7 +6,7 @@ class PuzzlesListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final types = [
-      'sudoku','nonogram','mathdoku','killerQueens','slitherlink','kakuro','takuzu',
+      'sudoku','nonogram','mathdoku','killerQueens','slitherlink','takuzu',
       'crosswordMini','wordSearch','anagram','cryptogram','wordLadder'
     ];
     return Scaffold(

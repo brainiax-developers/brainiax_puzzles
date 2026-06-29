@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:clock/clock.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../../shared/models/models.dart';
@@ -24,7 +25,7 @@ final puzzlePlayViewModelProvider = NotifierProvider.autoDispose
 class PuzzlePlayViewModel extends Notifier<PuzzlePlayState> {
   PuzzlePlayViewModel();
 
-  final Stopwatch _stopwatch = Stopwatch();
+  final Stopwatch _stopwatch = clock.stopwatch();
   final List<_HistoryEntry> _history = <_HistoryEntry>[];
   int _moveCount = 0;
 

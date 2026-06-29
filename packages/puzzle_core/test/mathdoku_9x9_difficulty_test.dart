@@ -1,6 +1,5 @@
 import 'package:test/test.dart';
 import 'package:puzzle_core/puzzle_core.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:puzzle_core/src/mathdoku/mathdoku_solver.dart';
 
 void main() {

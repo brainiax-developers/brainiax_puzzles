@@ -199,25 +199,7 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('direct Kakuro route renders a safe coming soon state', (
-      WidgetTester tester,
-    ) async {
-      final GoRouter router = await pumpRouter(
-        tester,
-        initialLocation: AppRoutes.play(
-          PuzzleType.kakuroClassic.key,
-          PuzzleMode.daily.key,
-        ),
-      );
 
-      expect(find.text('Coming Soon'), findsOneWidget);
-      expect(find.text('Kakuro is coming soon.'), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
-      expect(
-        router.routeInformationProvider.value.uri.path,
-        AppRoutes.play(PuzzleType.kakuroClassic.key, PuzzleMode.daily.key),
-      );
-    });
 
     testWidgets('settings route stays outside the shell', (
       WidgetTester tester,
@@ -291,7 +273,7 @@ void main() {
     test('should validate puzzle type parameters', () {
       expect(PuzzleType.isValidKey('sudoku_classic'), isTrue);
       expect(PuzzleType.isValidKey('nonogram_mono'), isTrue);
-      expect(PuzzleType.isValidKey('kakuro_classic'), isTrue);
+
       expect(PuzzleType.isValidKey('slitherlink_loop'), isTrue);
       expect(PuzzleType.isValidKey('mathdoku_classic'), isTrue);
       expect(PuzzleType.isValidKey('killer_queens'), isTrue);

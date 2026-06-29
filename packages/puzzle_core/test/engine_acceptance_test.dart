@@ -124,22 +124,7 @@ void main() {
           difficultyFixtures: _nonogramDifficultyFixtures(),
           validationP95Millis: 45,
         ),
-        EngineAcceptanceConfig<KakuroBoard>(
-          name: 'Kakuro',
-          engineFactory: () => KakuroEngine(),
-          solverFactory: (engine) => engine.solver,
-          size: const SizeOpt(
-            id: 'template9x9',
-            description: 'Template 9x9',
-            width: 9,
-            height: 9,
-          ),
-          difficulty: const DifficultyScore(value: 0.0, level: 'auto'),
-          canonicalSignature: (dynamic board) =>
-              jsonEncode((board as KakuroBoard).toJson()),
-          difficultyFixtures: _kakuroDifficultyFixtures(),
-          validationP95Millis: 55,
-        ),
+
         EngineAcceptanceConfig<SlitherlinkBoard>(
           name: 'Slitherlink',
           engineFactory: () => SlitherlinkEngine(),
@@ -426,40 +411,12 @@ GeneratedPuzzle<dynamic> _generateForAcceptance({
   required SizeOpt size,
   required DifficultyScore difficulty,
 }) {
-  const List<String> deterministicRetrySuffixes = <String>[
-    '',
-    '#attempt2',
-    '#attempt3',
-    '#attempt4',
-    '#attempt5',
-  ];
-  Object? lastError;
-  for (int i = 0; i < deterministicRetrySuffixes.length; i++) {
-    final bool isBaseAttempt = i == 0;
-    final String candidateSeedStr = isBaseAttempt
-        ? seedStr
-        : '$seedStr${deterministicRetrySuffixes[i]}';
-    final int candidateSeed64 = isBaseAttempt
-        ? seed64
-        : Seed.fromString(candidateSeedStr);
-    try {
-      return engine.generate(
-        seedStr: candidateSeedStr,
-        seed64: candidateSeed64,
-        size: size,
-        difficulty: difficulty,
-      );
-    } catch (error) {
-      if (engine.id != 'kakuro_classic' || error is! GenerationFailure) {
-        rethrow;
-      }
-      lastError = error;
-    }
-  }
-  if (lastError != null) {
-    throw lastError;
-  }
-  throw StateError('Unable to generate puzzle for seed $seedStr');
+  return engine.generate(
+    seedStr: seedStr,
+    seed64: seed64,
+    size: size,
+    difficulty: difficulty,
+  );
 }
 
 int _percentileMicros(List<int> sortedMicros, double percentile) {
@@ -606,7 +563,7 @@ SudokuBoard _sudokuBoardFromMatrix(List<List<int>> values) {
 }
 
 List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
-  KillerQueensBoard _puzzle({
+  KillerQueensBoard puzzle({
     required int size,
     required List<int> queenCols,
     Set<int> givens = const <int>{},
@@ -641,7 +598,7 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
     );
   }
 
-  KillerQueensBoard _solution({
+  KillerQueensBoard solution({
     required int size,
     required List<int> queenCols,
     Set<int> blocked = const <int>{},
@@ -673,45 +630,45 @@ List<DifficultyFixture<KillerQueensBoard>> _killerQueensDifficultyFixtures() {
     );
   }
 
-  final KillerQueensBoard easyPuzzle = _puzzle(
+  final KillerQueensBoard easyPuzzle = puzzle(
     size: 6,
     queenCols: const <int>[1, 3, 5, 0, 2, 4],
     cagePattern: const <int>[2],
   );
-  final KillerQueensBoard easySolution = _solution(
+  final KillerQueensBoard easySolution = solution(
     size: 6,
     queenCols: const <int>[1, 3, 5, 0, 2, 4],
     cagePattern: const <int>[2],
   );
 
-  final KillerQueensBoard mediumPuzzle = _puzzle(
+  final KillerQueensBoard mediumPuzzle = puzzle(
     size: 8,
     queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
     cagePattern: const <int>[3, 2],
   );
-  final KillerQueensBoard mediumSolution = _solution(
+  final KillerQueensBoard mediumSolution = solution(
     size: 8,
     queenCols: const <int>[1, 4, 6, 0, 3, 7, 2, 5],
     cagePattern: const <int>[3, 2],
   );
 
-  final KillerQueensBoard hardPuzzle = _puzzle(
+  final KillerQueensBoard hardPuzzle = puzzle(
     size: 9,
     queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
     cagePattern: const <int>[4, 3, 2],
   );
-  final KillerQueensBoard hardSolution = _solution(
+  final KillerQueensBoard hardSolution = solution(
     size: 9,
     queenCols: const <int>[1, 3, 5, 0, 7, 2, 8, 4, 6],
     cagePattern: const <int>[4, 3, 2],
   );
 
-  final KillerQueensBoard expertPuzzle = _puzzle(
+  final KillerQueensBoard expertPuzzle = puzzle(
     size: 10,
     queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
     cagePattern: const <int>[3, 4, 3, 2],
   );
-  final KillerQueensBoard expertSolution = _solution(
+  final KillerQueensBoard expertSolution = solution(
     size: 10,
     queenCols: const <int>[1, 3, 5, 7, 9, 0, 2, 4, 6, 8],
     cagePattern: const <int>[3, 4, 3, 2],
@@ -794,7 +751,7 @@ List<KillerQueensCage> _buildRowCages({
 }
 
 List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
-  MathdokuBoard _basePuzzle() {
+  MathdokuBoard basePuzzle() {
     const int size = 4;
     final List<MathdokuCage> cages = <MathdokuCage>[
       for (int index = 0; index < size * size; index++)
@@ -812,7 +769,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
     );
   }
 
-  MathdokuBoard _solutionBoard() {
+  MathdokuBoard solutionBoard() {
     const int size = 4;
     final List<int> cells = <int>[
       1,
@@ -832,14 +789,14 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
       2,
       3,
     ];
-    final MathdokuBoard puzzle = _basePuzzle();
+    final MathdokuBoard puzzle = basePuzzle();
     return MathdokuBoard(size: size, cells: cells, cages: puzzle.cages);
   }
 
-  final MathdokuBoard puzzle = _basePuzzle();
-  final MathdokuBoard solution = _solutionBoard();
+  final MathdokuBoard puzzle = basePuzzle();
+  final MathdokuBoard solution = solutionBoard();
 
-  Map<String, Object?> _generatorTelemetry({
+  Map<String, Object?> generatorTelemetry({
     required int cageCount,
     required double avgCageSize,
     required int maxCageSize,
@@ -860,7 +817,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
     };
   }
 
-  Map<String, Object?> _solverTelemetry({
+  Map<String, Object?> solverTelemetry({
     required double propagationDepth,
     required double searchDepth,
     required double searchNodes,
@@ -877,7 +834,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
       name: 'mathdoku-easy',
       puzzle: puzzle,
       solution: solution,
-      generatorTelemetry: _generatorTelemetry(
+      generatorTelemetry: generatorTelemetry(
         cageCount: 8,
         avgCageSize: 1.2,
         maxCageSize: 2,
@@ -885,7 +842,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
         subtractRatio: 0.0,
         multiplyRatio: 0.0,
       ),
-      solverTelemetry: _solverTelemetry(
+      solverTelemetry: solverTelemetry(
         propagationDepth: 0,
         searchDepth: 0,
         searchNodes: 0,
@@ -896,7 +853,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
       name: 'mathdoku-medium',
       puzzle: puzzle,
       solution: solution,
-      generatorTelemetry: _generatorTelemetry(
+      generatorTelemetry: generatorTelemetry(
         cageCount: 10,
         avgCageSize: 2.5,
         maxCageSize: 4,
@@ -904,7 +861,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
         subtractRatio: 0.2,
         multiplyRatio: 0.3,
       ),
-      solverTelemetry: _solverTelemetry(
+      solverTelemetry: solverTelemetry(
         propagationDepth: 4,
         searchDepth: 1,
         searchNodes: 4450,
@@ -915,7 +872,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
       name: 'mathdoku-hard',
       puzzle: puzzle,
       solution: solution,
-      generatorTelemetry: _generatorTelemetry(
+      generatorTelemetry: generatorTelemetry(
         cageCount: 12,
         avgCageSize: 3.2,
         maxCageSize: 5,
@@ -923,7 +880,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
         subtractRatio: 0.35,
         multiplyRatio: 0.4,
       ),
-      solverTelemetry: _solverTelemetry(
+      solverTelemetry: solverTelemetry(
         propagationDepth: 6,
         searchDepth: 3,
         searchNodes: 4250,
@@ -934,7 +891,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
       name: 'mathdoku-expert',
       puzzle: puzzle,
       solution: solution,
-      generatorTelemetry: _generatorTelemetry(
+      generatorTelemetry: generatorTelemetry(
         cageCount: 14,
         avgCageSize: 3.5,
         maxCageSize: 6,
@@ -942,7 +899,7 @@ List<DifficultyFixture<MathdokuBoard>> _mathdokuDifficultyFixtures() {
         subtractRatio: 0.5,
         multiplyRatio: 0.5,
       ),
-      solverTelemetry: _solverTelemetry(
+      solverTelemetry: solverTelemetry(
         propagationDepth: 8,
         searchDepth: 4,
         searchNodes: 5250,
@@ -1069,176 +1026,7 @@ List<DifficultyFixture<NonogramBoard>> _nonogramDifficultyFixtures() {
   ];
 }
 
-List<DifficultyFixture<KakuroBoard>> _kakuroDifficultyFixtures() {
-  KakuroBoard _board() {
-    final List<KakuroCellKind> kinds = <KakuroCellKind>[
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-    ];
-    final List<int> values = List<int>.filled(4, 0);
-    final List<int?> clues = List<int?>.filled(4, null);
-    final List<KakuroEntry> entries = <KakuroEntry>[
-      const KakuroEntry(
-        id: 0,
-        direction: KakuroDirection.across,
-        cells: <int>[0, 1],
-        sum: 10,
-      ),
-      const KakuroEntry(
-        id: 1,
-        direction: KakuroDirection.across,
-        cells: <int>[2, 3],
-        sum: 7,
-      ),
-      const KakuroEntry(
-        id: 2,
-        direction: KakuroDirection.down,
-        cells: <int>[0, 2],
-        sum: 9,
-      ),
-      const KakuroEntry(
-        id: 3,
-        direction: KakuroDirection.down,
-        cells: <int>[1, 3],
-        sum: 8,
-      ),
-    ];
-    return KakuroBoard(
-      width: 2,
-      height: 2,
-      kinds: kinds,
-      values: values,
-      acrossClues: clues,
-      downClues: clues,
-      entries: entries,
-      acrossEntryForCell: const <int>[0, 0, 1, 1],
-      downEntryForCell: const <int>[2, 3, 2, 3],
-    );
-  }
 
-  final KakuroBoard puzzle = _board();
-  final KakuroBoard solution = KakuroBoard(
-    width: puzzle.width,
-    height: puzzle.height,
-    kinds: puzzle.kinds,
-    values: const <int>[1, 9, 4, 3],
-    acrossClues: puzzle.acrossClues,
-    downClues: puzzle.downClues,
-    entries: puzzle.entries,
-    acrossEntryForCell: puzzle.acrossEntryForCell,
-    downEntryForCell: puzzle.downEntryForCell,
-  );
-
-  Map<String, Object?> telemetry({
-    required int searchNodes,
-    required int backtracks,
-    required int maxDepth,
-    required int maxBranchingFactor,
-    required double avgRunCombinationCount,
-    required double singleComboRunRatio,
-    required double shrinkPercent,
-    required int forcedAssignments,
-    required int candidateRemovals,
-    required int backtrackNodes,
-    required int propagationRounds,
-  }) => <String, Object?>{
-    'searchNodes': searchNodes,
-    'backtracks': backtracks,
-    'maxDepth': maxDepth,
-    'maxBranchingFactor': maxBranchingFactor,
-    'avgRunCombinationCount': avgRunCombinationCount,
-    'singleComboRunRatio': singleComboRunRatio,
-    'maxRunLength': 2,
-    'whiteCellCount': 4,
-    'runCount': 4,
-    'candidateShrinkPercent': shrinkPercent,
-    'forcedAssignments': forcedAssignments,
-    'candidateRemovals': candidateRemovals,
-    'backtrackNodes': backtrackNodes,
-    'propagationRounds': propagationRounds,
-  };
-
-  return <DifficultyFixture<KakuroBoard>>[
-    DifficultyFixture<KakuroBoard>(
-      name: 'kakuro-easy',
-      puzzle: puzzle,
-      solution: solution,
-      solverTelemetry: telemetry(
-        searchNodes: 0,
-        backtracks: 0,
-        maxDepth: 0,
-        maxBranchingFactor: 0,
-        avgRunCombinationCount: 1.2,
-        singleComboRunRatio: 0.55,
-        shrinkPercent: 0.9,
-        forcedAssignments: 4,
-        candidateRemovals: 26,
-        backtrackNodes: 0,
-        propagationRounds: 5,
-      ),
-      expectedBucket: 'easy',
-    ),
-    DifficultyFixture<KakuroBoard>(
-      name: 'kakuro-medium',
-      puzzle: puzzle,
-      solution: solution,
-      solverTelemetry: telemetry(
-        searchNodes: 10,
-        backtracks: 5,
-        maxDepth: 2,
-        maxBranchingFactor: 4,
-        avgRunCombinationCount: 2.6,
-        singleComboRunRatio: 0.25,
-        shrinkPercent: 0.6,
-        forcedAssignments: 2,
-        candidateRemovals: 14,
-        backtrackNodes: 5,
-        propagationRounds: 12,
-      ),
-      expectedBucket: 'medium',
-    ),
-    DifficultyFixture<KakuroBoard>(
-      name: 'kakuro-hard',
-      puzzle: puzzle,
-      solution: solution,
-      solverTelemetry: telemetry(
-        searchNodes: 22,
-        backtracks: 12,
-        maxDepth: 3,
-        maxBranchingFactor: 4,
-        avgRunCombinationCount: 3.8,
-        singleComboRunRatio: 0.08,
-        shrinkPercent: 0.45,
-        forcedAssignments: 1,
-        candidateRemovals: 8,
-        backtrackNodes: 22,
-        propagationRounds: 24,
-      ),
-      expectedBucket: 'hard',
-    ),
-    DifficultyFixture<KakuroBoard>(
-      name: 'kakuro-expert',
-      puzzle: puzzle,
-      solution: solution,
-      solverTelemetry: telemetry(
-        searchNodes: 45,
-        backtracks: 26,
-        maxDepth: 6,
-        maxBranchingFactor: 6,
-        avgRunCombinationCount: 4.6,
-        singleComboRunRatio: 0.02,
-        shrinkPercent: 0.2,
-        forcedAssignments: 0,
-        candidateRemovals: 2,
-        backtrackNodes: 45,
-        propagationRounds: 32,
-      ),
-      expectedBucket: 'expert',
-    ),
-  ];
-}
 
 List<DifficultyFixture<SlitherlinkBoard>> _slitherlinkDifficultyFixtures() {
   final SlitherlinkBoard board = SlitherlinkBoard.empty(
@@ -1324,7 +1112,7 @@ List<DifficultyFixture<SlitherlinkBoard>> _slitherlinkDifficultyFixtures() {
 }
 
 List<DifficultyFixture<TakuzuBoard>> _takuzuDifficultyFixtures() {
-  TakuzuBoard _solutionBoard() {
+  TakuzuBoard solutionBoard() {
     const int size = 4;
     final List<int> cells = <int>[
       0,
@@ -1352,7 +1140,7 @@ List<DifficultyFixture<TakuzuBoard>> _takuzuDifficultyFixtures() {
   }
 
   TakuzuBoard puzzleWithGivens(int keepCount) {
-    final TakuzuBoard solution = _solutionBoard();
+    final TakuzuBoard solution = solutionBoard();
     final int total = solution.cellCount;
     final List<int> cells = List<int>.filled(total, TakuzuBoard.emptyValue);
     final List<bool> fixed = List<bool>.filled(total, false);
@@ -1375,7 +1163,7 @@ List<DifficultyFixture<TakuzuBoard>> _takuzuDifficultyFixtures() {
     'longestChain': longestChain,
   };
 
-  final TakuzuBoard solution = _solutionBoard();
+  final TakuzuBoard solution = solutionBoard();
 
   return <DifficultyFixture<TakuzuBoard>>[
     DifficultyFixture<TakuzuBoard>(

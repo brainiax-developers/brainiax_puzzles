@@ -98,11 +98,11 @@ _ActiveRunProgress? _computeProgress(ActivePuzzleRun run) {
 
     switch (run.puzzleType) {
       case PuzzleType.sudokuClassic:
+      case PuzzleType.kakuro:
       case PuzzleType.mathdokuClassic:
       case PuzzleType.killerQueens:
         return _filledCellProgress(board);
-      case PuzzleType.kakuroClassic:
-        return _kakuroProgress(board);
+
       case PuzzleType.nonogramMono:
         return _nonogramProgress(board);
       case PuzzleType.slitherlinkLoop:
@@ -165,32 +165,6 @@ _ActiveRunProgress? _nonogramProgress(Map<String, dynamic> board) {
   return _ActiveRunProgress(fraction: (filled / totalRequired).clamp(0.0, 1.0));
 }
 
-_ActiveRunProgress? _kakuroProgress(Map<String, dynamic> board) {
-  final List<dynamic>? valuesDynamic = board['values'] as List<dynamic>?;
-  final List<dynamic>? kindsDynamic = board['kinds'] as List<dynamic>?;
-  if (valuesDynamic == null ||
-      valuesDynamic.isEmpty ||
-      kindsDynamic == null ||
-      kindsDynamic.length != valuesDynamic.length) {
-    return null;
-  }
-
-  final List<int> values = valuesDynamic.cast<int>();
-  int totalEditable = 0;
-  int filled = 0;
-  for (int index = 0; index < values.length; index++) {
-    if (kindsDynamic[index].toString().contains('value')) {
-      totalEditable += 1;
-      if (values[index] != 0) {
-        filled += 1;
-      }
-    }
-  }
-  if (totalEditable == 0) {
-    return null;
-  }
-  return _ActiveRunProgress(fraction: filled / totalEditable);
-}
 
 _ActiveRunProgress? _slitherlinkProgress(Map<String, dynamic> board) {
   final List<dynamic>? edges = board['edges'] as List<dynamic>?;

@@ -9,7 +9,7 @@ void main() {
       size: const SizeOpt(id: '9x9', description: 'Standard 9x9', width: 9, height: 9),
       difficulty: DifficultyScore(level: level, value: 0.5),
     );
-    final board = generated.state as SudokuBoard;
+    final board = generated.state;
     final clues = board.clueCount;
     print('level=$level clues=$clues bucket=${generated.meta.difficulty.level}');
   }

@@ -10,12 +10,12 @@
 - **Documentation**: Added extensive documentation for all utility classes with usage examples
 - **RNG Validation**: Added state validation to RNG with `isValidState` property
 - **Memory Management**: Added cache size limits to BacktrackingSolver to prevent memory issues
-- **Performance**: Implemented lazy loading for KakuroDictionary to improve startup time
+
 
 ### Technical Enhancements
 - Grid classes now throw proper `RangeError` for out-of-bounds access
 - BacktrackingSolver respects `maxCacheSize` parameter (default: 1000)
-- KakuroDictionary uses lazy initialization and provides better API
+
 - RNG includes state validation and improved error handling
 - All utility classes have comprehensive documentation with examples
 

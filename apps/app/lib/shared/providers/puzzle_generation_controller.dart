@@ -59,17 +59,10 @@ class PuzzleGenerationController
     // Set loading state
     state = const AsyncValue.loading();
 
-    final resolvedSize = puzzleType == app.PuzzleType.killerQueens
-        ? killerQueensAppSizeForDifficulty(difficulty)
-        : size != null
+    final core.SizeOpt resolvedSize = size != null
         ? _parseSize(size)
-        : _getSizeFor(puzzleType, difficulty);
-    final difficultyScore = _parseDifficulty(difficulty);
-    _assertProfileAllowedForProduction(
-      puzzleType: puzzleType,
-      size: resolvedSize,
-      difficulty: difficultyScore.level,
-    );
+        : _getDefaultSizeForPuzzleTypeAndDifficulty(puzzleType, difficulty);
+
 
     final token = ++_generationToken;
 
@@ -86,12 +79,12 @@ class PuzzleGenerationController
         final core.GeneratedPuzzle<dynamic> normalized =
             normalizeGeneratedPuzzleDifficulty(
               puzzle: generated,
-              requestedDifficulty: difficultyScore,
+              requestedDifficulty: _parseDifficulty(difficulty),
             );
         if (kDebugMode) {
           debugPrint(
             '[Generation][Success] type=${puzzleType.key} '
-            '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+            '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: _parseDifficulty(difficulty))} '
             'size=${resolvedSize.id} '
             'seed=$resolvedSeed elapsedMs=${stopwatch.elapsedMilliseconds}',
           );
@@ -140,22 +133,22 @@ class PuzzleGenerationController
               seedStr: attemptSeed,
               seed64: core.Seed.fromString(attemptSeed),
               size: resolvedSize,
-              difficulty: difficultyScore,
+              difficulty: _parseDifficulty(difficulty),
             ),
             timeout: attemptTimeout,
           );
-          if (!generatedPuzzleMatchesDifficulty(generated, difficultyScore)) {
+          if (!generatedPuzzleMatchesDifficulty(generated, _parseDifficulty(difficulty))) {
             lastDifficultyMismatch = generated;
             lastError = StateError(
               'Generated ${generated.meta.difficulty.level} puzzle for '
-              'requested ${difficultyScore.level}',
+              'requested ${_parseDifficulty(difficulty).level}',
             );
             lastStack = StackTrace.current;
             if (attempt < _maxGenerationAttempts) {
               if (kDebugMode) {
                 debugPrint(
                   '[Generation][RetryDifficulty] type=${puzzleType.key} '
-                  '${generatedPuzzleDifficultyDebugFields(puzzle: generated, requestedDifficulty: difficultyScore)} '
+                  '${generatedPuzzleDifficultyDebugFields(puzzle: generated, requestedDifficulty: _parseDifficulty(difficulty))} '
                   'seed=${generated.meta.seedStr} attempt=$attempt',
                 );
               }
@@ -167,7 +160,7 @@ class PuzzleGenerationController
           final core.GeneratedPuzzle<dynamic> normalized =
               normalizeGeneratedPuzzleDifficulty(
                 puzzle: generated,
-                requestedDifficulty: difficultyScore,
+                requestedDifficulty: _parseDifficulty(difficulty),
               );
           if (token == _generationToken) {
             state = AsyncValue.data(normalized);
@@ -175,7 +168,7 @@ class PuzzleGenerationController
           if (kDebugMode) {
             debugPrint(
               '[Generation][Success] type=${puzzleType.key} '
-              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: _parseDifficulty(difficulty))} '
               'size=${resolvedSize.id} '
               'seed=${normalized.meta.seedStr} attempt=$attempt '
               'elapsedMs=${stopwatch.elapsedMilliseconds}',
@@ -191,29 +184,9 @@ class PuzzleGenerationController
         }
       }
       if (lastDifficultyMismatch != null) {
-        if (puzzleType == app.PuzzleType.kakuroClassic) {
-          lastError = core.GenerationFailure(
-            message:
-                'Kakuro generation did not produce the requested difficulty '
-                'within the bounded retry budget.',
-            attempts: _maxGenerationAttempts,
-            elapsed: stopwatch.elapsed,
-            baseSeed: core.Seed.fromString(baseSeed),
-            lastError: lastError,
-            lastStackTrace: lastStack,
-            context: <String, Object?>{
-              'difficulty': difficultyScore.level,
-              'generatedDifficulty':
-                  lastDifficultyMismatch.meta.difficulty.level,
-              'size': resolvedSize.id,
-              'engineId': puzzleType.key,
-            },
-          );
-          lastStack ??= StackTrace.current;
-        } else {
           final normalized = normalizeGeneratedPuzzleDifficulty(
             puzzle: lastDifficultyMismatch,
-            requestedDifficulty: difficultyScore,
+            requestedDifficulty: _parseDifficulty(difficulty),
             telemetryExtras: const <String, Object?>{
               'difficultyFallback': true,
               'difficultyFallbackReason':
@@ -226,13 +199,12 @@ class PuzzleGenerationController
           if (kDebugMode) {
             debugPrint(
               '[Generation][DifficultyFallback] type=${puzzleType.key} '
-              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: difficultyScore)} '
+              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: _parseDifficulty(difficulty))} '
               'seed=${lastDifficultyMismatch.meta.seedStr} '
               'elapsedMs=${stopwatch.elapsedMilliseconds}',
             );
           }
           return normalized;
-        }
       }
       // If we get here, all attempts failed.
       if (token == _generationToken) {
@@ -267,69 +239,7 @@ class PuzzleGenerationController
   /// Whether the controller currently has an in-flight generation request.
   bool get isGenerating => state.isLoading;
 
-  core.SizeOpt _getSizeFor(app.PuzzleType puzzleType, String difficulty) {
-    switch (puzzleType) {
-      case app.PuzzleType.takuzuBinary:
-        switch (difficulty.toLowerCase()) {
-          case 'easy':
-            return const core.SizeOpt(
-              id: '6x6',
-              description: '6x6',
-              width: 6,
-              height: 6,
-            );
-          case 'medium':
-            return const core.SizeOpt(
-              id: '8x8',
-              description: '8x8',
-              width: 8,
-              height: 8,
-            );
-          case 'hard':
-            return const core.SizeOpt(
-              id: '10x10',
-              description: '10x10',
-              width: 10,
-              height: 10,
-            );
-          case 'expert':
-            return const core.SizeOpt(
-              id: '12x12',
-              description: '12x12',
-              width: 12,
-              height: 12,
-            );
-          default:
-            return const core.SizeOpt(
-              id: '8x8',
-              description: '8x8',
-              width: 8,
-              height: 8,
-            );
-        }
-      case app.PuzzleType.kakuroClassic:
-        final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
-        final String sizeId = core.KakuroSupportedProfiles.appSizeForDifficulty(
-          difficulty: difficulty,
-          surface: surface,
-        );
-        return _parseSize(sizeId);
-      case app.PuzzleType.killerQueens:
-        return killerQueensAppSizeForDifficulty(difficulty);
-      default:
-        return _defaultSizeFor(puzzleType);
-    }
-  }
-
-  core.SizeOpt _defaultSizeFor(app.PuzzleType puzzleType) {
-    final metadata = PuzzleRegistry().getMetadata(puzzleType);
-    if (metadata != null && metadata.supportedSizes.isNotEmpty) {
-      try {
-        return _parseSize(metadata.supportedSizes.first);
-      } catch (_) {
-        // Continue with fallback sizes if parsing fails.
-      }
-    }
+  core.SizeOpt _getDefaultSizeForPuzzleTypeAndDifficulty(app.PuzzleType puzzleType, String difficulty) {
 
     switch (puzzleType) {
       case app.PuzzleType.sudokuClassic:
@@ -346,12 +256,7 @@ class PuzzleGenerationController
           width: 10,
           height: 10,
         );
-      case app.PuzzleType.kakuroClassic:
-        return _parseSize(
-          core.KakuroSupportedProfiles.appProfilesForSurface(
-            _activeKakuroAppSurface(),
-          ).first.sizeId,
-        );
+
       case app.PuzzleType.slitherlinkLoop:
         return const core.SizeOpt(
           id: '5x5',
@@ -381,7 +286,34 @@ class PuzzleGenerationController
           width: 8,
           height: 8,
         );
+      case app.PuzzleType.kakuro:
+        if (difficulty.toLowerCase() == 'expert') {
+          return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
+        } else if (difficulty.toLowerCase() == 'hard') {
+          return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+        } else if (difficulty.toLowerCase() == 'medium') {
+          return const core.SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7);
+        }
+        return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
     }
+    
+    // Fallback to registry if not explicitly handled above
+    final metadata = PuzzleRegistry().getMetadata(puzzleType);
+    if (metadata != null && metadata.supportedSizes.isNotEmpty) {
+      try {
+        return _parseSize(metadata.supportedSizes.first);
+      } catch (_) {
+        // Continue with static fallback if parsing fails
+      }
+    }
+    
+    // Final static fallback for unknown puzzle types
+    return const core.SizeOpt(
+      id: '8x8',
+      description: '8x8',
+      width: 8,
+      height: 8,
+    );
   }
 
   core.SizeOpt _parseSize(String size) {
@@ -440,58 +372,9 @@ class PuzzleGenerationController
     required app.PuzzleType puzzleType,
     required Duration elapsed,
   }) {
-    if (puzzleType == app.PuzzleType.kakuroClassic) {
-      final Duration remaining =
-          puzzleGenerationTimeoutFor(engineId: puzzleType.key) - elapsed;
-      return remaining <= Duration.zero ? Duration.zero : remaining;
-    }
+
     return puzzleGenerationTimeoutFor(engineId: puzzleType.key);
   }
 
-  void _assertProfileAllowedForProduction({
-    required app.PuzzleType puzzleType,
-    required core.SizeOpt size,
-    required String difficulty,
-  }) {
-    if (puzzleType != app.PuzzleType.kakuroClassic) {
-      return;
-    }
-    final String normalizedDifficulty =
-        core.KakuroSupportedProfiles.normalizeDifficulty(difficulty);
-    final core.KakuroAppProfileSurface surface = _activeKakuroAppSurface();
-    final bool allowed = core.KakuroSupportedProfiles.isAppProfileAllowed(
-      sizeId: size.id,
-      difficulty: normalizedDifficulty,
-      surface: surface,
-    );
-    if (allowed) {
-      return;
-    }
-    if (surface == core.KakuroAppProfileSurface.nonProduction) {
-      throw StateError(
-        'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} '
-        'is not enabled for non-production random play.',
-      );
-    }
-    final core.KakuroProfileTier? tier = core.KakuroSupportedProfiles.tierFor(
-      sizeId: size.id,
-      difficulty: normalizedDifficulty,
-    );
-    final String reason = switch (tier) {
-      core.KakuroProfileTier.benchmarkOnly =>
-        'benchmark-only and not enabled for production random play',
-      core.KakuroProfileTier.experimental =>
-        'experimental and not enabled for production random play',
-      _ => 'unsupported by production policy',
-    };
-    throw StateError(
-      'Kakuro profile ${size.id}/${normalizedDifficulty.toUpperCase()} is $reason.',
-    );
-  }
 
-  core.KakuroAppProfileSurface _activeKakuroAppSurface() {
-    return AppEnvironment.isProduction
-        ? core.KakuroAppProfileSurface.production
-        : core.KakuroAppProfileSurface.nonProduction;
-  }
 }

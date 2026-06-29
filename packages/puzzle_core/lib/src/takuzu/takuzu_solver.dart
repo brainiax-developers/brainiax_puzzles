@@ -750,7 +750,7 @@ class _LogicResult {
 }
 
 class _RuleResult {
-  const _RuleResult({this.assignments = 0, this.contradiction = false});
+  const _RuleResult({this.assignments = 0}) : contradiction = false;
 
   const _RuleResult.contradiction()
       : assignments = 0,

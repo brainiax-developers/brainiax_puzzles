@@ -21,7 +21,7 @@ class _BenchScreenState extends State<BenchScreen> {
   final _formKey = GlobalKey<FormState>();
   final _countController = TextEditingController(text: '20');
 
-  String _selectedPuzzleId = 'kakuro_classic';
+  String _selectedPuzzleId = 'sudoku_classic';
   String _selectedDifficulty = 'easy';
   late String _selectedSize;
 
@@ -625,8 +625,7 @@ String _labelForPuzzleId(String puzzleId) {
       return 'Sudoku';
     case 'nonogram_mono':
       return 'Nonogram';
-    case 'kakuro_classic':
-      return 'Kakuro';
+
     case 'slitherlink_loop':
       return 'Slitherlink';
     case 'mathdoku_classic':
@@ -646,11 +645,6 @@ String _titleCase(String value) {
 }
 
 List<String> _difficultiesForPuzzle(String puzzleId) {
-  if (puzzleId == 'kakuro_classic') {
-    return KakuroSupportedProfiles.appDifficultiesForSurface(
-      KakuroAppProfileSurface.nonProduction,
-    );
-  }
   return _standardDifficulties;
 }
 
@@ -661,11 +655,7 @@ String _defaultDifficultyForPuzzle(String puzzleId) {
 
 String _defaultSizeForPuzzleDifficulty(String puzzleId, String difficulty) {
   switch (puzzleId) {
-    case 'kakuro_classic':
-      return KakuroSupportedProfiles.appSizeForDifficulty(
-        difficulty: difficulty,
-        surface: KakuroAppProfileSurface.nonProduction,
-      );
+
     case 'slitherlink_loop':
       switch (difficulty) {
         case 'easy':
@@ -928,9 +918,6 @@ Future<void> _initializeEnginesInIsolate() async {
     registerIfMissing(NonogramEngine());
   } catch (_) {}
 
-  try {
-    registerIfMissing(KakuroEngine());
-  } catch (_) {}
 
   try {
     registerIfMissing(SlitherlinkEngine());

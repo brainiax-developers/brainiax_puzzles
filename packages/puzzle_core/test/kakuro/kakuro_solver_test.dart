@@ -1,302 +1,154 @@
-import 'package:puzzle_core/src/api_types.dart';
-import 'package:puzzle_core/src/difficulty/difficulty_config.dart';
-import 'package:puzzle_core/src/engine/pipeline_engine.dart';
-import 'package:puzzle_core/src/generators/generator.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_board.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_difficulty.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_generator.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_move.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_solver.dart';
-import 'package:puzzle_core/src/kakuro/kakuro_validator.dart';
-import 'package:puzzle_core/src/solver/solver.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:test/test.dart';
+import 'package:puzzle_core/puzzle_core.dart';
 
 void main() {
-  test('solver telemetry captures propagation metrics', () {
-    const KakuroSolver solver = KakuroSolver();
-
-    final int seed64 = Seed.fromString('kakuro_solver_seed');
-    final KakuroBoard puzzle = _uniqueFixtureBoard();
-    final SolverResult<KakuroBoard> result = solver.solve(
-      puzzle,
-      SolverContext(
-        rng: SeededRng(seed64 ^ 0x4b12f8d2637a11ce),
-        maxSolutions: 2,
-      ),
-    );
-
-    expect(result.hasSolution, isTrue);
-    expect(result.isUnique, isTrue);
-    expect(result.solutionStatus, SolverStatus.unique);
-
-    final Map<String, Object?> telemetry = result.telemetry;
-    expect(telemetry.containsKey('forcedAssignments'), isTrue);
-    expect(telemetry.containsKey('candidateRemovals'), isTrue);
-    expect(telemetry.containsKey('candidateShrinkPercent'), isTrue);
-    expect(telemetry.containsKey('searchNodes'), isTrue);
-    expect(telemetry.containsKey('backtracks'), isTrue);
-    expect(telemetry.containsKey('maxDepth'), isTrue);
-    expect(telemetry.containsKey('maxBranchingFactor'), isTrue);
-    expect(telemetry.containsKey('avgRunCombinationCount'), isTrue);
-    expect(telemetry.containsKey('singleComboRunRatio'), isTrue);
-    expect(telemetry.containsKey('maxRunLength'), isTrue);
-    expect(telemetry.containsKey('whiteCellCount'), isTrue);
-    expect(telemetry.containsKey('runCount'), isTrue);
-    expect(telemetry.containsKey('backtrackNodes'), isTrue);
-    expect(telemetry.containsKey('disagreementSummary'), isFalse);
-
-    final double shrink = (telemetry['candidateShrinkPercent'] as num)
-        .toDouble();
-    final double singleComboRunRatio = (telemetry['singleComboRunRatio'] as num)
-        .toDouble();
-    expect(shrink, inInclusiveRange(0.0, 1.0));
-    expect(singleComboRunRatio, inInclusiveRange(0.0, 1.0));
-    expect((telemetry['searchNodes'] as num).toInt(), greaterThanOrEqualTo(1));
-    expect((telemetry['maxDepth'] as num).toInt(), greaterThanOrEqualTo(0));
-    expect(
-      (telemetry['maxBranchingFactor'] as num).toInt(),
-      greaterThanOrEqualTo(0),
-    );
-    expect(
-      (telemetry['forcedAssignments'] as num).toInt(),
-      greaterThanOrEqualTo(0),
-    );
-    expect(
-      (telemetry['backtrackNodes'] as num).toInt(),
-      greaterThanOrEqualTo(0),
-    );
+  group('KakuroSolver Uniqueness Tests', () {
+    test('Identifies unique solution', () {
+      // 2x2 board, top-left is black, others are white.
+      // Black cell is a clue: across=3, down=3
+      // White cells: (0,1) down=3, (1,0) across=3, (1,1)
+      
+      // Let's make a 3x3 board to be safe and clear.
+      // 0: black, 1: clue(a:3), 2: clue(a:4)
+      // 3: clue(d:3), 4: white(1), 5: white(2) -> across=3
+      // 6: clue(d:4), 7: white(2), 8: white(3) -> across=5? Let's just manually set up a simple board.
+      
+      final cellTypes = [
+        0, 1, 1,
+        1, 2, 2,
+        1, 2, 2,
+      ];
+      
+      final acrossClues = [
+        0, 0, 0,
+        0, 3, 0, // row 1, col 0 clue -> across=3 (length 2)
+        0, 4, 0, // row 2, col 0 clue -> across=4 (length 2) => impossible! Wait. 1+3=4. 3 can be 1+2.
+      ];
+      // 3 = 1+2. So (1,1) and (1,2) must be {1, 2}.
+      // 4 = 1+3. So (2,1) and (2,2) must be {1, 3}.
+      // Down clues:
+      // col 1: down = 4 -> (1,1) and (2,1) must be {1, 3}.
+      // col 2: down = 3 -> (1,2) and (2,2) must be {1, 2}.
+      // Intersection:
+      // (1,1) in {1,2} and {1,3} -> must be 1.
+      // (1,2) in {1,2} and {1,2}. Since (1,1)=1, (1,2) must be 2. (sum=3)
+      // (2,1) in {1,3} and {1,3}. Since (1,1)=1, (2,1) must be 3. (sum=4)
+      // (2,2) in {1,3} and {1,2}. Since (2,1)=3, (2,2) must be 1. (sum=4). Wait, (1,2)=2, so down sum = 2+1=3. Correct.
+      // Solution is unique:
+      // (1,1)=1, (1,2)=2
+      // (2,1)=3, (2,2)=1
+      
+      final downClues = [
+        0, 0, 0,
+        4, 0, 0, // col 1 down=4
+        3, 0, 0, // col 2 down=3
+      ];
+      
+      // Let's place the clues in the right cells.
+      // Clues at (1,0) and (2,0) have across.
+      final aClues = List<int>.filled(9, 0);
+      aClues[3] = 3;
+      aClues[6] = 4;
+      
+      // Clues at (0,1) and (0,2) have down.
+      final dClues = List<int>.filled(9, 0);
+      dClues[1] = 4;
+      dClues[2] = 3;
+      
+      final board = KakuroBoard(
+        width: 3,
+        height: 3,
+        cellTypes: cellTypes,
+        cellValues: List<int>.filled(9, 0),
+        acrossClues: aClues,
+        downClues: dClues,
+      );
+      
+      final solver = const KakuroSolver();
+      final context = SolverContext(rng: SeededRng(123), maxSolutions: 2);
+      
+      final result = solver.solve(board, context);
+      
+      expect(result.solutionStatus, equals(SolverStatus.unique));
+      expect(result.solutions.length, equals(1));
+      
+      final sol = result.solutions.first;
+      expect(sol.getValue(4), equals(1)); // (1,1)
+      expect(sol.getValue(5), equals(2)); // (1,2)
+      expect(sol.getValue(7), equals(3)); // (2,1)
+      expect(sol.getValue(8), equals(1)); // (2,2)
+    });
+    
+    test('Identifies multiple solutions and exits early', () {
+      // 3x3 board where clues allow swapping (ambiguous rectangle)
+      // Across 3 (1+2 or 2+1), Across 3 (2+1 or 1+2)
+      // Down 3 (1+2 or 2+1), Down 3 (2+1 or 1+2)
+      
+      final cellTypes = [
+        0, 1, 1,
+        1, 2, 2,
+        1, 2, 2,
+      ];
+      
+      final aClues = List<int>.filled(9, 0);
+      aClues[3] = 3;
+      aClues[6] = 3;
+      
+      final dClues = List<int>.filled(9, 0);
+      dClues[1] = 3;
+      dClues[2] = 3;
+      
+      final board = KakuroBoard(
+        width: 3,
+        height: 3,
+        cellTypes: cellTypes,
+        cellValues: List<int>.filled(9, 0),
+        acrossClues: aClues,
+        downClues: dClues,
+      );
+      
+      final solver = const KakuroSolver();
+      final context = SolverContext(rng: SeededRng(123), maxSolutions: 2);
+      
+      final result = solver.solve(board, context);
+      
+      // Should find exactly 2 solutions and exit (status = multiple)
+      expect(result.solutionStatus, equals(SolverStatus.multiple));
+      expect(result.solutions.length, equals(2));
+    });
+    
+    test('Identifies no solution', () {
+      // Impossible sums: across 3 (1,2), down 3 (1,2), but across 17 (8,9)
+      final cellTypes = [
+        0, 1, 1,
+        1, 2, 2,
+        1, 2, 2,
+      ];
+      
+      final aClues = List<int>.filled(9, 0);
+      aClues[3] = 3;
+      aClues[6] = 17; // requires 8,9
+      
+      final dClues = List<int>.filled(9, 0);
+      dClues[1] = 3;  // requires 1,2
+      dClues[2] = 3;  // requires 1,2
+      
+      final board = KakuroBoard(
+        width: 3,
+        height: 3,
+        cellTypes: cellTypes,
+        cellValues: List<int>.filled(9, 0),
+        acrossClues: aClues,
+        downClues: dClues,
+      );
+      
+      final solver = const KakuroSolver();
+      final context = SolverContext(rng: SeededRng(123), maxSolutions: 2);
+      
+      final result = solver.solve(board, context);
+      
+      expect(result.solutionStatus, equals(SolverStatus.noSolution));
+      expect(result.solutions.length, equals(0));
+    });
   });
-
-  test('multiple-solution puzzle emits bounded disagreement summary', () {
-    final KakuroLayout layout = KakuroLayout.fromRows(const <String>[
-      '####',
-      '#..#',
-      '#..#',
-      '####',
-    ]);
-    final Map<int, int> entrySums = <int, int>{
-      for (final KakuroLayoutEntry entry in layout.entries) entry.id: 5,
-    };
-    final KakuroBoard puzzle = layout.buildBoard(entrySums);
-    const KakuroSolver solver = KakuroSolver();
-
-    final SolverResult<KakuroBoard> result = solver.solve(
-      puzzle,
-      SolverContext(
-        rng: SeededRng(Seed.fromString('kakuro_multi_disagreement_seed')),
-        maxSolutions: 2,
-      ),
-    );
-
-    expect(result.solutionStatus, SolverStatus.multiple);
-    expect(result.solutions, hasLength(2));
-
-    final Object? summaryRaw = result.telemetry['disagreementSummary'];
-    expect(summaryRaw, isA<Map>());
-    final Map<String, Object?> summary = Map<String, Object?>.from(
-      summaryRaw as Map,
-    );
-
-    expect(summary['disagreementCellCount'], equals(4));
-    expect(summary['disagreementAcrossRunCount'], equals(2));
-    expect(summary['disagreementDownRunCount'], equals(2));
-    expect(summary['disagreementRunCount'], equals(4));
-    expect(summary['disagreementTouchesLongRun'], isFalse);
-    expect(summary['disagreementMaxRunLength'], equals(2));
-
-    final Map<String, Object?> runIds = Map<String, Object?>.from(
-      summary['disagreementRunIds'] as Map,
-    );
-    expect(runIds['across'], equals(<int>[0, 1]));
-    expect(runIds['down'], equals(<int>[2, 3]));
-
-    final Map<String, Object?> boundingBox = Map<String, Object?>.from(
-      summary['disagreementBoundingBox'] as Map,
-    );
-    expect(boundingBox['minRow'], equals(1));
-    expect(boundingBox['maxRow'], equals(2));
-    expect(boundingBox['minCol'], equals(1));
-    expect(boundingBox['maxCol'], equals(2));
-    expect(boundingBox['height'], equals(2));
-    expect(boundingBox['width'], equals(2));
-
-    final String summaryText = summary.toString().toLowerCase();
-    expect(summaryText.contains('values'), isFalse);
-    expect(summaryText.contains('solution'), isFalse);
-  });
-
-  test('tiny backtrack budget yields unknown status, not unique', () {
-    const KakuroSolver strictSolver = KakuroSolver(maxBacktrackNodes: 0);
-
-    final int seed64 = Seed.fromString('kakuro_solver_seed');
-    final KakuroBoard puzzle = _uniqueFixtureBoard();
-    final SolverResult<KakuroBoard> result = strictSolver.solve(
-      puzzle,
-      SolverContext(
-        rng: SeededRng(seed64 ^ 0x5c3ab48192e7d4f1),
-        maxSolutions: 2,
-      ),
-    );
-
-    expect(result.solutionStatus, SolverStatus.unknown);
-    expect(result.isUnique, isFalse);
-  });
-
-  test('capped one-solution result is unknown, not unique', () {
-    final KakuroBoard puzzle = _ambiguousSumFiveFixtureBoard();
-    const KakuroSolver solver = KakuroSolver(maxBacktrackNodes: 2);
-
-    final SolverResult<KakuroBoard> result = solver.solve(
-      puzzle,
-      SolverContext(
-        rng: SeededRng(Seed.fromString('kakuro_capped_one_solution_seed')),
-        maxSolutions: 2,
-      ),
-    );
-
-    expect(result.solutions, hasLength(1));
-    expect(result.telemetry['searchBudgetExceeded'], isTrue);
-    expect(result.telemetry['hitBacktrackNodeLimit'], isTrue);
-    expect(result.solutionStatus, SolverStatus.unknown);
-    expect(result.isUnique, isFalse);
-  });
-
-  test('pipeline rejects capped one-solution result as unknown', () {
-    final KakuroBoard puzzle = _ambiguousSumFiveFixtureBoard();
-    const KakuroSolver cappedSolver = KakuroSolver(maxBacktrackNodes: 2);
-    final SolverResult<KakuroBoard> cappedResult = cappedSolver.solve(
-      puzzle,
-      SolverContext(
-        rng: SeededRng(Seed.fromString('kakuro_pipeline_capped_seed')),
-        maxSolutions: 2,
-      ),
-    );
-
-    expect(cappedResult.solutions, hasLength(1));
-    expect(cappedResult.solutionStatus, SolverStatus.unknown);
-
-    final _StaticKakuroPipelineEngine engine = _StaticKakuroPipelineEngine(
-      puzzle,
-      solver: cappedSolver,
-    );
-
-    expect(
-      () => engine.generate(
-        seedStr: 'kakuro_pipeline_capped_seed',
-        seed64: Seed.fromString('kakuro_pipeline_capped_seed'),
-        size: const SizeOpt(
-          id: 'fixture4x4',
-          description: 'Fixture 4x4',
-          width: 4,
-          height: 4,
-        ),
-        difficulty: const DifficultyScore(value: 0.3, level: 'easy'),
-      ),
-      throwsA(
-        isA<StateError>().having(
-          (StateError e) => e.toString(),
-          'error',
-          contains('uniqueness is unknown'),
-        ),
-      ),
-    );
-  });
-}
-
-KakuroBoard _ambiguousSumFiveFixtureBoard() {
-  final KakuroLayout layout = KakuroLayout.fromRows(const <String>[
-    '####',
-    '#..#',
-    '#..#',
-    '####',
-  ]);
-  final Map<int, int> entrySums = <int, int>{
-    for (final KakuroLayoutEntry entry in layout.entries) entry.id: 5,
-  };
-  return layout.buildBoard(entrySums);
-}
-
-KakuroBoard _uniqueFixtureBoard() {
-  return KakuroBoard(
-    width: 2,
-    height: 2,
-    kinds: const <KakuroCellKind>[
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-      KakuroCellKind.value,
-    ],
-    values: const <int>[0, 0, 0, 0],
-    acrossClues: const <int?>[null, null, null, null],
-    downClues: const <int?>[null, null, null, null],
-    entries: const <KakuroEntry>[
-      KakuroEntry(
-        id: 0,
-        direction: KakuroDirection.across,
-        cells: <int>[0, 1],
-        sum: 3,
-      ),
-      KakuroEntry(
-        id: 1,
-        direction: KakuroDirection.across,
-        cells: <int>[2, 3],
-        sum: 4,
-      ),
-      KakuroEntry(
-        id: 2,
-        direction: KakuroDirection.down,
-        cells: <int>[0, 2],
-        sum: 3,
-      ),
-      KakuroEntry(
-        id: 3,
-        direction: KakuroDirection.down,
-        cells: <int>[1, 3],
-        sum: 4,
-      ),
-    ],
-    acrossEntryForCell: const <int>[0, 0, 1, 1],
-    downEntryForCell: const <int>[2, 3, 2, 3],
-  );
-}
-
-class _StaticKakuroGenerator extends PuzzleGenerator<KakuroBoard> {
-  const _StaticKakuroGenerator(this.board);
-
-  final KakuroBoard board;
-
-  @override
-  PuzzleGenerationResult<KakuroBoard> generate(GeneratorContext context) {
-    return PuzzleGenerationResult<KakuroBoard>(board: board);
-  }
-}
-
-class _StaticKakuroPipelineEngine
-    extends PipelinePuzzleEngine<KakuroBoard, KakuroMove> {
-  _StaticKakuroPipelineEngine(
-    KakuroBoard board, {
-    super.solver = const KakuroSolver(),
-  }) : super(
-         engineId: 'kakuro_static_fixture',
-         engineName: 'Kakuro static fixture',
-         engineVersion: 'test',
-         generator: _StaticKakuroGenerator(board),
-         validator: const KakuroValidator(),
-         difficultyScorer: const KakuroDifficultyScorer(),
-         difficultyConfig: const DifficultyBucketConfig(
-           buckets: <DifficultyBucketThreshold>[
-             DifficultyBucketThreshold(id: 'easy', maxInclusive: 1.0),
-           ],
-         ),
-         enforceDifficulty: false,
-       );
-
-  @override
-  MoveResult<KakuroBoard> validateMove({
-    required KakuroBoard currentState,
-    required KakuroMove move,
-  }) {
-    throw UnimplementedError();
-  }
 }

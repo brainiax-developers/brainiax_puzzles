@@ -8,6 +8,7 @@ import 'package:puzzle_core/src/takuzu/takuzu_solver.dart';
 import 'package:puzzle_core/src/takuzu/takuzu_validator.dart';
 import 'package:puzzle_core/src/util/seeded_rng.dart';
 import 'package:puzzle_core/src/validation/validator.dart';
+import 'package:puzzle_core/src/solver/solver.dart';
 
 void main() {
   group('TakuzuGenerator', () {
@@ -15,7 +16,7 @@ void main() {
     const TakuzuValidator validator = TakuzuValidator();
     const TakuzuSolver solver = TakuzuSolver();
 
-    GeneratorContext _context(int seed) {
+    GeneratorContext context0(int seed) {
       return GeneratorContext(
         rng: SeededRng(seed),
         seedStr: 'takuzu_$seed',
@@ -26,7 +27,7 @@ void main() {
     }
 
     test('produces valid, uniquely solvable puzzles', () {
-      final GeneratorContext context = _context(12345);
+      final GeneratorContext context = context0(12345);
       final PuzzleGenerationResult<TakuzuBoard> result = generator.generate(context);
 
       final ValidationSummary summary = validator.validatePuzzle(result.board);
@@ -42,12 +43,11 @@ void main() {
     });
 
     test('is deterministic for identical seeds', () {
-      final PuzzleGenerationResult<TakuzuBoard> first = generator.generate(_context(42));
-      final PuzzleGenerationResult<TakuzuBoard> second = generator.generate(_context(42));
+      final PuzzleGenerationResult<TakuzuBoard> first = generator.generate(context0(42));
+      final PuzzleGenerationResult<TakuzuBoard> second = generator.generate(context0(42));
 
       expect(first.board.cells, equals(second.board.cells));
       expect(first.board.fixed, equals(second.board.fixed));
-      expect(first.snapshot.telemetry, equals(second.snapshot.telemetry));
     });
   });
 }

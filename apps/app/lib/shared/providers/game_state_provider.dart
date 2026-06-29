@@ -657,46 +657,7 @@ class GameStateNotifier extends Notifier<GameState?> {
     state = state!.copyWith(notes: newNotes);
   }
 
-  /// Clean up Kakuro pencil marks after a digit is placed in a run cell.
-  void cleanupKakuroNotesForPlacement({
-    required int row,
-    required int col,
-    required int digit,
-  }) {
-    if (state == null || digit <= 0) return;
-    final Object boardState = state!.puzzle.state;
-    if (boardState is! KakuroBoard || state!.notes.isEmpty) return;
 
-    final int placedIndex = boardState.indexOf(row, col);
-    if (!boardState.isPlayableIndex(placedIndex)) return;
-
-    final Set<int> peerCells = <int>{};
-    final int acrossEntryId = boardState.acrossEntryForCell[placedIndex];
-    if (acrossEntryId >= 0) {
-      peerCells.addAll(boardState.entries[acrossEntryId].cells);
-    }
-    final int downEntryId = boardState.downEntryForCell[placedIndex];
-    if (downEntryId >= 0) {
-      peerCells.addAll(boardState.entries[downEntryId].cells);
-    }
-    peerCells.remove(placedIndex);
-
-    final Map<int, Set<int>> newNotes = <int, Set<int>>{};
-    state!.notes.forEach((int index, Set<int> notes) {
-      if (index == placedIndex) {
-        return;
-      }
-      final Set<int> updated = Set<int>.from(notes);
-      if (peerCells.contains(index)) {
-        updated.remove(digit);
-      }
-      if (updated.isNotEmpty) {
-        newNotes[index] = updated;
-      }
-    });
-
-    state = state!.copyWith(notes: newNotes);
-  }
 
   /// Reconstruct state from action history.
   void _reconstructState() {

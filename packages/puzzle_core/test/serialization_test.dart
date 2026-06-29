@@ -133,8 +133,8 @@ void main() {
 
         // Verify data integrity
         for (int i = 0; i < 81; i++) {
-          expect(json['cells'][i], equals(cells[i]));
-          expect(json['fixed'][i], equals(fixed[i]));
+          expect(json['cells'][i], equals(board.cells[i]));
+          expect(json['fixed'][i], equals(board.fixed[i]));
         }
 
         // Deserialize
@@ -302,7 +302,7 @@ void main() {
       });
 
       test('MoveResult.failure serialization', () {
-        const result = MoveResult.failure('Invalid move');
+        final result = MoveResult.failure('Invalid move');
 
         // Note: MoveResult doesn't have toJson/fromJson methods
         // This test verifies the structure is correct for serialization
@@ -369,7 +369,7 @@ void main() {
         expect(deserializedPuzzle.telemetry?.extras, equals(originalPuzzle.telemetry?.extras));
 
         // Verify state is preserved
-        final deserializedState = deserializedPuzzle.state as StubPuzzleState;
+        final deserializedState = deserializedPuzzle.state;
         expect(deserializedState.id, equals(state.id));
         expect(deserializedState.data, equals(state.data));
       });

@@ -448,8 +448,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return '9x9';
       case PuzzleType.nonogramMono:
         return '10x10';
-      case PuzzleType.kakuroClassic:
-        return '7x9';
+      case PuzzleType.kakuro:
+        return '7x7';
+
       case PuzzleType.slitherlinkLoop:
         return '7x7';
       case PuzzleType.mathdokuClassic:
@@ -530,8 +531,9 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         return board is core.SudokuBoard;
       case PuzzleType.nonogramMono:
         return board is core.NonogramBoard;
-      case PuzzleType.kakuroClassic:
+      case PuzzleType.kakuro:
         return board is core.KakuroBoard;
+
       case PuzzleType.slitherlinkLoop:
         return board is core.SlitherlinkBoard;
       case PuzzleType.mathdokuClassic:
@@ -824,36 +826,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
           return;
         }
 
-        // If the engine supplies a concrete digit/value and we know how to apply it,
-        // auto-fill the cell instead of only highlighting.
-        if (board is core.KakuroBoard && hint.cells.isNotEmpty) {
-          final core.PuzzleHintCell cell = hint.cells.first;
-          final Object? raw = cell.metadata['digit'] ?? cell.metadata['value'];
-          final int? digit = raw is int && raw >= 1 && raw <= 9 ? raw : null;
-          if (digit != null) {
-            final core.KakuroMove move = core.KakuroMove(
-              row: cell.row,
-              col: cell.column,
-              digit: digit,
-            );
-            final bool changed = await _applyMoveAndPersist(
-              move,
-              handleCompletion: false,
-            );
-            if (!changed) {
-              _showSnackBar('No hint available for this board yet.');
-              return;
-            }
-            if (!mounted) return;
-            await _incrementHintCountPersistent();
-            // Ensure completion is surfaced even if the listener misses a frame.
-            final GameState? latest = ref.read(gameStateProvider);
-            if (latest != null && latest.isSolved && !_shownSolvedDialog) {
-              unawaited(_handleCompletion(latest));
-            }
-            return;
-          }
-        }
+
 
         if (board is core.MathdokuBoard && hint.cells.isNotEmpty) {
           final core.PuzzleHintCell cell = hint.cells.first;
@@ -878,6 +851,34 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
             if (!mounted) return;
             await _incrementHintCountPersistent();
             // Ensure completion is surfaced even if the listener misses a frame.
+            final GameState? latest = ref.read(gameStateProvider);
+            if (latest != null && latest.isSolved && !_shownSolvedDialog) {
+              unawaited(_handleCompletion(latest));
+            }
+            return;
+          }
+        }
+
+        if (board is core.KakuroBoard && hint.cells.isNotEmpty) {
+          final core.PuzzleHintCell cell = hint.cells.first;
+          final Object? raw = cell.metadata['value'] ?? cell.metadata['digit'];
+          final int? value = raw is int && raw >= 1 && raw <= 9 ? raw : null;
+          if (value != null) {
+            final int index = cell.row * board.width + cell.column;
+            final core.KakuroMove move = core.KakuroMove(
+              index: index,
+              value: value,
+            );
+            final bool changed = await _applyMoveAndPersist(
+              move,
+              handleCompletion: false,
+            );
+            if (!changed) {
+              _showSnackBar('No hint available for this board yet.');
+              return;
+            }
+            if (!mounted) return;
+            await _incrementHintCountPersistent();
             final GameState? latest = ref.read(gameStateProvider);
             if (latest != null && latest.isSolved && !_shownSolvedDialog) {
               unawaited(_handleCompletion(latest));
@@ -1614,8 +1615,8 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       ref.read(puzzleProgressControllerProvider).refresh();
     }
 
+    _timer?.cancel();
     if (widget.mode == PuzzleMode.daily && mounted) {
-      _timer?.cancel();
       setState(() {
         _dailyCompletedView = true;
         _dailyGateResolved = true;
@@ -1686,15 +1687,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
         digit: move.digit,
       );
     }
-    if (move is core.KakuroMove &&
-        move.digit > 0 &&
-        nextBoard is core.KakuroBoard) {
-      notifier.cleanupKakuroNotesForPlacement(
-        row: move.row,
-        col: move.col,
-        digit: move.digit,
-      );
-    }
+
     if (move is core.MathdokuMove &&
         move.value > 0 &&
         nextBoard is core.MathdokuBoard) {
@@ -1823,9 +1816,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
     _triggerHapticFeedback(HapticFeedbackType.light);
     final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.SudokuBoard) {
+    if (gameState == null) {
       return;
     }
+    
+    final state = gameState.puzzle.state;
     final Offset? selection = _selectedSudokuCell;
     if (selection == null) {
       _showSnackBar('Select a cell to place $digit');
@@ -1833,33 +1828,47 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
     final int row = selection.dy.toInt();
     final int col = selection.dx.toInt();
-    final core.SudokuBoard board = gameState.puzzle.state as core.SudokuBoard;
-    if (board.isFixed(row, col)) {
-      _onError('Cannot change a fixed clue');
-      return;
-    }
 
-    if (_isNoteMode) {
-      _toggleNote(board, row: row, col: col, digit: digit);
-      return;
-    }
+    if (state is core.SudokuBoard) {
+      if (state.isFixed(row, col)) {
+        _onError('Cannot change a fixed clue');
+        return;
+      }
 
-    // Pre-check duplicate digit in the same unit (row/col/box). If the
-    // same digit already exists in row/column/box, trigger haptic feedback
-    // and do not apply the move. For other incorrect numbers, allow the
-    // move to be applied (the engine or validator may accept/reject it).
-    if (_wouldCauseUnitConflict(board, row, col, digit)) {
-      // Give subtle haptic feedback for unit-duplication attempts.
-      _triggerHapticFeedback(HapticFeedbackType.medium);
-      return;
-    }
+      if (_isNoteMode) {
+        _toggleNote(state, row: row, col: col, digit: digit);
+        return;
+      }
 
-    final core.SudokuMove move = core.SudokuMove(
-      row: row,
-      col: col,
-      digit: digit,
-    );
-    _onMove(move);
+      if (_wouldCauseUnitConflict(state, row, col, digit)) {
+        _triggerHapticFeedback(HapticFeedbackType.medium);
+        return;
+      }
+
+      final core.SudokuMove move = core.SudokuMove(
+        row: row,
+        col: col,
+        digit: digit,
+      );
+      _onMove(move);
+    } else if (state is core.KakuroBoard) {
+      final int index = row * state.width + col;
+      if (!state.isWhite(index)) {
+        _onError('Cannot place a digit on a clue cell');
+        return;
+      }
+
+      if (_isNoteMode) {
+        _toggleKakuroNote(state, index: index, digit: digit);
+        return;
+      }
+
+      final core.KakuroMove move = core.KakuroMove(
+        index: index,
+        value: digit,
+      );
+      _onMove(move);
+    }
   }
 
   bool _wouldCauseUnitConflict(
@@ -1897,9 +1906,10 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
     _triggerHapticFeedback(HapticFeedbackType.light);
     final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.SudokuBoard) {
+    if (gameState == null) {
       return;
     }
+    final state = gameState.puzzle.state;
     final Offset? selection = _selectedSudokuCell;
     if (selection == null) {
       _showSnackBar('Select a cell to clear');
@@ -1907,39 +1917,86 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     }
     final int row = selection.dy.toInt();
     final int col = selection.dx.toInt();
-    final core.SudokuBoard board = gameState.puzzle.state as core.SudokuBoard;
-    if (board.isFixed(row, col)) {
-      _onError('Cannot change a fixed clue');
-      return;
-    }
-    final int index = row * core.SudokuBoard.side + col;
-    final bool hasValue = board.cellAt(row, col) != 0;
-    final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
-    if (!hasValue && !hasNotes) {
-      return;
-    }
-    if (!hasValue) {
-      final notifier = ref.read(gameStateProvider.notifier);
-      notifier.clearNotesForCell(index);
-      unawaited(_saveActiveRunForCurrentState());
-      return;
-    }
 
-    final core.SudokuMove move = core.SudokuMove(row: row, col: col, digit: 0);
-    try {
-      final bool changed = await _applyMoveAndPersist(move);
-      if (!changed || !mounted) return;
-      if (hasNotes) {
-        final notifier = ref.read(gameStateProvider.notifier);
-        notifier.clearNotesForCell(index, recordHistory: false);
-        unawaited(_saveActiveRunForCurrentState());
+    if (state is core.SudokuBoard) {
+      if (state.isFixed(row, col)) {
+        _onError('Cannot change a fixed clue');
+        return;
       }
-    } catch (error) {
-      final String message = error.toString().startsWith('Exception: ')
-          ? error.toString().substring('Exception: '.length)
-          : error.toString();
-      _onError(message);
+      final int index = row * core.SudokuBoard.side + col;
+      final bool hasValue = state.cellAt(row, col) != 0;
+      final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
+      if (!hasValue && !hasNotes) {
+        return;
+      }
+      if (!hasValue) {
+        final notifier = ref.read(gameStateProvider.notifier);
+        notifier.clearNotesForCell(index);
+        unawaited(_saveActiveRunForCurrentState());
+        return;
+      }
+
+      final core.SudokuMove move = core.SudokuMove(row: row, col: col, digit: 0);
+      try {
+        final bool changed = await _applyMoveAndPersist(move);
+        if (!changed || !mounted) return;
+        if (hasNotes) {
+          final notifier = ref.read(gameStateProvider.notifier);
+          notifier.clearNotesForCell(index, recordHistory: false);
+          unawaited(_saveActiveRunForCurrentState());
+        }
+      } catch (error) {
+        final String message = error.toString().startsWith('Exception: ')
+            ? error.toString().substring('Exception: '.length)
+            : error.toString();
+        _onError(message);
+      }
+    } else if (state is core.KakuroBoard) {
+      final int index = row * state.width + col;
+      if (!state.isWhite(index)) {
+        _onError('Cannot change a clue cell');
+        return;
+      }
+      final bool hasValue = state.cellValues[index] != 0;
+      final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
+      if (!hasValue && !hasNotes) {
+        return;
+      }
+      if (!hasValue) {
+        final notifier = ref.read(gameStateProvider.notifier);
+        notifier.clearNotesForCell(index);
+        unawaited(_saveActiveRunForCurrentState());
+        return;
+      }
+
+      final core.KakuroMove move = core.KakuroMove(index: index, value: 0);
+      try {
+        final bool changed = await _applyMoveAndPersist(move);
+        if (!changed || !mounted) return;
+        if (hasNotes) {
+          final notifier = ref.read(gameStateProvider.notifier);
+          notifier.clearNotesForCell(index, recordHistory: false);
+          unawaited(_saveActiveRunForCurrentState());
+        }
+      } catch (error) {
+        final String message = error.toString().startsWith('Exception: ')
+            ? error.toString().substring('Exception: '.length)
+            : error.toString();
+        _onError(message);
+      }
     }
+  }
+
+  void _toggleKakuroNote(core.KakuroBoard board, {required int index, required int digit}) {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState == null) return;
+    
+    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
+    final bool isAdding = !currentNotes.contains(digit);
+
+    final notifier = ref.read(gameStateProvider.notifier);
+    notifier.recordNoteAction(index, digit, isAdding);
+    unawaited(_saveActiveRunForCurrentState());
   }
 
   void _onNotePressed() {
@@ -1949,142 +2006,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
     });
   }
 
-  // Kakuro: place digits in selected playable cell. If Note mode is on, toggle a local notes map.
-  void _onKakuroDigitPressed(int digit) {
-    if (_dailyCompletedView || _dailyBlocked) {
-      return;
-    }
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
-      return;
-    }
-    final Offset? selection = _selectedSudokuCell; // reuse selection storage
-    if (selection == null) {
-      _showSnackBar('Select a cell to place $digit');
-      return;
-    }
-    final int row = selection.dy.toInt();
-    final int col = selection.dx.toInt();
-    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
-    if (!board.isPlayable(row, col)) {
-      _onError('Select a playable cell');
-      return;
-    }
 
-    if (_isNoteMode) {
-      _toggleKakuroNote(board, row: row, col: col, digit: digit);
-      return;
-    }
-
-    // Validate only immediate contradictions. Sum/combination mismatches are
-    // allowed as partial states and surfaced through visual feedback.
-    // Check across entry
-    final acrossIdx = board.acrossEntryForCell[row * board.width + col];
-    if (acrossIdx != -1) {
-      final entry = board.entries[acrossIdx];
-      final cells = entry.cells;
-      // Check for repeats (excluding current cell)
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        if (cellRow == row && cellCol == col) continue;
-        if (board.valueAt(cellRow, cellCol) == digit) {
-          _onError('Digit $digit already used in this across sum');
-          return;
-        }
-      }
-    }
-
-    // Check down entry
-    final downIdx = board.downEntryForCell[row * board.width + col];
-    if (downIdx != -1) {
-      final entry = board.entries[downIdx];
-      final cells = entry.cells;
-      // Check for repeats (excluding current cell)
-      for (final cellIndex in cells) {
-        final cellRow = cellIndex ~/ board.width;
-        final cellCol = cellIndex % board.width;
-        if (cellRow == row && cellCol == col) continue;
-        if (board.valueAt(cellRow, cellCol) == digit) {
-          _onError('Digit $digit already used in this down sum');
-          return;
-        }
-      }
-    }
-
-    final core.KakuroMove move = core.KakuroMove(
-      row: row,
-      col: col,
-      digit: digit,
-    );
-    _onMove(move);
-  }
-
-  void _onKakuroClearPressed() {
-    if (_dailyCompletedView || _dailyBlocked) {
-      return;
-    }
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null || gameState.puzzle.state is! core.KakuroBoard) {
-      return;
-    }
-    final Offset? selection = _selectedSudokuCell;
-    if (selection == null) {
-      _showSnackBar('Select a cell to clear');
-      return;
-    }
-    final int row = selection.dy.toInt();
-    final int col = selection.dx.toInt();
-    final core.KakuroBoard board = gameState.puzzle.state as core.KakuroBoard;
-    if (!board.isPlayable(row, col)) {
-      _onError('Select a playable cell');
-      return;
-    }
-    final int index = row * board.width + col;
-    final bool hasValue = board.valueAt(row, col) != 0;
-    final bool hasNotes = gameState.notes[index]?.isNotEmpty ?? false;
-    if (!hasValue && !hasNotes) {
-      return;
-    }
-    if (!hasValue) {
-      final notifier = ref.read(gameStateProvider.notifier);
-      notifier.clearNotesForCell(index);
-      unawaited(_saveActiveRunForCurrentState());
-      return;
-    }
-    final core.KakuroMove move = core.KakuroMove(row: row, col: col, digit: 0);
-    _applyMoveAndPersist(move)
-        .then((bool changed) {
-          if (!changed || !mounted) return;
-          final notifier = ref.read(gameStateProvider.notifier);
-          notifier.clearNotesForCell(index, recordHistory: false);
-          unawaited(_saveActiveRunForCurrentState());
-        })
-        .catchError((Object error) {
-          final String message = error.toString().startsWith('Exception: ')
-              ? error.toString().substring('Exception: '.length)
-              : error.toString();
-          _onError(message);
-        });
-  }
-
-  void _toggleKakuroNote(
-    core.KakuroBoard board, {
-    required int row,
-    required int col,
-    required int digit,
-  }) {
-    final int index = row * board.width + col;
-    final gameState = ref.read(gameStateProvider);
-    if (gameState == null) return;
-
-    final Set<int> currentNotes = gameState.notes[index] ?? const <int>{};
-    final bool isAdding = !currentNotes.contains(digit);
-
-    final notifier = ref.read(gameStateProvider.notifier);
-    notifier.recordNoteAction(index, digit, isAdding);
-    unawaited(_saveActiveRunForCurrentState());
-  }
 
   // Mathdoku: place digits in selected cell. If Note mode is on, toggle notes.
   void _onMathdokuDigitPressed(int digit) {
@@ -2698,6 +2620,11 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       return _buildSudokuGame(theme, colorScheme, puzzle, gameState);
     }
 
+    // Kakuro
+    if (puzzle.state is core.KakuroBoard) {
+      return _buildKakuroGame(theme, colorScheme, puzzle, gameState);
+    }
+
     // Nonogram
     if (puzzle.state is core.NonogramBoard) {
       return Column(
@@ -2745,42 +2672,7 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       );
     }
 
-    // Kakuro
-    if (puzzle.state is core.KakuroBoard) {
-      return Column(
-        children: [
-          // Puzzle renderer
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: KakuroRendererWidget(
-                puzzle: puzzle,
-                gameState: gameState,
-                onCellSelected: _onCellSelected,
-                onMove: _onMove,
-                onError: _onError,
-                hintCells: _hintPositions,
-                hintAnimationValue: _hintAnimationValue,
-                notes: Map.unmodifiable(
-                  gameState?.notes ?? const <int, Set<int>>{},
-                ),
-              ),
-            ),
-          ),
 
-          // Number pad (single row with 1..9), with note toggle and clear
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: SudokuNumberPad(
-              onDigitPressed: _onKakuroDigitPressed,
-              onClearPressed: _onKakuroClearPressed,
-              onNotePressed: _onNotePressed,
-              isNoteMode: _isNoteMode,
-            ),
-          ),
-        ],
-      );
-    }
 
     // Slitherlink
     if (puzzle.state is core.SlitherlinkBoard) {
@@ -2936,6 +2828,58 @@ class _PlayScreenState extends ConsumerState<PlayScreen>
       hintAnimationValue: _hintAnimationValue,
       notes: Map.unmodifiable(noteSnapshot),
       hintFilledCells: Set<int>.unmodifiable(_sudokuHintFilled),
+    );
+  }
+
+  Widget _buildKakuroGrid(core.GeneratedPuzzle puzzle) {
+    final gameState = ref.watch(gameStateProvider);
+    final Map<int, Set<int>> noteSnapshot =
+        gameState?.notes ?? const <int, Set<int>>{};
+    return KakuroRendererWidget(
+      puzzle: puzzle,
+      gameState: gameState,
+      onCellSelected: _onCellSelected,
+      onMove: _onMove,
+      onError: _onError,
+      hintCells: _hintPositions,
+      hintAnimationValue: _hintAnimationValue,
+      notes: Map.unmodifiable(noteSnapshot),
+    );
+  }
+
+  Widget _buildKakuroGame(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    core.GeneratedPuzzle puzzle,
+    GameState? gameState,
+  ) {
+    return PerformanceMonitor(
+      enabled: false,
+      child: Column(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _buildKakuroGrid(puzzle),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SudokuNumberPad(
+                  onDigitPressed: _onDigitPressed,
+                  onClearPressed: _onClearPressed,
+                  onNotePressed: _onNotePressed,
+                  isNoteMode: _isNoteMode,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -10,12 +10,12 @@ void main() {
       Future<Map<String, Object?>> runScenario() async {
         final ProcessResult result = await Process.run('dart', <String>[
           'run',
-          'packages/puzzle_core/bin/benchmark_runner.dart',
+          'bin/benchmark_runner.dart',
           '--engine',
           'slitherlink_loop',
           '--slitherlink-scenario',
           '5x5_easy',
-        ]);
+        ], runInShell: true);
 
         expect(result.exitCode, equals(0), reason: '${result.stderr}');
         return Map<String, Object?>.from(

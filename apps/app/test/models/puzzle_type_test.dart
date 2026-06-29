@@ -16,10 +16,7 @@ void main() {
       );
     });
 
-    test('should have correct key and display name for kakuro_classic', () {
-      expect(PuzzleType.kakuroClassic.key, equals('kakuro_classic'));
-      expect(PuzzleType.kakuroClassic.displayName, equals('Classic Kakuro'));
-    });
+
 
     test('should have correct key and display name for slitherlink_loop', () {
       expect(PuzzleType.slitherlinkLoop.key, equals('slitherlink_loop'));
@@ -57,10 +54,7 @@ void main() {
           PuzzleType.fromKey('nonogram_mono'),
           equals(PuzzleType.nonogramMono),
         );
-        expect(
-          PuzzleType.fromKey('kakuro_classic'),
-          equals(PuzzleType.kakuroClassic),
-        );
+
         expect(
           PuzzleType.fromKey('slitherlink_loop'),
           equals(PuzzleType.slitherlinkLoop),
@@ -90,7 +84,7 @@ void main() {
       test('should return true for valid keys', () {
         expect(PuzzleType.isValidKey('sudoku_classic'), isTrue);
         expect(PuzzleType.isValidKey('nonogram_mono'), isTrue);
-        expect(PuzzleType.isValidKey('kakuro_classic'), isTrue);
+
         expect(PuzzleType.isValidKey('slitherlink_loop'), isTrue);
         expect(PuzzleType.isValidKey('mathdoku_classic'), isTrue);
         expect(PuzzleType.isValidKey('killer_queens'), isTrue);

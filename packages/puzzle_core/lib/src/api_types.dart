@@ -3,7 +3,7 @@
 /// This file contains the stable, public API types that the app will use
 /// to interact with puzzle engines. These types are designed to be
 /// "boring and stable" - they don't leak engine internals.
-library puzzle_core.api_types;
+library;
 
 import 'dart:collection';
 

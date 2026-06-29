@@ -403,8 +403,7 @@ class PuzzleProgressService {
         return (json) => core.SudokuBoard.fromJson(json);
       case 'nonogram_mono':
         return (json) => core.NonogramBoard.fromJson(json);
-      case 'kakuro_classic':
-        return (json) => core.KakuroBoard.fromJson(json);
+
       case 'slitherlink_loop':
         return (json) => core.SlitherlinkBoard.fromJson(json);
       case 'mathdoku_classic':
@@ -413,6 +412,8 @@ class PuzzleProgressService {
         return (json) => core.KillerQueensBoard.fromJson(json);
       case 'takuzu_binary':
         return (json) => core.TakuzuBoard.fromJson(json);
+      case 'kakuro':
+        return (json) => core.KakuroBoard.fromJson(json);
       default:
         return null;
     }

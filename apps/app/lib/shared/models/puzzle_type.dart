@@ -1,8 +1,9 @@
 /// Enum representing different puzzle types available in the app.
 enum PuzzleType {
   sudokuClassic('sudoku_classic', 'Classic Sudoku'),
+  kakuro('kakuro', 'Kakuro'),
   nonogramMono('nonogram_mono', 'Monochrome Nonogram'),
-  kakuroClassic('kakuro_classic', 'Classic Kakuro'),
+
   slitherlinkLoop('slitherlink_loop', 'Slitherlink Loop'),
   mathdokuClassic('mathdoku_classic', 'Classic Mathdoku'),
   killerQueens('killer_queens', 'Killer Queens'),
@@ -29,11 +30,12 @@ enum PuzzleType {
     return fromKey(key) != null;
   }
 
-  static const List<PuzzleType> comingSoonTypes = [kakuroClassic];
+  static const List<PuzzleType> comingSoonTypes = [];
 
   /// Ordered list of puzzle types that participate in Daily Challenges.
   static const List<PuzzleType> dailyChallengeTypes = [
     sudokuClassic,
+    kakuro,
     nonogramMono,
     slitherlinkLoop,
     mathdokuClassic,
@@ -52,8 +54,7 @@ enum PuzzleType {
 
   String? get availabilityBadgeLabel => isComingSoon ? 'Coming Soon' : null;
 
-  String? get unavailableMessage =>
-      isComingSoon ? 'Kakuro is coming soon.' : null;
+  String? get unavailableMessage => null;
 
   @override
   String toString() => key;

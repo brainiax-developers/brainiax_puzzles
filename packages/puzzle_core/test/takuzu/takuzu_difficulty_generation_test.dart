@@ -28,7 +28,7 @@ void main() {
           difficulty: DifficultyRequest(level: level),
         );
 
-    Future<void> _assertPuzzle({
+    Future<void> assertPuzzle({
       required String level,
       required int size,
       required double minRatio,
@@ -71,19 +71,19 @@ void main() {
     }
 
     test('easy 6x6', () async {
-      await _assertPuzzle(level: 'easy', size: 6, minRatio: 0.50, maxRatio: 0.60, minChain: 0, maxChain: 1);
+      await assertPuzzle(level: 'easy', size: 6, minRatio: 0.50, maxRatio: 0.60, minChain: 0, maxChain: 1);
     });
 
     test('medium 8x8', () async {
-      await _assertPuzzle(level: 'medium', size: 8, minRatio: 0.40, maxRatio: 0.50, minChain: 1, maxChain: 2);
+      await assertPuzzle(level: 'medium', size: 8, minRatio: 0.40, maxRatio: 0.50, minChain: 1, maxChain: 2);
     });
 
     test('hard 10x10', () async {
-      await _assertPuzzle(level: 'hard', size: 10, minRatio: 0.30, maxRatio: 0.40, minChain: 3, maxChain: 5);
+      await assertPuzzle(level: 'hard', size: 10, minRatio: 0.30, maxRatio: 0.40, minChain: 3, maxChain: 5);
     });
 
     test('expert 12x12', () async {
-      await _assertPuzzle(level: 'expert', size: 12, minRatio: 0.20, maxRatio: 0.30, minChain: 6, maxChain: 9999);
+      await assertPuzzle(level: 'expert', size: 12, minRatio: 0.20, maxRatio: 0.30, minChain: 6, maxChain: 9999);
     });
   });
 }

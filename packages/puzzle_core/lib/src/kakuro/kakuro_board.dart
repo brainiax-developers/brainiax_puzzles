@@ -1,253 +1,132 @@
-import 'dart:convert';
-
-enum KakuroDirection { across, down }
-
-enum KakuroCellKind { block, value }
-
-class KakuroEntry {
-  const KakuroEntry({
-    required this.id,
-    required this.direction,
-    required this.cells,
-    required this.sum,
-  });
-
-  final int id;
-  final KakuroDirection direction;
-  final List<int> cells;
-  final int sum;
-
-  KakuroEntry copyWith({int? sum}) => KakuroEntry(
-        id: id,
-        direction: direction,
-        cells: cells,
-        sum: sum ?? this.sum,
-      );
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'direction': direction.index,
-        'cells': cells,
-        'sum': sum,
-      };
-
-  factory KakuroEntry.fromJson(Map<String, dynamic> json) => KakuroEntry(
-        id: json['id'] as int,
-        direction: KakuroDirection.values[json['direction'] as int],
-        cells: List<int>.from(json['cells'] as List),
-        sum: json['sum'] as int,
-      );
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KakuroEntry &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          direction == other.direction &&
-          _listEquals(cells, other.cells) &&
-          sum == other.sum;
-
-  @override
-  int get hashCode => Object.hash(id, direction, Object.hashAll(cells), sum);
-
-  static bool _listEquals(List<int> a, List<int> b) {
-    if (identical(a, b)) {
-      return true;
-    }
-    if (a.length != b.length) {
-      return false;
-    }
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-}
-
+/// Kakuro puzzle board representation.
+///
+/// Stores cell types, values, and clue sums.
 class KakuroBoard {
-  KakuroBoard({
-    required this.width,
-    required this.height,
-    required List<KakuroCellKind> kinds,
-    required List<int> values,
-    required List<int?> acrossClues,
-    required List<int?> downClues,
-    required List<KakuroEntry> entries,
-    required List<int> acrossEntryForCell,
-    required List<int> downEntryForCell,
-  })  : kinds = List<KakuroCellKind>.unmodifiable(kinds),
-        values = List<int>.unmodifiable(values),
-        acrossClues = List<int?>.unmodifiable(acrossClues),
-        downClues = List<int?>.unmodifiable(downClues),
-        entries = List<KakuroEntry>.unmodifiable(entries),
-        acrossEntryForCell = List<int>.unmodifiable(acrossEntryForCell),
-        downEntryForCell = List<int>.unmodifiable(downEntryForCell) {
-    if (this.values.length != cellCount) {
-      throw ArgumentError('values length mismatch: expected $cellCount');
-    }
-    if (this.kinds.length != cellCount) {
-      throw ArgumentError('kinds length mismatch: expected $cellCount');
-    }
-    if (this.acrossClues.length != cellCount || this.downClues.length != cellCount) {
-      throw ArgumentError('clue arrays must match cell count');
-    }
-    if (this.acrossEntryForCell.length != cellCount ||
-        this.downEntryForCell.length != cellCount) {
-      throw ArgumentError('entry maps must match cell count');
-    }
-  }
+  static const int cellBlack = 0;
+  static const int cellClue = 1;
+  static const int cellWhite = 2;
 
   final int width;
   final int height;
-  final List<KakuroCellKind> kinds;
-  final List<int> values;
-  final List<int?> acrossClues;
-  final List<int?> downClues;
-  final List<KakuroEntry> entries;
-  final List<int> acrossEntryForCell;
-  final List<int> downEntryForCell;
 
-  int get cellCount => width * height;
+  /// Cell type: 0=black, 1=clue, 2=white
+  final List<int> _cellTypes;
 
-  bool isPlayableIndex(int index) => kinds[index] == KakuroCellKind.value;
+  /// Cell value: 0=unassigned, 1..9 for white cells
+  final List<int> _cellValues;
 
-  bool isPlayable(int row, int col) => isPlayableIndex(indexOf(row, col));
+  /// Across sum for clue cells. 0 if none.
+  final List<int> _acrossClues;
 
-  int indexOf(int row, int col) => row * width + col;
+  /// Down sum for clue cells. 0 if none.
+  final List<int> _downClues;
 
-  int valueAt(int row, int col) => values[indexOf(row, col)];
+  KakuroBoard._(
+    this.width,
+    this.height,
+    this._cellTypes,
+    this._cellValues,
+    this._acrossClues,
+    this._downClues,
+  );
 
-  bool get isComplete {
-    for (int i = 0; i < cellCount; i++) {
-      if (kinds[i] == KakuroCellKind.value && values[i] == 0) {
-        return false;
-      }
+  factory KakuroBoard({
+    required int width,
+    required int height,
+    required List<int> cellTypes,
+    required List<int> cellValues,
+    required List<int> acrossClues,
+    required List<int> downClues,
+  }) {
+    final int cellCount = width * height;
+    if (cellTypes.length != cellCount ||
+        cellValues.length != cellCount ||
+        acrossClues.length != cellCount ||
+        downClues.length != cellCount) {
+      throw ArgumentError('All board arrays must have length width * height');
     }
-    return true;
+    return KakuroBoard._(
+      width,
+      height,
+      List<int>.unmodifiable(cellTypes),
+      List<int>.unmodifiable(cellValues),
+      List<int>.unmodifiable(acrossClues),
+      List<int>.unmodifiable(downClues),
+    );
   }
 
-  KakuroBoard copyWith({List<int>? values}) => KakuroBoard(
-        width: width,
-        height: height,
-        kinds: kinds,
-        values: values ?? this.values,
-        acrossClues: acrossClues,
-        downClues: downClues,
-        entries: entries,
-        acrossEntryForCell: acrossEntryForCell,
-        downEntryForCell: downEntryForCell,
-      );
-
-  KakuroBoard setValue(int index, int digit) {
-    final List<int> newValues = List<int>.from(values);
-    newValues[index] = digit;
-    return copyWith(values: newValues);
+  factory KakuroBoard.empty(int width, int height) {
+    final int cellCount = width * height;
+    return KakuroBoard(
+      width: width,
+      height: height,
+      cellTypes: List<int>.filled(cellCount, cellBlack),
+      cellValues: List<int>.filled(cellCount, 0),
+      acrossClues: List<int>.filled(cellCount, 0),
+      downClues: List<int>.filled(cellCount, 0),
+    );
   }
 
-  KakuroEntry entryForCell(int index, KakuroDirection direction) {
-    final int entryId =
-        direction == KakuroDirection.across ? acrossEntryForCell[index] : downEntryForCell[index];
-    if (entryId < 0) {
-      throw ArgumentError('Cell $index has no ${direction.name} entry');
-    }
-    return entries[entryId];
+  factory KakuroBoard.fromJson(Map<String, dynamic> json) {
+    return KakuroBoard(
+      width: json['width'] as int,
+      height: json['height'] as int,
+      cellTypes: (json['cellTypes'] as List).cast<int>(),
+      cellValues: (json['cellValues'] as List).cast<int>(),
+      acrossClues: (json['acrossClues'] as List).cast<int>(),
+      downClues: (json['downClues'] as List).cast<int>(),
+    );
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'width': width,
         'height': height,
-        'kinds': kinds.map((KakuroCellKind kind) => kind.index).toList(growable: false),
-        'values': values,
-        'acrossClues': acrossClues,
-        'downClues': downClues,
-        'entries': entries.map((KakuroEntry entry) => entry.toJson()).toList(growable: false),
-        'acrossEntryForCell': acrossEntryForCell,
-        'downEntryForCell': downEntryForCell,
+        'cellTypes': _cellTypes,
+        'cellValues': _cellValues,
+        'acrossClues': _acrossClues,
+        'downClues': _downClues,
       };
 
-  factory KakuroBoard.fromJson(Map<String, dynamic> json) {
-    final List<KakuroCellKind> kinds =
-        (json['kinds'] as List).map((dynamic value) => KakuroCellKind.values[value as int]).toList();
+  int get cellCount => width * height;
+
+  List<int> get cellTypes => _cellTypes;
+  List<int> get cellValues => _cellValues;
+  List<int> get acrossClues => _acrossClues;
+  List<int> get downClues => _downClues;
+
+  bool isWhite(int index) => _cellTypes[index] == cellWhite;
+  bool isClue(int index) => _cellTypes[index] == cellClue;
+  bool isBlack(int index) => _cellTypes[index] == cellBlack;
+
+  int getValue(int index) => _cellValues[index];
+
+  KakuroBoard setCellValue(int index, int value) {
+    if (value < 0 || value > 9) {
+      throw ArgumentError.value(value, 'value', 'Must be between 0 and 9');
+    }
+    final List<int> newValues = List<int>.from(_cellValues);
+    newValues[index] = value;
     return KakuroBoard(
-      width: json['width'] as int,
-      height: json['height'] as int,
-      kinds: kinds,
-      values: List<int>.from(json['values'] as List),
-      acrossClues: List<int?>.from(json['acrossClues'] as List),
-      downClues: List<int?>.from(json['downClues'] as List),
-      entries: (json['entries'] as List)
-          .map((dynamic raw) => KakuroEntry.fromJson(Map<String, dynamic>.from(raw as Map)))
-          .toList(growable: false),
-      acrossEntryForCell: List<int>.from(json['acrossEntryForCell'] as List),
-      downEntryForCell: List<int>.from(json['downEntryForCell'] as List),
+      width: width,
+      height: height,
+      cellTypes: _cellTypes,
+      cellValues: newValues,
+      acrossClues: _acrossClues,
+      downClues: _downClues,
     );
   }
+}
 
-  @override
-  String toString() => jsonEncode(toJson());
+/// Represents a single run of white cells and its required sum.
+class KakuroRun {
+  final List<int> cells;
+  final int length;
+  int sum;
+  int usedMask;
 
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) {
-      return true;
-    }
-    if (other is! KakuroBoard) {
-      return false;
-    }
-    return width == other.width &&
-        height == other.height &&
-        _listEquals(kinds, other.kinds) &&
-        _listEquals(values, other.values) &&
-        _listEquals(acrossClues, other.acrossClues) &&
-        _listEquals(downClues, other.downClues) &&
-        _entryListEquals(entries, other.entries) &&
-        _listEquals(acrossEntryForCell, other.acrossEntryForCell) &&
-        _listEquals(downEntryForCell, other.downEntryForCell);
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        width,
-        height,
-        Object.hashAll(kinds),
-        Object.hashAll(values),
-        Object.hashAll(acrossClues),
-        Object.hashAll(downClues),
-        Object.hashAll(entries),
-        Object.hashAll(acrossEntryForCell),
-        Object.hashAll(downEntryForCell),
-      );
-
-  static bool _listEquals<T>(List<T> a, List<T> b) {
-    if (identical(a, b)) {
-      return true;
-    }
-    if (a.length != b.length) {
-      return false;
-    }
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static bool _entryListEquals(List<KakuroEntry> a, List<KakuroEntry> b) {
-    if (identical(a, b)) {
-      return true;
-    }
-    if (a.length != b.length) {
-      return false;
-    }
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
+  KakuroRun({
+    required this.cells,
+    required this.sum,
+  })  : length = cells.length,
+        usedMask = 0;
 }

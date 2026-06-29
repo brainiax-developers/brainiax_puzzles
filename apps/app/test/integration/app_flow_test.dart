@@ -5,6 +5,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
+import 'dart:math' as math;
 
 import 'package:app/features/select/select_screen.dart';
 import 'package:app/features/play/play_screen.dart';
@@ -107,14 +108,24 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pump();
 
-    expect(find.text('Random Play'), findsWidgets);
+    expect(find.text('Classic Sudoku'), findsOneWidget);
+    await tester.tap(find.text('Classic Sudoku'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
+    expect(find.text('Random Play'), findsWidgets);
     await tester.tap(find.text('Random Play').first);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Start Random Puzzle'), findsOneWidget);
+    await tester.tap(find.text('Start Random Puzzle'));
     await tester.pump();
 
     expect(find.textContaining('Generating'), findsOneWidget);
 
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
 
     expect(receivedExtra, equals(generatedPuzzle));
     expect(find.byType(PlayScreen), findsOneWidget);
@@ -123,21 +134,30 @@ void main() {
     expect(sudokuFinder, findsOneWidget);
 
     final renderBox = tester.renderObject<RenderBox>(sudokuFinder);
-    final topLeft = renderBox.localToGlobal(Offset.zero);
-    final cellSize = renderBox.size.width / core.SudokuBoard.side;
-    final cellCenter = topLeft + Offset(cellSize / 2, cellSize / 2);
+    final size = renderBox.size;
+    final shortestSide = math.min(size.width, size.height);
+    final boardSize = shortestSide - 32.0; // 16 padding * 2
+    final leftOffset = (size.width - boardSize) / 2;
+    final topOffset = (size.height - boardSize) / 2;
+    final cellSize = (boardSize - 10.0) / 9.0;
+    final cellCenter = renderBox.localToGlobal(
+      Offset(leftOffset + 1.0 + cellSize / 2, topOffset + 1.0 + cellSize / 2),
+    );
 
     await tester.tapAt(cellCenter);
     await tester.pump();
 
-    await tester.tap(find.text('5'));
-    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('5').last);
+    await tester.tap(find.text('5').last, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Solved'), findsOneWidget);
-    expect(find.textContaining('Streak'), findsOneWidget);
+    expect(find.textContaining('streak'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
-    final key = 'puzzle_local_store.v1.best_time.${PuzzleType.sudokuClassic.key}.easy';
+    final key = 'puzzle_local_store.v2.best_time.${PuzzleType.sudokuClassic.key}.easy';
     expect(prefs.containsKey(key), isTrue);
   });
 }

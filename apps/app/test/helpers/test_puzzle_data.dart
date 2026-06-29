@@ -197,55 +197,7 @@ core.GeneratedPuzzle<core.NonogramBoard> buildNonogramPuzzle() {
   );
 }
 
-core.GeneratedPuzzle<core.KakuroBoard> buildKakuroPuzzle() {
-  final kinds = <core.KakuroCellKind>[
-    core.KakuroCellKind.value,
-    core.KakuroCellKind.value,
-    core.KakuroCellKind.value,
-    core.KakuroCellKind.value,
-  ];
-  final entries = <core.KakuroEntry>[
-    const core.KakuroEntry(
-      id: 0,
-      direction: core.KakuroDirection.across,
-      cells: <int>[0, 1],
-      sum: 10,
-    ),
-    const core.KakuroEntry(
-      id: 1,
-      direction: core.KakuroDirection.across,
-      cells: <int>[2, 3],
-      sum: 7,
-    ),
-    const core.KakuroEntry(
-      id: 2,
-      direction: core.KakuroDirection.down,
-      cells: <int>[0, 2],
-      sum: 9,
-    ),
-    const core.KakuroEntry(
-      id: 3,
-      direction: core.KakuroDirection.down,
-      cells: <int>[1, 3],
-      sum: 8,
-    ),
-  ];
-  final board = core.KakuroBoard(
-    width: 2,
-    height: 2,
-    kinds: kinds,
-    values: const <int>[1, 0, 4, 3],
-    acrossClues: List<int?>.filled(4, null),
-    downClues: List<int?>.filled(4, null),
-    entries: entries,
-    acrossEntryForCell: const <int>[0, 0, 1, 1],
-    downEntryForCell: const <int>[2, 3, 2, 3],
-  );
-  return core.GeneratedPuzzle<core.KakuroBoard>(
-    state: board,
-    meta: _metadataFor(size: '2x2', difficulty: 'easy'),
-  );
-}
+
 
 core.GeneratedPuzzle<core.SlitherlinkBoard> buildSlitherlinkPuzzle() {
   final base = core.SlitherlinkBoard.empty(

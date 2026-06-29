@@ -3,7 +3,7 @@
 /// These engines provide deterministic implementations wired through the
 /// pipeline template so that tests exercise the generator → solver → validator
 /// → difficulty flow without requiring full puzzle logic.
-library puzzle_core.stub_engine;
+library;
 
 import '../api_types.dart';
 import '../difficulty/difficulty_config.dart';
@@ -98,8 +98,10 @@ class _StubGenerator extends PuzzleGenerator<StubPuzzleState> {
       'size': {'w': context.size.width, 'h': context.size.height},
       'requestedDifficulty': context.difficulty.level,
       'random_values': randomValues,
-      'hint': context.difficulty.hint,
     };
+    if (context.difficulty.hint != null) {
+      data['hint'] = context.difficulty.hint.toString();
+    }
     stopwatch.stop();
     return PuzzleGenerationResult(
       board: StubPuzzleState(
@@ -250,13 +252,10 @@ DifficultyBucketConfig _createDefaultDifficultyConfig() {
 class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleMove> {
   StubPuzzleEngine({
     DifficultyBucketConfig? config,
-    String engineId = 'stub',
-    String engineName = 'Stub Puzzle Engine',
-    String engineVersion = '2.0.0',
+    super.engineId = 'stub',
+    super.engineName = 'Stub Puzzle Engine',
+    super.engineVersion = '2.0.0',
   }) : super(
-          engineId: engineId,
-          engineName: engineName,
-          engineVersion: engineVersion,
           generator: const _StubGenerator(),
           solver: const _StubSolver(),
           validator: const _StubValidator(),
@@ -359,16 +358,15 @@ class StubPuzzleEngine extends PipelinePuzzleEngine<StubPuzzleState, StubPuzzleM
       metadata: <String, Object?>{
         'seed': baseSeed,
         'iteration': iteration,
-        if (moveCount != null) 'moveCount': moveCount,
+        'moveCount': ?moveCount,
       },
     );
   }
 }
 
 class StubSudokuEngine extends StubPuzzleEngine {
-  StubSudokuEngine({DifficultyBucketConfig? config})
+  StubSudokuEngine({super.config})
       : super(
-          config: config,
           engineId: 'stub_sudoku',
           engineName: 'Stub Sudoku Engine',
         );

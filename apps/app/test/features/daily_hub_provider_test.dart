@@ -29,15 +29,7 @@ void main() {
   }
 
   group('dailyHubProvider', () {
-    test('default daily puzzle types exclude Kakuro', () {
-      final ProviderContainer container = ProviderContainer();
-      addTearDown(container.dispose);
 
-      expect(
-        container.read(dailyPuzzleTypesProvider),
-        isNot(contains(PuzzleType.kakuroClassic)),
-      );
-    });
 
     test(
       'marks the week using any daily completion, not all daily puzzles',

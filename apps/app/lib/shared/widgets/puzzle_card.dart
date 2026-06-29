@@ -149,7 +149,7 @@ class PuzzleCard extends StatelessWidget {
 String _categoryLabelFor(PuzzleType puzzleType) {
   switch (puzzleType) {
     case PuzzleType.sudokuClassic:
-    case PuzzleType.kakuroClassic:
+    case PuzzleType.kakuro:
     case PuzzleType.mathdokuClassic:
     case PuzzleType.takuzuBinary:
       return 'Numbers';

@@ -15,9 +15,8 @@ class SlitherlinkGrid {
     required this.height,
     required this.topology,
     required List<int?> clues,
-    required Int8List edges,
-  })  : clues = List<int?>.unmodifiable(List<int?>.from(clues)),
-        edges = edges;
+    required this.edges,
+  })  : clues = List<int?>.unmodifiable(List<int?>.from(clues));
 
   factory SlitherlinkGrid.fromBoard(SlitherlinkBoard board) {
     return SlitherlinkGrid._(

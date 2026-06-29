@@ -1,5 +1,4 @@
 import '../api_types.dart';
-import '../difficulty/telemetry.dart';
 import '../util/seeded_rng.dart';
 
 /// Context shared with puzzle generators.

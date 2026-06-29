@@ -1,7 +1,5 @@
 import 'package:puzzle_core/puzzle_core.dart';
 import 'package:puzzle_core/src/mathdoku/mathdoku_solver.dart';
-import 'package:puzzle_core/src/util/seeded_rng.dart';
-import 'package:puzzle_core/src/validation/validator.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -24,7 +22,7 @@ void main() {
       level: 'auto',
     );
 
-    List<MathdokuCage> _singletonCages({
+    List<MathdokuCage> singletonCages({
       required int size,
       required Iterable<int> cellIndices,
       required int startingId,
@@ -159,7 +157,7 @@ void main() {
       final MathdokuBoard puzzle = MathdokuBoard(
         size: 4,
         cells: List<int>.filled(16, 0),
-        cages: _singletonCages(
+        cages: singletonCages(
           size: 4,
           cellIndices: List<int>.generate(16, (int index) => index),
           startingId: 0,
@@ -178,7 +176,7 @@ void main() {
           operation: MathdokuOperation.addition,
           target: 4,
         ),
-        ..._singletonCages(
+        ...singletonCages(
           size: 4,
           cellIndices: List<int>.generate(
             16,
@@ -212,7 +210,7 @@ void main() {
           operation: MathdokuOperation.division,
           target: 2,
         ),
-        ..._singletonCages(
+        ...singletonCages(
           size: 4,
           cellIndices: List<int>.generate(16, (int index) => index).where(
             (int index) => !const <int>{0, 1, 2, 3, 7, 11}.contains(index),
@@ -246,7 +244,7 @@ void main() {
           operation: MathdokuOperation.equality,
           target: 2,
         ),
-        ..._singletonCages(
+        ...singletonCages(
           size: 4,
           cellIndices: List<int>.generate(
             16,
@@ -280,7 +278,7 @@ void main() {
           operation: MathdokuOperation.division,
           target: 8,
         ),
-        ..._singletonCages(
+        ...singletonCages(
           size: 4,
           cellIndices: List<int>.generate(
             16,

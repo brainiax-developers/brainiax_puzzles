@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
 
 const Duration defaultPuzzleGenerationTimeout = Duration(seconds: 2);
-const Duration kakuroPuzzleGenerationTimeout = Duration(seconds: 8);
+
 const Duration killerQueensPuzzleGenerationTimeout = Duration(seconds: 12);
 
 Duration puzzleGenerationTimeoutFor({
@@ -14,12 +14,13 @@ Duration puzzleGenerationTimeoutFor({
   bool preload = false,
 }) {
   switch (engineId) {
-    case 'kakuro_classic':
-      return preload
-          ? const Duration(seconds: 3)
-          : kakuroPuzzleGenerationTimeout;
+
     case 'killer_queens':
       return killerQueensPuzzleGenerationTimeout;
+    case 'kakuro':
+      // Kakuro solver DFS can hit 2+ seconds on the very first JIT compilation run.
+      // Large 9x9 grids may require extensive uniqueness checking across multiple attempts.
+      return const Duration(seconds: 12);
     default:
       return defaultPuzzleGenerationTimeout;
   }
@@ -180,8 +181,7 @@ core.PipelinePuzzleEngine<dynamic, dynamic> _createEngine(String engineId) {
       return core.SudokuEngine();
     case 'nonogram_mono':
       return core.NonogramEngine();
-    case 'kakuro_classic':
-      return core.KakuroEngine();
+
     case 'slitherlink_loop':
       return core.SlitherlinkEngine();
     case 'mathdoku_classic':
@@ -190,6 +190,8 @@ core.PipelinePuzzleEngine<dynamic, dynamic> _createEngine(String engineId) {
       return core.KillerQueensEngine();
     case 'takuzu_binary':
       return core.TakuzuEngine();
+    case 'kakuro':
+      return core.KakuroEngine();
     default:
       // Fallback to a stub engine for unknown types to avoid crashes.
       return core.StubPuzzleEngine(engineId: engineId);

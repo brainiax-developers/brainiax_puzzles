@@ -9,7 +9,7 @@
 /// - Complete metadata tracking for reproducible puzzles
 /// - Engine registry for pluggable puzzle types
 /// - Daily and random seed formats
-library puzzle_core;
+library;
 
 // Core API types - the stable public interface
 export 'src/api_types.dart';
@@ -32,21 +32,16 @@ export 'src/stub/stub_engine.dart';
 export 'src/sudoku/sudoku_board.dart';
 export 'src/sudoku/sudoku_move.dart';
 export 'src/sudoku/sudoku_engine.dart';
+// Expose solver/generator/validator for tests and advanced usage
+export 'src/sudoku/sudoku_generator.dart';
+export 'src/sudoku/sudoku_solver.dart';
+export 'src/sudoku/sudoku_validator.dart';
+export 'src/sudoku/sudoku_difficulty.dart';
 
 // Nonogram engine implementation
 export 'src/nonogram/nonogram_board.dart';
 export 'src/nonogram/nonogram_move.dart';
 export 'src/nonogram/nonogram_engine.dart';
-
-// Kakuro engine implementation
-export 'src/kakuro/kakuro_board.dart';
-export 'src/kakuro/kakuro_move.dart';
-export 'src/kakuro/kakuro_engine.dart';
-export 'src/kakuro/kakuro_format.dart';
-export 'src/kakuro/kakuro_solver.dart';
-export 'src/kakuro/kakuro_supported_profiles.dart';
-export 'src/generators/kakuro/models.dart';
-export 'src/generators/kakuro/api.dart';
 
 // Slitherlink engine implementation
 export 'src/slitherlink/slitherlink_board.dart';
@@ -80,6 +75,15 @@ export 'src/killer_queens/killer_queens_validator.dart';
 export 'src/takuzu/takuzu_board.dart';
 export 'src/takuzu/takuzu_move.dart';
 export 'src/takuzu/takuzu_engine.dart';
+
+// Kakuro engine implementation
+export 'src/kakuro/kakuro_board.dart';
+export 'src/kakuro/kakuro_move.dart';
+export 'src/kakuro/kakuro_engine.dart';
+export 'src/kakuro/kakuro_generator.dart';
+export 'src/kakuro/kakuro_solver.dart';
+export 'src/kakuro/kakuro_validator.dart';
+export 'src/kakuro/kakuro_dictionary.dart';
 
 // Legacy exports for backward compatibility (if needed)
 export 'src/puzzle_core_base.dart';

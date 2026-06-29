@@ -78,14 +78,14 @@ void main() {
 
   test('queue survives service recreation', () async {
     await service.recordStarted(
-      puzzleType: PuzzleType.kakuroClassic,
+      puzzleType: PuzzleType.sudokuClassic,
       difficulty: 'medium',
       seed: 'seed-xyz',
       timestamp: DateTime.utc(2024, 6, 1, 8),
     );
 
     await service.recordSolved(
-      puzzleType: PuzzleType.kakuroClassic,
+      puzzleType: PuzzleType.sudokuClassic,
       difficulty: 'medium',
       seed: 'seed-xyz',
       duration: const Duration(minutes: 7),

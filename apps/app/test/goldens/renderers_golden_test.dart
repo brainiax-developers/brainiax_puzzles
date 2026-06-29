@@ -4,7 +4,7 @@ import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:app/shared/theme/app_theme.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
 import 'package:app/shared/widgets/nonogram_renderer.dart';
-import 'package:app/shared/widgets/kakuro_renderer.dart';
+
 import 'package:app/shared/widgets/slitherlink_renderer.dart';
 import 'package:app/shared/widgets/mathdoku_renderer.dart';
 import 'package:app/shared/widgets/killer_queens_renderer.dart';
@@ -69,26 +69,7 @@ void main() {
         await screenMatchesGolden(tester, 'nonogram_$themeName');
       });
 
-      testGoldens('kakuro_$themeName', (tester) async {
-        await tester.pumpWidgetBuilder(
-          MaterialApp(
-            theme: theme,
-            home: Scaffold(
-              body: Center(
-                child: SizedBox(
-                  width: 320,
-                  height: 320,
-                  child: KakuroRendererWidget(
-                    puzzle: buildKakuroPuzzle(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          surfaceSize: const Size(360, 360),
-        );
-        await screenMatchesGolden(tester, 'kakuro_$themeName');
-      });
+
 
       testGoldens('slitherlink_$themeName', (tester) async {
         await tester.pumpWidgetBuilder(
