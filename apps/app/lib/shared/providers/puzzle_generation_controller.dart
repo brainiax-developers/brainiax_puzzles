@@ -6,7 +6,6 @@ import 'package:puzzle_core/puzzle_core.dart' as core;
 
 import '../models/puzzle_type.dart' as app;
 import '../crash/crash_reporting_providers.dart';
-import '../services/puzzle_registry.dart';
 import '../services/seed_service.dart';
 import '../services/generated_puzzle_difficulty.dart';
 import 'engine_provider.dart';
@@ -148,7 +147,10 @@ class PuzzleGenerationController
             ),
             timeout: attemptTimeout,
           );
-          if (!generatedPuzzleMatchesDifficulty(generated, _parseDifficulty(difficulty))) {
+          if (!generatedPuzzleMatchesDifficulty(
+            generated,
+            _parseDifficulty(difficulty),
+          )) {
             lastDifficultyMismatch = generated;
             lastError = StateError(
               'Generated ${generated.meta.difficulty.level} puzzle for '
@@ -195,27 +197,27 @@ class PuzzleGenerationController
         }
       }
       if (lastDifficultyMismatch != null) {
-          final normalized = normalizeGeneratedPuzzleDifficulty(
-            puzzle: lastDifficultyMismatch,
-            requestedDifficulty: _parseDifficulty(difficulty),
-            telemetryExtras: const <String, Object?>{
-              'difficultyFallback': true,
-              'difficultyFallbackReason':
-                  'controller_best_effort_after_mismatch_retries',
-            },
+        final normalized = normalizeGeneratedPuzzleDifficulty(
+          puzzle: lastDifficultyMismatch,
+          requestedDifficulty: _parseDifficulty(difficulty),
+          telemetryExtras: const <String, Object?>{
+            'difficultyFallback': true,
+            'difficultyFallbackReason':
+                'controller_best_effort_after_mismatch_retries',
+          },
+        );
+        if (token == _generationToken) {
+          state = AsyncValue.data(normalized);
+        }
+        if (kDebugMode) {
+          debugPrint(
+            '[Generation][DifficultyFallback] type=${puzzleType.key} '
+            '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: _parseDifficulty(difficulty))} '
+            'seed=${lastDifficultyMismatch.meta.seedStr} '
+            'elapsedMs=${stopwatch.elapsedMilliseconds}',
           );
-          if (token == _generationToken) {
-            state = AsyncValue.data(normalized);
-          }
-          if (kDebugMode) {
-            debugPrint(
-              '[Generation][DifficultyFallback] type=${puzzleType.key} '
-              '${generatedPuzzleDifficultyDebugFields(puzzle: normalized, requestedDifficulty: _parseDifficulty(difficulty))} '
-              'seed=${lastDifficultyMismatch.meta.seedStr} '
-              'elapsedMs=${stopwatch.elapsedMilliseconds}',
-            );
-          }
-          return normalized;
+        }
+        return normalized;
       }
       // If we get here, all attempts failed.
       if (token == _generationToken) {
@@ -273,8 +275,10 @@ class PuzzleGenerationController
   /// Whether the controller currently has an in-flight generation request.
   bool get isGenerating => state.isLoading;
 
-  core.SizeOpt _getDefaultSizeForPuzzleTypeAndDifficulty(app.PuzzleType puzzleType, String difficulty) {
-
+  core.SizeOpt _getDefaultSizeForPuzzleTypeAndDifficulty(
+    app.PuzzleType puzzleType,
+    String difficulty,
+  ) {
     switch (puzzleType) {
       case app.PuzzleType.sudokuClassic:
         return const core.SizeOpt(
@@ -322,32 +326,34 @@ class PuzzleGenerationController
         );
       case app.PuzzleType.kakuro:
         if (difficulty.toLowerCase() == 'expert') {
-          return const core.SizeOpt(id: '9x9', description: '9x9', width: 9, height: 9);
+          return const core.SizeOpt(
+            id: '9x9',
+            description: '9x9',
+            width: 9,
+            height: 9,
+          );
         } else if (difficulty.toLowerCase() == 'hard') {
-          return const core.SizeOpt(id: '8x8', description: '8x8', width: 8, height: 8);
+          return const core.SizeOpt(
+            id: '8x8',
+            description: '8x8',
+            width: 8,
+            height: 8,
+          );
         } else if (difficulty.toLowerCase() == 'medium') {
-          return const core.SizeOpt(id: '7x7', description: '7x7', width: 7, height: 7);
+          return const core.SizeOpt(
+            id: '7x7',
+            description: '7x7',
+            width: 7,
+            height: 7,
+          );
         }
-        return const core.SizeOpt(id: '6x6', description: '6x6', width: 6, height: 6);
+        return const core.SizeOpt(
+          id: '6x6',
+          description: '6x6',
+          width: 6,
+          height: 6,
+        );
     }
-    
-    // Fallback to registry if not explicitly handled above
-    final metadata = PuzzleRegistry().getMetadata(puzzleType);
-    if (metadata != null && metadata.supportedSizes.isNotEmpty) {
-      try {
-        return _parseSize(metadata.supportedSizes.first);
-      } catch (_) {
-        // Continue with static fallback if parsing fails
-      }
-    }
-    
-    // Final static fallback for unknown puzzle types
-    return const core.SizeOpt(
-      id: '8x8',
-      description: '8x8',
-      width: 8,
-      height: 8,
-    );
   }
 
   core.SizeOpt _parseSize(String size) {

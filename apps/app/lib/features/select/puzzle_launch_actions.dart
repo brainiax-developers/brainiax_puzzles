@@ -10,7 +10,6 @@ import '../../shared/providers/puzzle_local_store_providers.dart';
 import '../../shared/services/puzzle_progress_service.dart';
 import '../../shared/widgets/puzzle_generation_modal.dart';
 
-
 Future<void> resumePuzzleRun({
   required BuildContext context,
   required WidgetRef ref,

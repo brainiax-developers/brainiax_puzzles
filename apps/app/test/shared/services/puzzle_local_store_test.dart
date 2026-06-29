@@ -102,8 +102,6 @@ void main() {
         expect((await store.dailyStreakStatus()).currentStreak, 1);
         expect((await store.dailyStreakStatus()).bestStreak, 1);
 
-
-
         await store.recordCompletion(
           puzzleType: PuzzleType.sudokuClassic,
           difficulty: 'normal',
@@ -330,8 +328,6 @@ void main() {
         expect(run.moveCount, 0);
         expect(run.hintsUsed, 0);
         expect(run.seed, puzzle.meta.seedStr);
-
-
       },
     );
 
@@ -441,10 +437,7 @@ void main() {
         PuzzleType.sudokuClassic,
         PuzzleType.kakuro,
       ]);
-      expect(
-        service.updatedAtUtc(),
-        DateTime.utc(2026, 6, 27, 12, 34, 56),
-      );
+      expect(service.updatedAtUtc(), DateTime.utc(2026, 6, 27, 12, 34, 56));
       expect(await service.toggle(PuzzleType.sudokuClassic), isFalse);
       expect(service.favourites(), [PuzzleType.kakuro]);
 
@@ -452,10 +445,7 @@ void main() {
       final reloadedPrefs = await SharedPreferences.getInstance();
       final reloaded = FavouritePuzzleService(reloadedPrefs);
       expect(reloaded.favourites(), [PuzzleType.kakuro]);
-      expect(
-        reloaded.updatedAtUtc(),
-        DateTime.utc(2026, 6, 27, 12, 34, 56),
-      );
+      expect(reloaded.updatedAtUtc(), DateTime.utc(2026, 6, 27, 12, 34, 56));
     });
   });
 }
