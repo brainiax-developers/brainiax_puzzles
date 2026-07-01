@@ -130,8 +130,6 @@ void main() {
     expect(container.read(gameStateProvider)!.notes[40], contains(5));
   });
 
-
-
   test('restored notes and silent note clears do not add history', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -295,6 +293,101 @@ void main() {
     expect(notifier.actionHistory, hasLength(1));
     expect(board.cellAt(0, 0), 1);
   });
+
+  test('Kakuro move history supports notes, undo, redo, and reset', () async {
+    core.EngineRegistry().register(const _TestKakuroEngine());
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final puzzle = buildKakuroPuzzle();
+    final notifier = container.read(gameStateProvider.notifier);
+
+    await notifier.startWithGeneratedPuzzle(
+      engineId: 'kakuro',
+      seed: puzzle.meta.seedStr,
+      difficulty: puzzle.meta.difficulty.level,
+      size: puzzle.meta.size.id,
+      puzzle: puzzle,
+    );
+
+    notifier.recordNoteAction(5, 1, true);
+    expect(container.read(gameStateProvider)!.notes[5], contains(1));
+    expect(notifier.canUndo, isTrue);
+
+    final changed = await notifier.makeMove(
+      const core.KakuroMove(index: 5, value: 1),
+    );
+    expect(changed, isTrue);
+    var board =
+        container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+    expect(board.cellValues[5], 1);
+
+    notifier.undo();
+    board = container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+    expect(board.cellValues[5], 0);
+    expect(container.read(gameStateProvider)!.notes[5], contains(1));
+
+    notifier.undo();
+    expect(container.read(gameStateProvider)!.notes.containsKey(5), isFalse);
+
+    notifier.redo();
+    notifier.redo();
+    board = container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+    expect(board.cellValues[5], 1);
+    expect(container.read(gameStateProvider)!.notes[5], contains(1));
+
+    notifier.resetToInitial();
+    board = container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+    expect(board.cellValues[5], 0);
+    expect(container.read(gameStateProvider)!.notes, isEmpty);
+  });
+
+  test('Kakuro rejects invalid moves without adding history', () async {
+    core.EngineRegistry().register(const _TestKakuroEngine());
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final puzzle = buildKakuroPuzzle();
+    final notifier = container.read(gameStateProvider.notifier);
+
+    await notifier.startWithGeneratedPuzzle(
+      engineId: 'kakuro',
+      seed: puzzle.meta.seedStr,
+      difficulty: puzzle.meta.difficulty.level,
+      size: puzzle.meta.size.id,
+      puzzle: puzzle,
+    );
+
+    expect(
+      () => notifier.makeMove(const core.KakuroMove(index: 0, value: 1)),
+      throwsException,
+    );
+    expect(notifier.actionHistory, isEmpty);
+    expect(notifier.canUndo, isFalse);
+  });
+
+  test('game actions serialize note and move records', () {
+    final timestamp = DateTime.utc(2026, 7, 1, 12);
+    final move = GameMoveAction(
+      timestamp: timestamp,
+      actionIndex: 1,
+      move: const core.KakuroMove(index: 5, value: 1),
+    );
+    final note = NoteAction(
+      timestamp: timestamp,
+      actionIndex: 2,
+      cellIndex: 5,
+      digit: 3,
+      isAdding: true,
+    );
+
+    expect(move.toJson()['move'], <String, dynamic>{'index': 5, 'value': 1});
+    expect(note.toJson()['cellIndex'], 5);
+    expect(GameAction.fromJson(note.toJson()), isA<NoteAction>());
+    expect(GameAction.fromJson(move.toJson()), isA<GameMoveAction>());
+    expect(
+      () => GameAction.fromJson(<String, dynamic>{'type': 'unknown'}),
+      throwsUnsupportedError,
+    );
+  });
 }
 
 core.GeneratedPuzzle<core.KillerQueensBoard>
@@ -405,8 +498,6 @@ class _TestKillerQueensEngine
   }
 }
 
-
-
 class _TestNonogramEngine
     implements core.PuzzleEngine<core.NonogramBoard, core.NonogramMove> {
   const _TestNonogramEngine();
@@ -459,5 +550,70 @@ class _TestNonogramEngine
     final cells = List<int?>.from(currentState.cells);
     cells[currentState.indexOf(move.row, move.col)] = move.value;
     return core.MoveResult.success(currentState.copyWith(cells: cells));
+  }
+}
+
+class _TestKakuroEngine
+    implements core.PuzzleEngine<core.KakuroBoard, core.KakuroMove> {
+  const _TestKakuroEngine();
+
+  @override
+  String get id => 'kakuro';
+
+  @override
+  String get name => 'Test Kakuro';
+
+  @override
+  String get version => '1.0.0';
+
+  @override
+  core.PuzzleCapabilities get capabilities => const core.PuzzleCapabilities();
+
+  @override
+  core.GeneratedPuzzle<core.KakuroBoard> generate({
+    required String seedStr,
+    required int seed64,
+    required core.SizeOpt size,
+    required core.DifficultyScore difficulty,
+  }) {
+    return buildKakuroPuzzle();
+  }
+
+  @override
+  bool isSolved(core.KakuroBoard state) {
+    final solved = buildKakuroPuzzle(solved: true).state;
+    for (int i = 0; i < state.cellCount; i++) {
+      if (state.cellValues[i] != solved.cellValues[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.KakuroBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+
+  @override
+  core.MoveResult<core.KakuroBoard> validateMove({
+    required core.KakuroBoard currentState,
+    required core.KakuroMove move,
+  }) {
+    if (move.index < 0 || move.index >= currentState.cellCount) {
+      return core.MoveResult.failure('index_out_of_range');
+    }
+    if (!currentState.isWhite(move.index)) {
+      return core.MoveResult.failure('cell_is_not_white');
+    }
+    if (move.value < 0 || move.value > 9) {
+      return core.MoveResult.failure('digit_out_of_range');
+    }
+    return core.MoveResult.success(
+      currentState.setCellValue(move.index, move.value),
+    );
   }
 }

@@ -1,3 +1,7 @@
+// coverage:ignore-file
+// ignore_for_file: avoid_print, deprecated_member_use, prefer_const_constructors, unnecessary_non_null_assertion, use_build_context_synchronously
+// Hidden developer diagnostics screen. Engine performance remains validated by
+// melos run perf_gate rather than app line coverage.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

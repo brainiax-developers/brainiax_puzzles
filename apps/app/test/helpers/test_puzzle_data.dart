@@ -197,8 +197,6 @@ core.GeneratedPuzzle<core.NonogramBoard> buildNonogramPuzzle() {
   );
 }
 
-
-
 core.GeneratedPuzzle<core.SlitherlinkBoard> buildSlitherlinkPuzzle() {
   final base = core.SlitherlinkBoard.empty(
     width: 4,
@@ -300,6 +298,59 @@ core.GeneratedPuzzle<core.TakuzuBoard> buildTakuzuPuzzle() {
   ];
   final board = core.TakuzuBoard(size: size, cells: solution, fixed: fixed);
   return core.GeneratedPuzzle<core.TakuzuBoard>(
+    state: board,
+    meta: _metadataFor(size: '4x4', difficulty: 'easy'),
+  );
+}
+
+core.GeneratedPuzzle<core.KakuroBoard> buildKakuroPuzzle({
+  bool solved = false,
+}) {
+  final values = <int>[
+    0,
+    0,
+    0,
+    0,
+    0,
+    solved ? 1 : 0,
+    solved ? 2 : 0,
+    0,
+    0,
+    solved ? 3 : 0,
+    solved ? 4 : 0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  ];
+  final board = core.KakuroBoard(
+    width: 4,
+    height: 4,
+    cellTypes: const <int>[
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellClue,
+      core.KakuroBoard.cellClue,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellClue,
+      core.KakuroBoard.cellWhite,
+      core.KakuroBoard.cellWhite,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellClue,
+      core.KakuroBoard.cellWhite,
+      core.KakuroBoard.cellWhite,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellBlack,
+      core.KakuroBoard.cellBlack,
+    ],
+    cellValues: values,
+    acrossClues: const <int>[0, 0, 0, 0, 3, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0],
+    downClues: const <int>[0, 4, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  );
+
+  return core.GeneratedPuzzle<core.KakuroBoard>(
     state: board,
     meta: _metadataFor(size: '4x4', difficulty: 'easy'),
   );

@@ -12,6 +12,7 @@ import 'package:app/shared/services/puzzle_local_store.dart';
 import 'package:app/shared/services/puzzle_progress_service.dart';
 import 'package:app/shared/widgets/nonogram_renderer.dart';
 import 'package:app/shared/widgets/killer_queens_renderer.dart';
+import 'package:app/shared/widgets/kakuro_renderer.dart';
 import 'package:app/shared/widgets/mathdoku_renderer.dart';
 import 'package:app/shared/widgets/slitherlink_renderer.dart';
 import 'package:app/shared/widgets/sudoku_renderer.dart';
@@ -602,6 +603,114 @@ void main() {
     expect(updatedControls.selected, <KillerQueensInputMode>{
       KillerQueensInputMode.cross,
     });
+  });
+
+  testWidgets(
+    'Kakuro play view applies digits, notes, clear, and clue errors',
+    (tester) async {
+      core.EngineRegistry().register(const _TestKakuroEngine());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: ThemeData(splashFactory: NoSplash.splashFactory),
+            home: PlayScreen(
+              puzzleType: PuzzleType.kakuro,
+              mode: PuzzleMode.random,
+              puzzleInstance: buildKakuroPuzzle(),
+              difficulty: 'Easy',
+            ),
+          ),
+        ),
+      );
+      await pumpPlayScreen(tester);
+
+      final kakuroFinder = find.byType(KakuroRendererWidget);
+      expect(kakuroFinder, findsOneWidget);
+
+      tester.widget<KakuroRendererWidget>(kakuroFinder).onCellSelected!(
+        const Offset(1, 1),
+      );
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, '1'))
+          .onPressed!();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlayScreen)),
+      );
+      var board =
+          container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+      expect(board.cellValues[5], 1);
+
+      tester.widget<Switch>(find.byType(Switch).first).onChanged!(true);
+      await tester.pump(const Duration(milliseconds: 100));
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, '2'))
+          .onPressed!();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(container.read(gameStateProvider)!.notes[5], contains(2));
+
+      tester
+          .widget<ElevatedButton>(find.widgetWithText(ElevatedButton, 'Clear'))
+          .onPressed!();
+      await tester.pump(const Duration(milliseconds: 100));
+      board =
+          container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+      expect(board.cellValues[5], 0);
+      expect(container.read(gameStateProvider)!.notes.containsKey(5), isFalse);
+
+      tester.widget<KakuroRendererWidget>(kakuroFinder).onCellSelected!(
+        Offset.zero,
+      );
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, '3'))
+          .onPressed!();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Cannot place a digit on a clue cell'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Kakuro supported hint fills a cell and increments count', (
+    tester,
+  ) async {
+    core.EngineRegistry().register(const _HintingKakuroEngine());
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: PlayScreen(
+            puzzleType: PuzzleType.kakuro,
+            mode: PuzzleMode.random,
+            puzzleInstance: buildKakuroPuzzle(),
+          ),
+        ),
+      ),
+    );
+    await pumpPlayScreen(tester);
+
+    final InkWell hintButton = tester.widget<InkWell>(
+      find
+          .ancestor(of: find.text('Hint'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(hintButton.onTap, isNotNull);
+
+    await tester.tap(find.text('Hint'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final prefs = await SharedPreferences.getInstance();
+    final run = await PuzzleProgressService(
+      prefs,
+    ).loadActiveRunFor(type: PuzzleType.kakuro, mode: PuzzleMode.random);
+    expect(run?.hintsUsed, 1);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlayScreen)),
+    );
+    final board =
+        container.read(gameStateProvider)!.puzzle.state as core.KakuroBoard;
+    expect(board.cellValues[5], 1);
   });
 
   testWidgets('shows tutorial entry and disabled unsupported hints', (
@@ -1236,6 +1345,92 @@ class _TestMathdokuEngine
   }) {
     return core.MoveResult.success(
       currentState.setCell(move.row, move.col, move.value),
+    );
+  }
+}
+
+class _TestKakuroEngine
+    implements core.PuzzleEngine<core.KakuroBoard, core.KakuroMove> {
+  const _TestKakuroEngine();
+
+  @override
+  String get id => PuzzleType.kakuro.key;
+
+  @override
+  String get name => 'Test Kakuro';
+
+  @override
+  String get version => '1.0.0';
+
+  @override
+  core.PuzzleCapabilities get capabilities =>
+      const core.PuzzleCapabilities(supportsHints: true);
+
+  @override
+  core.GeneratedPuzzle<core.KakuroBoard> generate({
+    required String seedStr,
+    required int seed64,
+    required core.SizeOpt size,
+    required core.DifficultyScore difficulty,
+  }) {
+    return buildKakuroPuzzle();
+  }
+
+  @override
+  bool isSolved(core.KakuroBoard state) {
+    final solved = buildKakuroPuzzle(solved: true).state;
+    for (int i = 0; i < state.cellCount; i++) {
+      if (state.cellValues[i] != solved.cellValues[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.KakuroBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return null;
+  }
+
+  @override
+  core.MoveResult<core.KakuroBoard> validateMove({
+    required core.KakuroBoard currentState,
+    required core.KakuroMove move,
+  }) {
+    if (move.index < 0 || move.index >= currentState.cellCount) {
+      return core.MoveResult.failure('index_out_of_range');
+    }
+    if (!currentState.isWhite(move.index)) {
+      return core.MoveResult.failure('cell_is_not_white');
+    }
+    if (move.value < 0 || move.value > 9) {
+      return core.MoveResult.failure('digit_out_of_range');
+    }
+    return core.MoveResult.success(
+      currentState.setCellValue(move.index, move.value),
+    );
+  }
+}
+
+class _HintingKakuroEngine extends _TestKakuroEngine {
+  const _HintingKakuroEngine();
+
+  @override
+  core.PuzzleHint? requestHint({
+    required core.KakuroBoard currentState,
+    core.PuzzleHintRequest? request,
+  }) {
+    return core.PuzzleHint(
+      cells: <core.PuzzleHintCell>[
+        core.PuzzleHintCell(
+          row: 1,
+          column: 1,
+          metadata: const <String, Object?>{'digit': 1},
+        ),
+      ],
     );
   }
 }
