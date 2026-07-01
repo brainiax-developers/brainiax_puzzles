@@ -24,20 +24,45 @@ class SyncEngineResult {
     required this.synced,
     required this.failed,
     this.skippedReason,
+    this.retriedFailed = 0,
+    this.retryFailed = false,
+    this.retryFailureReason,
   });
 
   const SyncEngineResult.skipped(String reason)
     : attempted = 0,
       synced = 0,
       failed = 0,
-      skippedReason = reason;
+      skippedReason = reason,
+      retriedFailed = 0,
+      retryFailed = false,
+      retryFailureReason = null;
 
   final int attempted;
   final int synced;
   final int failed;
   final String? skippedReason;
+  final int retriedFailed;
+  final bool retryFailed;
+  final String? retryFailureReason;
 
   bool get skipped => skippedReason != null;
+
+  SyncEngineResult withRetry({
+    required int retriedFailed,
+    bool retryFailed = false,
+    String? retryFailureReason,
+  }) {
+    return SyncEngineResult(
+      attempted: attempted,
+      synced: synced,
+      failed: failed,
+      skippedReason: skippedReason,
+      retriedFailed: retriedFailed,
+      retryFailed: retryFailed,
+      retryFailureReason: retryFailureReason,
+    );
+  }
 }
 
 class SyncEngine {

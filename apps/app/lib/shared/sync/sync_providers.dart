@@ -163,6 +163,34 @@ class SyncController {
     return result;
   }
 
+  Future<SyncEngineResult> retryFailedAndProcessPending({int? limit}) async {
+    int retriedFailed = 0;
+    bool retryFailed = false;
+    String? retryFailureReason;
+
+    try {
+      final SyncService service = await _ref.read(syncServiceProvider.future);
+      retriedFailed = await service.retryFailed();
+    } catch (error, stackTrace) {
+      retryFailed = true;
+      retryFailureReason = 'retry-failed';
+      await _reportFailure(
+        error,
+        stackTrace,
+        operation: 'retry-failed-sync-items',
+      );
+    } finally {
+      _invalidateQueueProviders();
+    }
+
+    final SyncEngineResult result = await processPending(limit: limit);
+    return result.withRetry(
+      retriedFailed: retriedFailed,
+      retryFailed: retryFailed,
+      retryFailureReason: retryFailureReason,
+    );
+  }
+
   Future<void> markSyncing(String id, {DateTime? attemptedAtUtc}) async {
     final SyncService service = await _ref.read(syncServiceProvider.future);
     await service.markSyncing(id, attemptedAtUtc: attemptedAtUtc);
@@ -196,6 +224,25 @@ class SyncController {
     return retried;
   }
 
+  Future<void> _reportFailure(
+    Object error,
+    StackTrace stackTrace, {
+    required String operation,
+  }) async {
+    final SyncFailureReporter? reporter = _ref.read(
+      syncFailureReporterProvider,
+    );
+    if (reporter == null) {
+      return;
+    }
+
+    try {
+      await reporter.recordSyncFailure(error, stackTrace, operation: operation);
+    } catch (_) {
+      // Sync retries are best-effort and must never affect local gameplay.
+    }
+  }
+
   void _invalidateQueueProviders() {
     _ref.invalidate(syncServiceProvider);
     _ref.invalidate(syncQueueItemsProvider);
@@ -214,7 +261,7 @@ final syncLifecycleControllerProvider = Provider<SyncLifecycleController>((
     syncFailureReporterProvider,
   );
   return SyncLifecycleController(
-    processPending: syncController.processPending,
+    retryFailedAndProcessPending: syncController.retryFailedAndProcessPending,
     failureReporter: failureReporter,
   );
 });

@@ -109,7 +109,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final SyncEngineResult result = await ref
           .read(syncControllerProvider)
-          .processPending();
+          .retryFailedAndProcessPending();
       ref.invalidate(profileDashboardProvider);
 
       if (!mounted) {
@@ -291,7 +291,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref
           .read(firestoreSyncRepositoryProvider)
           ?.ensureUserProfile(identity);
-      await ref.read(syncControllerProvider).processPending();
+      await ref.read(syncControllerProvider).retryFailedAndProcessPending();
     } catch (error, stackTrace) {
       await _reportUnexpectedAuthLinkFailure(
         provider: provider,
@@ -1175,6 +1175,10 @@ String _syncCopy(ProfileSyncSummary summary) {
 }
 
 String _syncResultMessage(SyncEngineResult result) {
+  if (result.retryFailed && result.attempted == 0) {
+    return 'Could not retry failed sync items right now. Local stats are still safe.';
+  }
+
   if (result.skipped) {
     switch (result.skippedReason) {
       case 'already-processing':
@@ -1189,9 +1193,15 @@ String _syncResultMessage(SyncEngineResult result) {
   }
 
   if (result.attempted == 0) {
+    if (result.retriedFailed > 0) {
+      return 'Retried ${result.retriedFailed} failed item${result.retriedFailed == 1 ? '' : 's'}; nothing else is pending.';
+    }
     return 'Nothing to sync right now.';
   }
   if (result.failed == 0) {
+    if (result.retriedFailed > 0) {
+      return 'Retried ${result.retriedFailed} failed item${result.retriedFailed == 1 ? '' : 's'} and synced ${result.synced} item${result.synced == 1 ? '' : 's'}.';
+    }
     return 'Synced ${result.synced} item${result.synced == 1 ? '' : 's'}.';
   }
   if (result.synced == 0) {

@@ -63,7 +63,7 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final sudokuFinder = find.byType(SudokuRendererWidget);
     expect(sudokuFinder, findsOneWidget);
@@ -71,7 +71,7 @@ void main() {
     tester.widget<SudokuRendererWidget>(sudokuFinder).onMove!(
       const core.SudokuMove(row: 0, col: 0, digit: 5),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     expect(find.text('Solved'), findsOneWidget);
 
@@ -135,13 +135,13 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
       expect(find.text(_titleCase(difficulty)), findsOneWidget);
 
       tester
           .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
           .onMove!(const core.SudokuMove(row: 0, col: 0, digit: 5));
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       final prefs = await SharedPreferences.getInstance();
       final store = SharedPreferencesPuzzleLocalStore(prefs);
@@ -180,7 +180,7 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       expect(find.text('Hard'), findsOneWidget);
       expect(find.text('Easy'), findsNothing);
@@ -282,17 +282,17 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       tester
           .widget<SudokuRendererWidget>(find.byType(SudokuRendererWidget))
           .onMove!(const core.SudokuMove(row: 0, col: 0, digit: 5));
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       expect(find.text('Solved'), findsOneWidget);
       expect(find.text('Restart puzzle?'), findsNothing);
       await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       final restartButton = tester.widget<InkWell>(
         find
@@ -302,7 +302,7 @@ void main() {
       expect(restartButton.onTap, isNull);
 
       await tester.tap(find.text('Restart'), warnIfMissed: false);
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
       expect(find.text('Restart puzzle?'), findsNothing);
 
       final prefs = await SharedPreferences.getInstance();
@@ -460,7 +460,7 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final nonogramFinder = find.byType(NonogramRendererWidget);
     expect(nonogramFinder, findsOneWidget);
@@ -468,12 +468,12 @@ void main() {
     tester.widget<NonogramRendererWidget>(nonogramFinder).onMove!(
       const core.NonogramMove(row: 1, col: 1, value: 0),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     tester.widget<NonogramRendererWidget>(nonogramFinder).onMove!(
       const core.NonogramMove(row: 0, col: 0, value: 1),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     expect(find.text('Solved'), findsOneWidget);
 
@@ -517,7 +517,7 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       final slitherlinkFinder = find.byType(SlitherlinkRendererWidget);
       expect(slitherlinkFinder, findsOneWidget);
@@ -530,7 +530,7 @@ void main() {
           value: core.SlitherlinkBoard.edgeOff,
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       tester.widget<SlitherlinkRendererWidget>(slitherlinkFinder).onMove!(
         const core.SlitherlinkMove(
@@ -540,7 +540,7 @@ void main() {
           value: core.SlitherlinkBoard.edgeOn,
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       expect(find.text('Solved'), findsOneWidget);
 
@@ -580,7 +580,7 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final controls = tester.widget<SegmentedButton<KillerQueensInputMode>>(
       find.byType(SegmentedButton<KillerQueensInputMode>),
@@ -593,7 +593,7 @@ void main() {
     expect(find.text('Clear'), findsOneWidget);
 
     await tester.tap(find.text('Cross'));
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final updatedControls = tester
         .widget<SegmentedButton<KillerQueensInputMode>>(
@@ -623,7 +623,7 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     expect(find.text('Hint'), findsOneWidget);
     final InkWell hintButton = tester.widget<InkWell>(
@@ -653,7 +653,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PlayScreen)),
@@ -716,7 +716,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PlayScreen)),
@@ -802,7 +802,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpPlayScreen(tester);
 
       expect(find.byType(entry.$4), findsOneWidget);
       final InkWell hintButton = tester.widget<InkWell>(
@@ -847,7 +847,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpPlayScreen(tester);
 
     await tester.tap(find.text('Hint'));
     await tester.pump(const Duration(milliseconds: 200));
@@ -868,8 +868,12 @@ void main() {
       },
     );
   });
+}
 
-
+Future<void> pumpPlayScreen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i += 1) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 core.GeneratedPuzzle<core.NonogramBoard> _buildAlmostSolvedNonogramPuzzle() {

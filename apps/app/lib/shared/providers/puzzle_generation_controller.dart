@@ -72,7 +72,11 @@ class PuzzleGenerationController
 
     final difficultyScore = _parseDifficulty(difficulty);
     final core.SizeOpt resolvedSize = size != null
-        ? _parseSize(size)
+        ? _normalizeRequestedSize(
+            puzzleType: puzzleType,
+            difficulty: difficulty,
+            size: _parseSize(size),
+          )
         : _getDefaultSizeForPuzzleTypeAndDifficulty(puzzleType, difficulty);
     final token = ++_generationToken;
 
@@ -370,6 +374,26 @@ class PuzzleGenerationController
       width: width,
       height: height,
     );
+  }
+
+  core.SizeOpt _normalizeRequestedSize({
+    required app.PuzzleType puzzleType,
+    required String difficulty,
+    required core.SizeOpt size,
+  }) {
+    if (puzzleType == app.PuzzleType.killerQueens &&
+        difficulty.toLowerCase() == 'expert' &&
+        (size.width > 10 || size.height > 10)) {
+      // Keep the app on the mobile-safe Expert profile. Core still supports
+      // larger benchmark/engine profiles outside this app path.
+      return const core.SizeOpt(
+        id: '10x10',
+        description: '10x10',
+        width: 10,
+        height: 10,
+      );
+    }
+    return size;
   }
 
   core.DifficultyScore _parseDifficulty(String difficulty) {

@@ -11,16 +11,17 @@ enum SyncLifecycleTrigger {
   final String key;
 }
 
-typedef ProcessPendingSync = Future<SyncEngineResult> Function({int? limit});
+typedef RetryFailedAndProcessPendingSync =
+    Future<SyncEngineResult> Function({int? limit});
 
 class SyncLifecycleController {
   SyncLifecycleController({
-    required ProcessPendingSync processPending,
+    required RetryFailedAndProcessPendingSync retryFailedAndProcessPending,
     SyncFailureReporter? failureReporter,
-  }) : _processPending = processPending,
+  }) : _retryFailedAndProcessPending = retryFailedAndProcessPending,
        _failureReporter = failureReporter;
 
-  final ProcessPendingSync _processPending;
+  final RetryFailedAndProcessPendingSync _retryFailedAndProcessPending;
   final SyncFailureReporter? _failureReporter;
 
   bool _startupFlushScheduled = false;
@@ -48,7 +49,7 @@ class SyncLifecycleController {
 
     _isFlushing = true;
     try {
-      return await _processPending(limit: limit);
+      return await _retryFailedAndProcessPending(limit: limit);
     } catch (error, stackTrace) {
       await _reportFailure(error, stackTrace, trigger: trigger);
       return const SyncEngineResult.skipped('lifecycle-flush-failed');

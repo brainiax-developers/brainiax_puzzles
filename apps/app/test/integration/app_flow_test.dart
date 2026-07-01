@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:puzzle_core/puzzle_core.dart' as core;
@@ -38,17 +37,22 @@ class _FakePuzzleGenerationController extends PuzzleGenerationController {
 
 class _EmptyPreloadService extends PuzzlePreloadService {
   @override
-  Future<void> preloadAll({Duration interItemYield = const Duration(milliseconds: 50)}) async {}
+  Future<void> preloadAll({
+    Duration interItemYield = const Duration(milliseconds: 50),
+  }) async {}
 
   @override
-  core.GeneratedPuzzle<dynamic>? getCached(PuzzleType puzzleType, String difficulty) => null;
+  core.GeneratedPuzzle<dynamic>? getCached(
+    PuzzleType puzzleType,
+    String difficulty,
+  ) => null;
 
   @override
   bool get hasPreloaded => false;
 }
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -157,7 +161,11 @@ void main() {
     expect(find.textContaining('streak'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
-    final key = 'puzzle_local_store.v2.best_time.${PuzzleType.sudokuClassic.key}.easy';
+    final key =
+        'puzzle_local_store.v2.best_time.${PuzzleType.sudokuClassic.key}.easy';
     expect(prefs.containsKey(key), isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
   });
 }

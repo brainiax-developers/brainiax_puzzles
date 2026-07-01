@@ -9,7 +9,7 @@ void main() {
   test('startup flush schedules one pending sync retry', () async {
     final process = _RecordingProcess();
     final controller = SyncLifecycleController(
-      processPending: process.processPending,
+      retryFailedAndProcessPending: process.retryFailedAndProcessPending,
     );
 
     controller.scheduleStartupFlush();
@@ -23,7 +23,7 @@ void main() {
   test('resume flush calls pending sync retry', () async {
     final process = _RecordingProcess();
     final controller = SyncLifecycleController(
-      processPending: process.processPending,
+      retryFailedAndProcessPending: process.retryFailedAndProcessPending,
     );
 
     final result = await controller.flushPending(SyncLifecycleTrigger.resume);
@@ -35,7 +35,7 @@ void main() {
   test('concurrent lifecycle flushes do not duplicate work', () async {
     final completer = Completer<SyncEngineResult>();
     final controller = SyncLifecycleController(
-      processPending: ({int? limit}) => completer.future,
+      retryFailedAndProcessPending: ({int? limit}) => completer.future,
     );
 
     final first = controller.flushPending(SyncLifecycleTrigger.resume);
@@ -52,7 +52,8 @@ void main() {
   test('sync retry failures are reported and never thrown', () async {
     final reporter = _RecordingFailureReporter();
     final controller = SyncLifecycleController(
-      processPending: ({int? limit}) => throw StateError('offline'),
+      retryFailedAndProcessPending: ({int? limit}) =>
+          throw StateError('offline'),
       failureReporter: reporter,
     );
 
@@ -65,7 +66,8 @@ void main() {
 
   test('failure reporter errors are swallowed', () async {
     final controller = SyncLifecycleController(
-      processPending: ({int? limit}) => throw StateError('offline'),
+      retryFailedAndProcessPending: ({int? limit}) =>
+          throw StateError('offline'),
       failureReporter: _ThrowingFailureReporter(),
     );
 
@@ -79,7 +81,7 @@ void main() {
 class _RecordingProcess {
   int calls = 0;
 
-  Future<SyncEngineResult> processPending({int? limit}) async {
+  Future<SyncEngineResult> retryFailedAndProcessPending({int? limit}) async {
     calls += 1;
     return const SyncEngineResult(attempted: 0, synced: 0, failed: 0);
   }

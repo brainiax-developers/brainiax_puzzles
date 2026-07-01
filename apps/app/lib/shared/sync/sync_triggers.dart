@@ -51,9 +51,22 @@ class SyncTriggers {
   }
 
   Future<void> flushPending() async {
+    await _retryFailedAndProcessPending('trigger-flush');
+  }
+
+  Future<void> _retryFailedAndProcessPending(String operation) async {
     final SyncEngine? engine = _syncEngine;
     if (engine == null) {
       return;
+    }
+    try {
+      await _syncService.retryFailed();
+    } catch (error, stackTrace) {
+      await _reportFailure(
+        error,
+        stackTrace,
+        operation: '$operation-retry-failed-sync-items',
+      );
     }
     await engine.processPending();
   }
@@ -74,7 +87,7 @@ class SyncTriggers {
     }
 
     unawaited(
-      engine.processPending().catchError((
+      _retryFailedAndProcessPending('$operation-background-sync').catchError((
         Object error,
         StackTrace stackTrace,
       ) async {
@@ -83,7 +96,6 @@ class SyncTriggers {
           stackTrace,
           operation: '$operation-background-sync',
         );
-        return const SyncEngineResult.skipped('background-sync-error');
       }),
     );
   }
